@@ -16,15 +16,34 @@ function tokenDe(req) {
   return cab.startsWith('Bearer ') ? cab.slice(7) : null;
 }
 
-/** Exige una sesión vigente (admin o seguimiento) y la cuelga de req.usuario. */
+/**
+ * Exige una sesión vigente de logística (admin o seguimiento) y la cuelga de
+ * req.usuario. Comprueba `tipo === 'logistica'` explícitamente y no solo que
+ * el token exista: desde que el solicitante también tiene un token (la
+ * credencial de área, ver backend/areas/), un token válido pero de área NO
+ * debe alcanzar para entrar a una ruta de despacho.
+ */
 export function requiereSesion(req, res, next) {
   const token = tokenDe(req);
   const s = sesiones.verificar(token);
-  if (!s) {
+  if (!s || s.tipo !== 'logistica') {
     log('acceso_denegado', req, 'sin sesión válida en ' + req.method + ' ' + req.originalUrl);
     throw error('Sesión inválida o vencida. Vuelve a ingresar.', 401);
   }
   req.usuario = s;
+  req.token = token;
+  next();
+}
+
+/** Exige una sesión vigente de área (el solicitante que entró con DNI + credencial de área) y la cuelga de req.area. */
+export function requiereSesionArea(req, res, next) {
+  const token = tokenDe(req);
+  const s = sesiones.verificar(token);
+  if (!s || s.tipo !== 'area') {
+    log('acceso_denegado', req, 'sin sesión de área válida en ' + req.method + ' ' + req.originalUrl);
+    throw error('Sesión inválida o vencida. Vuelve a ingresar con tu DNI.', 401);
+  }
+  req.area = s;
   req.token = token;
   next();
 }
@@ -51,6 +70,6 @@ export function requiereRol(...roles) {
  */
 export function sesionOpcional(req, res, next) {
   const s = sesiones.verificar(tokenDe(req));
-  if (s) req.usuario = s;
+  if (s && s.tipo === 'logistica') req.usuario = s;
   next();
 }

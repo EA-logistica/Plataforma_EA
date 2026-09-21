@@ -71,11 +71,13 @@ CREATE TABLE IF NOT EXISTS solicitudes (
   fuente          TEXT NOT NULL DEFAULT 'app' CHECK (fuente IN ('app', 'historico'))
 );
 
--- Los tres accesos que de verdad se usan: la bandeja filtra por estado, los
--- indicadores agrupan por fecha y el solicitante busca lo suyo por DNI.
+-- Los accesos que de verdad se usan: la bandeja filtra por estado, los
+-- indicadores agrupan por fecha, el solicitante busca lo suyo por DNI y,
+-- desde el ingreso por área, su área pide los últimos 5 servicios por `area`.
 CREATE INDEX IF NOT EXISTS idx_solicitudes_estado ON solicitudes (estado);
 CREATE INDEX IF NOT EXISTS idx_solicitudes_fecha  ON solicitudes (fecha_prog);
 CREATE INDEX IF NOT EXISTS idx_solicitudes_dni    ON solicitudes (dni);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_area   ON solicitudes (area);
 
 -- ----------------------------------------------------------------- paradas
 -- Destinos adicionales de una solicitud con dos o más rutas en la misma
@@ -105,6 +107,41 @@ CREATE TABLE IF NOT EXISTS autorizaciones (
 );
 
 CREATE INDEX IF NOT EXISTS idx_autorizaciones_estado ON autorizaciones (estado);
+
+-- --------------------------------------------------------- credenciales_area
+-- Segundo factor del ingreso del solicitante: el DNI detecta el área (contra
+-- `personal`) y esta es la clave de esa área, una sola para todo el mundo que
+-- trabaja ahí. No es una tabla de `usuarios` -esas son cuentas personales de
+-- logística, con otro ciclo de vida (las crea/desactiva admin una por una) y
+-- otro propósito (despachar, no pedir un servicio)-, así que se separan aunque
+-- el hash y el patrón de alta sean iguales.
+CREATE TABLE IF NOT EXISTS credenciales_area (
+  area                TEXT PRIMARY KEY,
+  usuario             TEXT NOT NULL UNIQUE,
+  clave_hash          TEXT NOT NULL,
+  activo              INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+  debe_cambiar_clave  INTEGER NOT NULL DEFAULT 1 CHECK (debe_cambiar_clave IN (0, 1)),
+  creado_por          TEXT NOT NULL DEFAULT '',
+  creado_en           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- -------------------------------------------------------- pedidos_historico
+-- Un área solo ve sus últimos 5 servicios; si necesita uno más viejo o el
+-- histórico completo, se lo pide a admin en vez de poder traérselo ella misma.
+-- Mismo espíritu que `autorizaciones` (un pedido que admin resuelve a mano),
+-- pero es un pedido distinto -ver más, no entrar- y de otra área (no de un
+-- DNI), así que es otra tabla en vez de forzar `autorizaciones` a servir para
+-- dos cosas.
+CREATE TABLE IF NOT EXISTS pedidos_historico (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  area        TEXT NOT NULL,
+  dni         TEXT NOT NULL DEFAULT '',
+  solicitado  TEXT NOT NULL,
+  estado      TEXT NOT NULL DEFAULT 'Pendiente'
+              CHECK (estado IN ('Pendiente', 'Atendida', 'Rechazada'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedidos_historico_estado ON pedidos_historico (estado);
 
 -- --------------------------------------------------------------- usuarios
 -- Cuentas de logística: quién puede ENTRAR a despachar, ver indicadores o

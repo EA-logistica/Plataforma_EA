@@ -22,6 +22,7 @@ process.env.PLANSA_PUERTO = '0';                 // puerto libre que elija el si
 
 const { iniciar } = await import('../backend/servidor.js');
 const { nombreUnico, marcaDeTiempo } = await import('../backend/middleware/subida.js');
+const { olvidarIntentos, olvidarPeticiones } = await import('../backend/middleware/limites.js');
 // Las cifras del histórico se leen de la propia fuente: al actualizar la
 // planilla las pruebas siguen valiendo sin tocar un número a mano.
 const { RESUMEN } = await import('#data/historico.js');
@@ -107,18 +108,6 @@ try {
   ok(estadoStaff.datos.solicitudes.length === SEMBRADOS, 'con sesión, /estado sí trae el historial completo');
   ok(estadoStaff.datos.autorizaciones !== undefined && estadoStaff.datos.adjuntos !== undefined,
      'y también adjuntos y autorizaciones');
-
-  // ------------------------------------------------- mis servicios (DNI)
-  console.log('\n-- mis servicios, por DNI --');
-  ok((await api('GET', '/api/solicitudes/mias')).status === 400, 'sin DNI no trae nada');
-  ok((await api('GET', '/api/solicitudes/mias?dni=abc')).status === 400, 'ni con un documento inválido');
-  const mias = await api('GET', '/api/solicitudes/mias?dni=73012556');
-  ok(mias.status === 200 && Array.isArray(mias.datos.solicitudes), 'con un DNI válido, sin sesión, sí responde');
-  ok(mias.datos.solicitudes.every(s => s.dni === '73012556'),
-     'y solo trae servicios de ESE documento, ninguno de otra persona');
-  ok(Array.isArray(mias.datos.adjuntos), 'junto con los adjuntos de esos tickets (puede venir vacío)');
-  ok((await api('GET', '/api/solicitudes/mias?dni=99999999')).datos.solicitudes.length === 0,
-     'un documento sin servicios trae la lista vacía, no un error');
 
   // ---------------------------------------------------------- usuarios
   console.log('\n-- cuentas de logística --');
@@ -284,9 +273,6 @@ try {
   ok(canceladaSolicitante.datos.motivoCancelacion === 'Usuario solicitó baja'
      && canceladaSolicitante.datos.canceladoPor === 'Solicitante',
      'el servidor pone el motivo solo, y anota que fue el solicitante');
-  const viaMias = (await api('GET', '/api/solicitudes/mias?dni=' + nueva.dni)).datos.solicitudes.find(s => s.id === otraId);
-  ok(viaMias && viaMias.estado === 'Cancelado',
-     'y el propio solicitante -sin sesión- también lo ve así por la vía pública real, /solicitudes/mias');
   ok((await api('POST', '/api/solicitudes/' + otraId + '/cancelar')).status === 409,
      'cancelarlo dos veces responde 409');
   ok((await api('PATCH', '/api/solicitudes/' + otraId, { costo: 10 }, tokenAdmin)).status === 409,
@@ -534,7 +520,6 @@ try {
   // Pocas cuentas y un usuario adivinable ('admin'): sin freno se prueba el
   // diccionario entero contra la clave.
   console.log('\n-- freno de fuerza bruta --');
-  const { olvidarIntentos } = await import('../backend/middleware/limites.js');
   const CLAVE_VIGENTE = 'claveNueva1';
   olvidarIntentos();
   let bloqueada = null;
@@ -553,7 +538,6 @@ try {
 
   // ---------------------------------------------------------- inundación
   console.log('\n-- freno de inundación (rutas públicas de escritura) --');
-  const { olvidarPeticiones } = await import('../backend/middleware/limites.js');
   olvidarPeticiones();
   let inundada = null;
   for (let i = 0; i < 13 && inundada === null; i++) {
@@ -680,6 +664,147 @@ try {
 
   olvidarPeticiones();
   olvidarIntentos();
+
+  // ---------------------------------------------------- ingreso por área
+  // El solicitante ya no entra solo con el DNI: el DNI detecta el área (como
+  // siempre) y hace falta además la credencial de esa área, una compartida
+  // por todos los que trabajan ahí, que reparte admin. La siembra ya crea una
+  // por cada área del padrón (ver backend/db/sembrar.js), así que se prueba
+  // contra "Logistica" -el área real de 73012556- restableciéndole la clave
+  // para obtener una que sí se conoce en texto plano.
+  console.log('\n-- ingreso por área (solicitante) --');
+  olvidarIntentos();
+
+  ok((await api('POST', '/api/credenciales-area', { area: 'Logistica', usuario: 'otra' }, tokenAdmin)).status === 409,
+     'la siembra ya creó una credencial para "Logistica": no se puede repetir');
+  ok((await api('POST', '/api/credenciales-area', { area: 'Área que no existe', usuario: 'xxx' }, tokenAdmin)).status === 400,
+     'ni crear una para un área que no figura en el padrón');
+  ok((await api('POST', '/api/credenciales-area', { area: 'Ventas', usuario: 'nn' }, tokenSeg)).status === 403,
+     'administrar credenciales de área es cosa de admin, no de cualquier cuenta de logística');
+
+  const listaCred = await api('GET', '/api/credenciales-area', undefined, tokenAdmin);
+  const credLogistica = listaCred.datos.find(c => c.area === 'Logistica');
+  ok(listaCred.status === 200 && credLogistica && credLogistica.usuario === 'logistica',
+     'admin ve las credenciales sembradas, una por área, con el usuario en minúsculas');
+  ok(!('claveHash' in credLogistica), 'y nunca viaja el hash de la clave');
+
+  const restablecidaArea = await api('POST', '/api/credenciales-area/Logistica/restablecer', undefined, tokenAdmin);
+  ok(restablecidaArea.status === 200 && restablecidaArea.datos.claveTemporal,
+     'admin le genera una clave temporal nueva a un área ya existente');
+  const CLAVE_AREA = restablecidaArea.datos.claveTemporal;
+
+  ok((await api('POST', '/api/auth/area', { dni: '99999999', usuario: 'logistica', clave: CLAVE_AREA })).status === 404,
+     'un DNI que no está en el padrón no entra, aunque la credencial sea correcta');
+  ok((await api('POST', '/api/auth/area', { dni: '73012556', usuario: 'logistica', clave: 'noesla' })).status === 401,
+     'con la clave equivocada, tampoco');
+  ok((await api('POST', '/api/auth/area', { dni: '73012556', usuario: 'otra-cosa', clave: CLAVE_AREA })).status === 401,
+     'ni con el usuario equivocado, aunque la clave sea la correcta');
+
+  const loginArea = await api('POST', '/api/auth/area', { dni: '73012556', usuario: 'logistica', clave: CLAVE_AREA });
+  ok(loginArea.status === 200 && loginArea.datos.token, 'con DNI + credencial de área correctos, entra');
+  ok(loginArea.datos.dni === '73012556' && loginArea.datos.area === 'Logistica',
+     'y devuelve los datos de la persona, con el área que detectó el DNI');
+  ok(loginArea.datos.debeCambiarClave === true, 'con la clave recién restablecida, avisa que hay que cambiarla');
+  let tokenArea = loginArea.datos.token;
+
+  ok((await api('GET', '/api/personal', undefined, tokenArea)).status === 401,
+     'el token de área no sirve para ninguna ruta de logística: requiereSesion exige tipo "logistica"');
+  ok((await api('GET', '/api/solicitudes/mias', undefined, tokenAdmin)).status === 401,
+     'y al revés: un token de logística no sirve para "mis servicios" del área');
+  ok((await api('GET', '/api/estado', undefined, tokenArea)).datos.solicitudes.length === 0,
+     '/api/estado con un token de área se comporta como sin sesión: no es logística');
+
+  // ---------------------------------------- cambio de la clave compartida
+  ok((await api('PUT', '/api/auth/area/clave', { actual: 'noesla', nueva: 'otraClave1' }, tokenArea)).status === 401,
+     'sin la clave actual correcta, no se puede cambiar');
+  ok((await api('PUT', '/api/auth/area/clave', { actual: CLAVE_AREA, nueva: '123' }, tokenArea)).status === 400,
+     'una clave nueva de menos de 6 caracteres se rechaza');
+
+  // Un colega de la misma área, ya adentro con la clave vieja, para comprobar
+  // que cambiarla también lo saca a él: es compartida, no personal.
+  const tokenAreaColega = (await api('POST', '/api/auth/area', { dni: '73012556', usuario: 'logistica', clave: CLAVE_AREA })).datos.token;
+
+  const cambioClaveArea = await api('PUT', '/api/auth/area/clave', { actual: CLAVE_AREA, nueva: 'claveDeArea1' }, tokenArea);
+  ok(cambioClaveArea.status === 200 && cambioClaveArea.datos.token,
+     'con la clave actual correcta, sí se cambia y devuelve un token nuevo');
+  ok((await api('GET', '/api/solicitudes/mias', undefined, tokenArea)).status === 401,
+     'el token con el que se pidió el cambio, por sí solo, ya no sirve');
+  ok((await api('GET', '/api/solicitudes/mias', undefined, tokenAreaColega)).status === 401,
+     'y tampoco el de un colega que había entrado con la clave vieja: al ser compartida, se revoca para todos');
+  tokenArea = cambioClaveArea.datos.token;
+  ok((await api('GET', '/api/solicitudes/mias', undefined, tokenArea)).status === 200,
+     'pero el token nuevo que devolvió la respuesta sí sirve, para no dejar afuera a quien la cambió');
+  ok((await api('POST', '/api/auth/area', { dni: '73012556', usuario: 'logistica', clave: CLAVE_AREA })).status === 401,
+     'y la clave vieja ya no entra');
+
+  // ------------------------------------------------- mis servicios del área
+  console.log('\n-- mis servicios del área (últimos 5) --');
+  ok((await api('GET', '/api/solicitudes/mias')).status === 401, 'sin sesión de área, no hay "mis servicios"');
+
+  const nuevaLogistica = {
+    dni: '73012556', nombre: 'EDDY PERCY AVALOS VALDIVIA', cargo: 'COORDINADOR DE LOGISTICA', area: 'Logistica',
+    tipo: 'Entregar', servicio: 'Prueba de área', motivo: 'Verificar el alcance de mis servicios',
+    origen: 'Plásticos Nacionales - Talleres', destino: 'Prueba de área, Lima',
+    contacto: 'Mesa de partes', telefono: '987654321', fechaProg: '2026-09-25', horaProg: '10:00'
+  };
+  const nuevaOtraArea = { ...nuevaLogistica, area: 'Producción', destino: 'Otra área, no debe verse' };
+
+  const ticketLogistica = (await api('POST', '/api/solicitudes', nuevaLogistica)).datos.id;
+  const ticketOtraArea = (await api('POST', '/api/solicitudes', nuevaOtraArea)).datos.id;
+
+  const mias = await api('GET', '/api/solicitudes/mias', undefined, tokenArea);
+  ok(mias.status === 200 && Array.isArray(mias.datos.solicitudes), 'con sesión de área, "mis servicios" responde');
+  ok(mias.datos.solicitudes.length <= 5, 'nunca trae más de 5');
+  ok(mias.datos.solicitudes.every(s => s.area === 'Logistica'), 'y todos son del área de la sesión, ninguno de otra');
+  ok(mias.datos.solicitudes.some(s => s.id === ticketLogistica), 'el que se acaba de registrar para esta área aparece');
+  ok(!mias.datos.solicitudes.some(s => s.id === ticketOtraArea),
+     'el de otra área nunca aparece, aunque sea más reciente que alguno de los 5');
+  ok(Array.isArray(mias.datos.adjuntos), 'junto con los adjuntos de esos tickets');
+
+  // El propio solicitante -sin sesión de logística, solo con la de área- lo
+  // sigue viendo actualizarse por la misma vía, incluida una cancelación:
+  // "mis servicios" no es una copia estática de cuando entró.
+  await api('POST', '/api/solicitudes/' + ticketLogistica + '/cancelar');
+  const miasTrasCancelar = await api('GET', '/api/solicitudes/mias', undefined, tokenArea);
+  const propioCancelado = miasTrasCancelar.datos.solicitudes.find(s => s.id === ticketLogistica);
+  ok(propioCancelado && propioCancelado.estado === 'Cancelado',
+     'y una cancelación del propio solicitante se refleja igual en "mis servicios" del área');
+
+  // ---------------------------------------------------- pedidos de histórico
+  console.log('\n-- pedidos de histórico completo --');
+  ok((await api('POST', '/api/pedidos-historico')).status === 401, 'pedir más historial también exige sesión de área');
+  const pedido1 = await api('POST', '/api/pedidos-historico', undefined, tokenArea);
+  ok(pedido1.status === 201 && pedido1.datos.area === 'Logistica' && pedido1.datos.repetido === false,
+     'el área pide ver su histórico completo');
+  const pedido2 = await api('POST', '/api/pedidos-historico', undefined, tokenArea);
+  ok(pedido2.datos.repetido === true, 'pedirlo de nuevo mientras sigue pendiente no duplica');
+
+  ok((await api('GET', '/api/pedidos-historico')).status === 401, 'verlos es cosa de logística, no autoservicio');
+  ok((await api('GET', '/api/pedidos-historico', undefined, tokenSeg)).status === 403,
+     'y puntualmente de admin, no de cualquier cuenta de logística');
+  const pedidosList = await api('GET', '/api/pedidos-historico', undefined, tokenAdmin);
+  ok(pedidosList.status === 200 && pedidosList.datos.some(p => p.area === 'Logistica' && p.estado === 'Pendiente'),
+     'admin sí ve el pedido pendiente');
+  const idPedido = pedidosList.datos.find(p => p.area === 'Logistica' && p.estado === 'Pendiente').id;
+
+  ok((await api('PATCH', '/api/pedidos-historico/' + idPedido, { estado: 'volando' }, tokenAdmin)).status === 400,
+     'solo se admite Atendida o Rechazada');
+  ok((await api('PATCH', '/api/pedidos-historico/' + idPedido, { estado: 'Atendida' }, tokenSeg)).status === 403,
+     'resolverlo también es solo de admin');
+  const resuelto = await api('PATCH', '/api/pedidos-historico/' + idPedido, { estado: 'Atendida' }, tokenAdmin);
+  ok(resuelto.status === 200 && resuelto.datos.estado === 'Atendida', 'admin lo marca como atendido');
+  ok((await api('PATCH', '/api/pedidos-historico/' + idPedido, { estado: 'Atendida' }, tokenAdmin)).status === 404,
+     'resolverlo dos veces responde 404: ya no está pendiente');
+
+  // -------------------------------------------------------------- salida
+  ok((await api('POST', '/api/auth/area/salir', undefined, tokenAdmin)).status === 401,
+     'el token de logística tampoco sirve para cerrar una sesión de área');
+  ok((await api('POST', '/api/auth/area/salir', undefined, tokenArea)).status === 200, 'cierra la sesión de área');
+  ok((await api('GET', '/api/solicitudes/mias', undefined, tokenArea)).status === 401,
+     'y el token ya no sirve después de salir');
+
+  olvidarIntentos();
+
 
   // ------------------------------------------------------------- errores
   console.log('\n-- errores --');

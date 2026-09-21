@@ -33,14 +33,16 @@ export function porId(id) {
 }
 
 /**
- * Los servicios de UN documento: es lo único que puede ver el solicitante,
- * que nunca tuvo clave, solo su DNI. `GET /api/estado` y `GET /api/solicitudes`
- * completos son cosa de logística (ver backend/rutas/index.js); esto es la
- * única puerta pública a los datos de un servicio, y por eso queda acotada
- * acá adentro, no confiando en que quien la llame filtre bien del otro lado.
+ * Los últimos `limite` servicios de UN área: es lo único que ve el
+ * solicitante, que ahora entra con DNI + credencial de área (ver
+ * backend/areas/). No es por DNI, porque el punto de la credencial de área es
+ * que la vean todos los que trabajan ahí, no solo quien la usó para entrar.
+ * `GET /api/estado` y `GET /api/solicitudes` completos siguen siendo cosa de
+ * logística (ver backend/rutas/index.js).
  */
-export function deDni(dni) {
-  const filas = db().prepare('SELECT * FROM solicitudes WHERE dni = ? ORDER BY correlativo').all(String(dni)).map(aCamel);
+export function deArea(area, limite = 5) {
+  const filas = db().prepare('SELECT * FROM solicitudes WHERE area = ? ORDER BY creado DESC LIMIT ?')
+    .all(String(area), Number(limite)).map(aCamel);
   return filas.map(s => ({ ...s, paradas: paradas.deTicket(s.id) }));
 }
 

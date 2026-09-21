@@ -89,26 +89,45 @@
 <main class="login-stage" id="loginStage">
   <div class="login-inner">
     <section class="waybill card-pad">
-      <h2 class="card-title">Ingreso del solicitante</h2>
-      <p class="card-note">Escribe tu DNI para validar que estás en el padrón de personal.</p>
+      <div id="dniStage">
+        <h2 class="card-title">Ingreso del solicitante</h2>
+        <p class="card-note">Escribe tu DNI para validar que estás en el padrón de personal.</p>
 
-      <div class="alert" id="loginAlert">
-        <div class="alert-icon" id="loginAlertIcon">!</div>
-        <div>
-          <strong id="loginAlertTitle">Acceso denegado</strong>
-          <p id="loginAlertMsg"></p>
-          <div style="margin-top:11px;display:none" id="loginAlertActions">
-            <button class="btn btn-sm" onclick="pedirAutorizacion()">Pedir autorización a logística</button>
+        <div class="alert" id="loginAlert">
+          <div class="alert-icon" id="loginAlertIcon">!</div>
+          <div>
+            <strong id="loginAlertTitle">Acceso denegado</strong>
+            <p id="loginAlertMsg"></p>
+            <div style="margin-top:11px;display:none" id="loginAlertActions">
+              <button class="btn btn-sm" onclick="pedirAutorizacion()">Pedir autorización a logística</button>
+            </div>
           </div>
         </div>
+
+        <div class="field">
+          <label for="dniInput">Documento de identidad <span class="req">*</span></label>
+          <input class="input dni" id="dniInput" inputmode="numeric" maxlength="9" placeholder="00000000" autocomplete="off">
+          <div class="hint">8 dígitos, sin puntos ni guiones. Si tu DNI empieza con cero, escríbelo completo. Carné de extranjería: 9 dígitos.</div>
+        </div>
+        <button class="btn btn-wide" onclick="entrarSolicitante()">Entrar</button>
       </div>
 
-      <div class="field">
-        <label for="dniInput">Documento de identidad <span class="req">*</span></label>
-        <input class="input dni" id="dniInput" inputmode="numeric" maxlength="9" placeholder="00000000" autocomplete="off">
-        <div class="hint">8 dígitos, sin puntos ni guiones. Si tu DNI empieza con cero, escríbelo completo. Carné de extranjería: 9 dígitos.</div>
+      <div id="areaStage" style="display:none">
+        <h2 class="card-title">Clave del área</h2>
+        <p class="card-note">Tu DNI corresponde al área <strong id="areaNombre">—</strong>. Escribe el usuario y la clave de esa área para terminar de entrar.</p>
+
+        <div class="field">
+          <label for="areaUsuarioInput">Usuario</label>
+          <input class="input" id="areaUsuarioInput" placeholder="usuario del área" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="areaClaveInput">Clave</label>
+          <input class="input" id="areaClaveInput" type="password" placeholder="••••••••" autocomplete="off">
+          <div class="err" id="areaErr">Usuario o clave de área incorrectos.</div>
+        </div>
+        <button class="btn btn-wide" onclick="entrarSolicitanteArea()">Entrar</button>
+        <button class="btn btn-ghost btn-wide" onclick="volverAlDni()" style="margin-top:8px">‹ Cambiar documento</button>
       </div>
-      <button class="btn btn-wide" onclick="entrarSolicitante()">Entrar</button>
     </section>
   </div>
 </main>
@@ -277,10 +296,11 @@
   <section class="view" id="uMis">
     <div class="section-head">
       <div>
-        <h2>Mis servicios</h2>
-        <p>Estado en vivo de cada ticket que has registrado.</p>
+        <h2>Servicios de mi área</h2>
+        <p>Los 5 más recientes de <strong id="misArea">tu área</strong>. Para ver uno más antiguo o el histórico completo, pídeselo a logística.</p>
       </div>
       <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="pedirHistoricoCompleto()">Pedir historial completo</button>
         <button class="btn btn-ghost btn-sm" onclick="renderMis()">Actualizar</button>
       </div>
     </div>
@@ -406,6 +426,12 @@
       </div>
 
       <div class="panel">
+        <h3>Pedidos de historial completo</h3>
+        <p class="sub">Áreas que quieren ver más de sus últimos 5 servicios. Al atenderlo, hazle llegar el histórico completo por fuera de la aplicación -ya lo tienes en "Histórico"-.</p>
+        <div id="listaPedidosHistorico"></div>
+      </div>
+
+      <div class="panel">
         <h3>Personal habilitado</h3>
         <p class="sub"><span id="cntPadron">0</span> personas en el padrón de RR.HH.</p>
         <div class="banner" style="margin-bottom:14px">
@@ -462,6 +488,29 @@
         <h3>Cuentas existentes</h3>
         <div class="table-wrap" style="max-height:420px">
           <table style="min-width:520px"><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody id="tbUsuarios"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2" style="align-items:start">
+      <div class="panel">
+        <h3>Credencial de un área</h3>
+        <p class="sub">El segundo paso del ingreso del solicitante: DNI (detecta el área) + esta credencial, compartida por todos los que trabajan ahí. Se siembra una por cada área del padrón; acá se le puede generar una clave temporal nueva o desactivarla.</p>
+        <div class="field">
+          <label for="caArea">Área</label>
+          <input class="input" id="caArea" placeholder="Debe coincidir con un área del padrón, p. ej. Logistica" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="caUsuario">Usuario</label>
+          <input class="input" id="caUsuario" placeholder="p. ej. logistica" autocomplete="off">
+        </div>
+        <div class="err" id="eCredArea">Escribe un área del padrón y un usuario válido.</div>
+        <button class="btn btn-sm" onclick="crearCredencialAreaVista()">Crear credencial</button>
+      </div>
+      <div class="panel">
+        <h3>Credenciales de área existentes</h3>
+        <div class="table-wrap" style="max-height:420px">
+          <table style="min-width:520px"><thead><tr><th>Área</th><th>Usuario</th><th>Estado</th><th></th></tr></thead><tbody id="tbCredArea"></tbody></table>
         </div>
       </div>
     </div>

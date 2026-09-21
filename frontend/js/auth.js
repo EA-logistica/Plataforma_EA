@@ -2,7 +2,8 @@ import { $ } from './utils/dom.js';
 import { hoyISO } from './utils/format.js';
 import { toast } from './utils/toast.js';
 import { pedirAutorizacion as apiPedirAutorizacion, ingresarLogistica, salirLogistica,
-         cambiarMiClave, buscarEnPadron, cargar, cargarMias, limpiarDatosPrivados } from './api/estado.js';
+         cambiarMiClave, buscarEnPadron, cargar, cargarMiArea, limpiarDatosPrivados,
+         ingresarPorArea, salirArea, cambiarMiClaveArea } from './api/estado.js';
 import { setSesion, sesion } from './state/sessionState.js';
 import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tabUser, tabAdmin, aplicarPermisosAdmin } from './views/tabs.js';
@@ -13,9 +14,13 @@ import { cerrarAccesoLogistica } from './ui/logisticaPopover.js';
 import { renderTodo } from './render.js';
 
 /**
- * Inicio de sesión (solicitante por DNI / logística por PIN), pedidos de
- * autorización y apertura/cierre de las vistas principales.
+ * Inicio de sesión (solicitante por DNI + credencial de área / logística por
+ * PIN), pedidos de autorización y apertura/cierre de las vistas principales.
  */
+
+/** Ficha que devolvió el padrón para el DNI del primer paso, mientras se pide la credencial del área. */
+let pendienteArea = null;
+
 export async function entrarSolicitante() {
   // El documento se normaliza antes de validar: quien tenga el DNI con 7
   // dígitos (porque el sistema de RR.HH. recortó el cero inicial) entra
@@ -31,7 +36,9 @@ export async function entrarSolicitante() {
     box.classList.add('on');
     return;
   }
-  // La ficha la busca el servidor: el navegador no tiene el padrón.
+  // La ficha la busca el servidor: el navegador no tiene el padrón. Esto solo
+  // detecta el área -primer factor-; el segundo (la credencial de esa área)
+  // se pide recién en el paso siguiente.
   let p;
   try {
     p = await buscarEnPadron(dni);
@@ -48,13 +55,51 @@ export async function entrarSolicitante() {
     box.classList.add('on');
     return;
   }
-  setSesion({ tipo: 'user', dni: p.dni, nombre: p.nombre, cargo: p.cargo, area: p.area });
-  // Los propios servicios se piden aparte: /api/estado, sin sesión de
-  // logística, ya no los trae -son de una sola persona, no de cualquiera que
-  // pregunte-. Si falla (sin red), igual se entra: se ve "Mis servicios"
-  // vacío en vez de trabarse en el ingreso.
-  try { await cargarMias(p.dni); } catch (e) { /* se reintenta en el próximo sondeo */ }
+  pendienteArea = p;
+  $('dniStage').style.display = 'none';
+  $('areaStage').style.display = 'block';
+  $('areaNombre').textContent = p.area;
+  $('areaUsuarioInput').value = '';
+  $('areaClaveInput').value = '';
+  $('areaErr').classList.remove('on');
+  $('areaUsuarioInput').focus();
+}
+
+/** Vuelve al primer paso (DNI): para probar con otro documento o si el área detectada no es la esperada. */
+export function volverAlDni() {
+  pendienteArea = null;
+  $('areaStage').style.display = 'none';
+  $('dniStage').style.display = 'block';
+  $('loginAlert').classList.remove('on', 'ok');
+}
+
+/** Segundo paso: usuario y clave del área que detectó el DNI. */
+export async function entrarSolicitanteArea() {
+  if (!pendienteArea) return volverAlDni();
+  const usuario = $('areaUsuarioInput').value || '';
+  const clave = $('areaClaveInput').value || '';
+  let r;
+  try {
+    r = await ingresarPorArea(pendienteArea.dni, usuario, clave);
+  } catch (e) {
+    $('areaErr').textContent = e.status === 401 ? 'Usuario o clave de área incorrectos.' : e.message;
+    $('areaErr').classList.add('on');
+    return;
+  }
+  $('areaErr').classList.remove('on');
+  setSesion({
+    tipo: 'user', dni: r.dni, nombre: r.nombre, cargo: r.cargo, area: r.area,
+    token: r.token, debeCambiarClave: r.debeCambiarClave
+  });
+  pendienteArea = null;
+  // Los servicios del área se piden aparte, ya con el token recién obtenido.
+  // Si falla (sin red), igual se entra: se ve "Mis servicios" vacío en vez de
+  // trabarse en el ingreso.
+  try { await cargarMiArea(); } catch (e) { /* se reintenta en el próximo sondeo */ }
   abrirVista('user');
+  // Con clave temporal (recién creada o restablecida por admin) no se deja
+  // trabajar hasta que el área la cambie por una propia.
+  if (r.debeCambiarClave) abrirCambioClave(true);
 }
 
 export async function pedirAutorizacion() {
@@ -111,11 +156,14 @@ export function salir() {
   // Se avisa al servidor para cerrar el token ya mismo; si la llamada falla
   // (sin red, servidor caído) igual se sale localmente, que es lo que importa.
   if (sesion && sesion.tipo === 'admin') salirLogistica().catch(() => {});
+  if (sesion && sesion.tipo === 'user' && sesion.token) salirArea().catch(() => {});
   // La copia local puede tener el historial completo (si salía de logística)
-  // o los servicios de un DNI (si salía un solicitante): en cualquier caso,
-  // no debe quedar a la vista de quien entre después en esta misma PC.
+  // o los últimos servicios de un área (si salía un solicitante): en
+  // cualquier caso, no debe quedar a la vista de quien entre después en esta
+  // misma PC.
   limpiarDatosPrivados();
   setSesion(null);
+  pendienteArea = null;
   $('viewUser').classList.remove('on');
   $('viewAdmin').classList.remove('on');
   $('session').style.display = 'none';
@@ -125,6 +173,8 @@ export function salir() {
   $('userInput').value = '';
   $('pinInput').value = '';
   $('loginAlert').classList.remove('on', 'ok');
+  $('areaStage').style.display = 'none';
+  $('dniStage').style.display = 'block';
 }
 
 /**
@@ -150,7 +200,10 @@ export async function guardarCambioClave() {
   const nueva = $('claveNueva').value || '';
   let r;
   try {
-    r = await cambiarMiClave(actual, nueva);
+    // Logística cambia su clave personal; el solicitante, la de su área
+    // (compartida). Son dos endpoints y dos tablas distintas por debajo, pero
+    // el mismo modal y el mismo flujo sirven para los dos.
+    r = sesion.tipo === 'user' ? await cambiarMiClaveArea(actual, nueva) : await cambiarMiClave(actual, nueva);
   } catch (e) {
     $('eClave').textContent = e.message;
     $('eClave').classList.add('on');
@@ -173,7 +226,9 @@ function abrirVista(tipo) {
   $('session').style.display = 'flex';
   $('sessName').textContent = sesion.nombre;
   $('sessRole').textContent = tipo === 'admin' ? ROL_ETIQUETA[sesion.rol] : sesion.area;
-  $('btnMiClave').style.display = tipo === 'admin' ? 'inline-block' : 'none';
+  // Ambos tipos de sesión tienen ahora una clave que pueden cambiar: la
+  // personal de logística, o la compartida del área del solicitante.
+  $('btnMiClave').style.display = 'inline-block';
   if (tipo === 'user') {
     $('viewUser').classList.add('on');
     $('viewAdmin').classList.remove('on');

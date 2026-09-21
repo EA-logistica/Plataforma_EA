@@ -4,6 +4,7 @@ import { renderHistoricoSiVisible } from './views/history.js';
 import { renderPadronSiVisible } from './views/roster.js';
 import { renderKpiSiVisible } from './views/kpi.js';
 import { renderUsuariosSiVisible } from './views/usuarios.js';
+import { renderCredencialesAreaSiVisible } from './views/credencialesArea.js';
 import { renderMis } from './views/tickets.js';
 import { sincronizar as sincronizarStore } from './api/estado.js';
 
@@ -25,6 +26,7 @@ export function renderTodo() {
     renderPadronSiVisible();
     renderKpiSiVisible();
     renderUsuariosSiVisible();
+    renderCredencialesAreaSiVisible();
   } else {
     renderMis();
   }

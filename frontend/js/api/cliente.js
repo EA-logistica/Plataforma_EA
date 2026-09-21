@@ -15,8 +15,9 @@ const BASE = '/api';
 async function pedir(metodo, ruta, cuerpo, opciones = {}) {
   const init = { method: metodo, headers: {} };
 
-  // El solicitante (DNI) no tiene token: solo lo manda logística, ya con
-  // sesión abierta. Las rutas públicas simplemente lo ignoran.
+  // Logística lo tiene desde que entra con usuario y clave; el solicitante,
+  // desde que entra con DNI + credencial de área (backend/areas/). Las rutas
+  // públicas -crear un ticket, pedir autorización- simplemente lo ignoran.
   if (sesion && sesion.token) init.headers['Authorization'] = 'Bearer ' + sesion.token;
 
   if (cuerpo instanceof FormData) {

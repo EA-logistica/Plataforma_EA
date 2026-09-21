@@ -12,6 +12,7 @@ import { conSubida } from '../middleware/subida.js';
 import { limitarIntentos, limitarPeticiones } from '../middleware/limites.js';
 import { asinc } from '../middleware/errores.js';
 import { usuarios } from '../usuarios/rutas.js';
+import { areas } from '../areas/rutas.js';
 import { requiereSesion, requiereRol, sesionOpcional } from '../usuarios/middleware.js';
 import { log, eventosRecientes } from '../seguridad/log.js';
 import { CONFIG } from '../config.js';
@@ -22,7 +23,6 @@ import { construir } from '#shared/payback/escenarios.js';
 import { comparar } from '#shared/payback/payback.js';
 import { COLUMNAS_VIAJES, filtrarPorRango } from '#shared/exportarViajes.js';
 import { MOTIVOS_CANCELACION, motivoValido } from '#shared/cancelacion.js';
-import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 
 /**
  * La API. Un archivo por ahora, porque son pocas rutas y tenerlas juntas deja
@@ -42,6 +42,11 @@ export const api = Router();
 // sesiones y permisos: cosas que no tienen nada que ver con el resto de la API.
 api.use(usuarios);
 
+// Ingreso del solicitante por DNI + credencial de área, "mis servicios" del
+// área y pedidos de histórico completo. Vive en su propio módulo por la misma
+// razón que usuarios/: agrupa algo que no tiene que ver con el resto de la API.
+api.use(areas);
+
 const error = (msg, status) => Object.assign(new Error(msg), { status });
 
 // ------------------------------------------------------------------ estado
@@ -53,11 +58,12 @@ const error = (msg, status) => Object.assign(new Error(msg), { status });
  *
  *   - Con sesión de logística: todo, como siempre (bandeja, histórico, KPI,
  *     padrón, payback lo necesitan completo, y ya están autenticados).
- *   - Sin sesión (el solicitante, que nunca tuvo clave): solo lo que no es
- *     personal de nadie -destinos, conteo del padrón, testigo de revisión-.
- *     Sus propios servicios los trae por separado, en
- *     GET /solicitudes/mias?dni=, que exige ese DNI y no acepta "tráemelos
- *     todos".
+ *   - Sin sesión de logística (incluida la de un solicitante con credencial
+ *     de área, que es otro tipo de sesión): solo lo que no es personal de
+ *     nadie -destinos, conteo del padrón, testigo de revisión-. Los
+ *     servicios del área de un solicitante autenticado los trae por
+ *     separado GET /solicitudes/mias (backend/areas/rutas.js), acotados a
+ *     los últimos 5 y exigiendo esa sesión.
  */
 api.get('/estado', sesionOpcional, (req, res) => {
   const base = {
@@ -85,43 +91,19 @@ api.get('/estado', sesionOpcional, (req, res) => {
 api.get('/revision', (req, res) => res.json({ revision: ajustes.revision() }));
 
 // -------------------------------------------------------------------- auth
-// El DNI del solicitante no requiere clave: solo comprueba que está en el
-// padrón. El ingreso de logística (usuario + clave) vive en usuarios/rutas.js.
+// El DNI por sí solo ya no basta para ver nada: solo detecta el área contra
+// el padrón (primer factor). El segundo -la credencial de esa área- y todo lo
+// que un solicitante puede ver una vez adentro viven en backend/areas/rutas.js.
+// El ingreso de logística (usuario + clave) vive en usuarios/rutas.js.
 //
-// Estas rutas llevan freno por IP: responden distinto según el DNI, así que
-// sirven para probar documentos a ciegas uno tras otro.
+// Esta ruta lleva freno por IP: responde distinto según el DNI, así que sirve
+// para probar documentos a ciegas uno tras otro.
 const frenoIngreso = limitarIntentos();
 
 api.get('/auth/solicitante/:doc', frenoIngreso, (req, res) => {
   const p = personal.porDocumento(req.params.doc);
   if (!p) throw error('El documento no figura en el padrón de personal.', 404);
   res.json(p);
-});
-
-/**
- * Los servicios de un solicitante, y solo esos. Es la única puerta pública a
- * datos de solicitudes: sin DNI no trae nada, y con un DNI trae exactamente
- * lo de ese documento, nunca el resto.
- *
- * Dos frenos, no uno: `frenoIngreso` solo cuenta los DNI con forma inválida
- * (400), así que alguien podría probar DNI válidos uno tras otro -todos
- * responden 200, aunque sea con la lista vacía- sin gastar ese presupuesto.
- * `limitarPeticiones` cuenta TODO, salga bien o mal, para que no se pueda
- * recorrer el padrón completo DNI por DNI armando el historial de a poco.
- */
-const frenoMias = limitarPeticiones({
-  // Generoso a propósito: el sondeo de la pantalla vuelve a pedir esto cada
-  // vez que cambia la revisión, y en un día de mucho movimiento eso puede ser
-  // seguido. 60 en 5 minutos deja de sobra ese uso normal y sigue haciendo
-  // impracticable recorrer el padrón DNI por DNI.
-  maximo: 60, ventanaMs: 5 * 60 * 1000, nombre: 'mias',
-  mensaje: 'Demasiadas consultas. Espera unos minutos y vuelve a intentar.'
-});
-api.get('/solicitudes/mias', frenoIngreso, frenoMias, (req, res) => {
-  const dni = normalizarDoc(req.query.dni);
-  if (!DOC_VALIDO.test(dni)) throw error('Escribe un documento válido.', 400);
-  const mias = solicitudes.deDni(dni);
-  res.json({ solicitudes: mias, adjuntos: adjuntos.deTickets(mias.map(s => s.id)) });
 });
 
 // ---------------------------------------------------------------- personal

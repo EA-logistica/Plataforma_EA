@@ -6,6 +6,7 @@ import { renderHistorico } from './history.js';
 import { renderPadron } from './roster.js';
 import { renderPayback } from './payback/vista.js';
 import { renderUsuarios } from './usuarios.js';
+import { renderCredencialesArea } from './credencialesArea.js';
 
 /** Pestañas de la vista de solicitante: nueva solicitud / seguimiento / mis servicios. */
 export function tabUser(k) {
@@ -52,6 +53,6 @@ export function tabAdmin(k) {
   if (k === 'kpi') renderKpi();
   if (k === 'historico') renderHistorico();
   if (k === 'padron') renderPadron();
-  if (k === 'usuarios') renderUsuarios();
+  if (k === 'usuarios') { renderUsuarios(); renderCredencialesArea(); }
   if (k === 'payback') renderPayback();
 }

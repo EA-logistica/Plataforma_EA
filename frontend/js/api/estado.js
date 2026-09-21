@@ -36,11 +36,11 @@ export let DB = {
 let revisionActual = null;
 
 /**
- * Trae el estado según quién pregunta: `cliente.js` adjunta el token de
- * logística si hay uno en la sesión, y el servidor decide con eso -no el
- * navegador- si manda el historial completo o lo deja vacío (ver
- * GET /api/estado). Sin sesión de logística, `solicitudes`/`adjuntos` quedan
- * en `[]` hasta que `cargarMias` los llene con lo que le toca a ESE DNI.
+ * Trae el estado según quién pregunta: `cliente.js` adjunta el token si hay
+ * uno en la sesión, y el servidor decide con eso -no el navegador- si manda
+ * el historial completo o lo deja vacío (ver GET /api/estado). Eso incluye al
+ * solicitante con sesión de área: para él también queda en `[]`, porque sus
+ * servicios los trae `cargarMiArea`, acotados a los últimos 5 de su área.
  */
 export async function cargar() {
   const estado = await obtener('/estado');
@@ -56,13 +56,13 @@ export async function cargar() {
 }
 
 /**
- * Los servicios (y sus adjuntos) de un DNI puntual: lo único a lo que un
- * solicitante -que nunca tuvo clave- tiene acceso. Se llama al entrar con el
- * DNI y de nuevo en cada sondeo, para que "Mis servicios" vea los cambios que
- * haga logística sin tener que volver a escribirlo.
+ * Los últimos 5 servicios (y sus adjuntos) del área de la sesión: lo único a
+ * lo que tiene acceso un solicitante autenticado con DNI + credencial de
+ * área. Se llama al entrar y de nuevo en cada sondeo, para que "Mis
+ * servicios" vea los cambios que haga logística sin tener que recargar.
  */
-export async function cargarMias(dni) {
-  const r = await obtener('/solicitudes/mias?dni=' + encodeURIComponent(dni));
+export async function cargarMiArea() {
+  const r = await obtener('/solicitudes/mias');
   DB.solicitudes = r.solicitudes;
   DB.adjuntos = r.adjuntos;
   return DB;
@@ -90,7 +90,7 @@ export async function sincronizar(onCambio) {
     // /estado sin sesión vuelve a dejar `solicitudes`/`adjuntos` en blanco -es
     // lo correcto para cualquiera que pregunte sin identificarse-, así que hay
     // que volver a pedir lo suyo aparte.
-    if (sesion && sesion.tipo === 'user') await cargarMias(sesion.dni);
+    if (sesion && sesion.tipo === 'user') await cargarMiArea();
     if (onCambio) onCambio();
     return true;
   } catch (e) {
@@ -104,6 +104,11 @@ export const ingresarLogistica = (usuario, clave) => crear('/auth/ingresar', { u
 export const salirLogistica = () => crear('/auth/salir');
 export const cambiarMiClave = (actual, nueva) => reemplazar('/auth/clave', { actual, nueva });
 export const buscarEnPadron = doc => obtener('/auth/solicitante/' + encodeURIComponent(doc));
+
+// El segundo factor del ingreso del solicitante: DNI + credencial de área.
+export const ingresarPorArea = (dni, usuario, clave) => crear('/auth/area', { dni, usuario, clave });
+export const salirArea = () => crear('/auth/area/salir');
+export const cambiarMiClaveArea = (actual, nueva) => reemplazar('/auth/area/clave', { actual, nueva });
 
 // --------------------------------------------------------------- personal
 export async function agregarPersona(datos) {
@@ -199,3 +204,17 @@ export const listarUsuarios = () => obtener('/usuarios');
 export const crearUsuarioLogistica = (usuario, rol) => crear('/usuarios', { usuario, rol });
 export const restablecerClaveUsuario = id => crear('/usuarios/' + id + '/restablecer');
 export const cambiarEstadoUsuario = (id, activo) => modificar('/usuarios/' + id, { activo });
+
+// --------------------------------------------------- credenciales de área
+// La credencial compartida de cada área (segundo factor del ingreso del
+// solicitante). No confundir con `usuarios` de arriba: son cuentas
+// personales de logística, esto es una sola clave por área.
+export const listarCredencialesArea = () => obtener('/credenciales-area');
+export const crearCredencialArea = (area, usuario) => crear('/credenciales-area', { area, usuario });
+export const restablecerClaveCredencialArea = area => crear('/credenciales-area/' + encodeURIComponent(area) + '/restablecer');
+export const cambiarEstadoCredencialArea = (area, activo) => modificar('/credenciales-area/' + encodeURIComponent(area), { activo });
+
+// ------------------------------------------------- pedidos de histórico
+export const pedirHistoricoArea = () => crear('/pedidos-historico');
+export const listarPedidosHistorico = () => obtener('/pedidos-historico');
+export const resolverPedidoHistorico = (id, estado) => modificar('/pedidos-historico/' + id, { estado });

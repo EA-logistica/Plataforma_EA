@@ -3,9 +3,13 @@ import * as personal from './repos/personal.js';
 import * as solicitudes from './repos/solicitudes.js';
 import * as ajustes from './repos/ajustes.js';
 import * as usuarios from '../usuarios/repositorio.js';
-import { hashClave } from '../usuarios/claves.js';
+import * as credencialesArea from './repos/credencialesArea.js';
+import { hashClave, generarClaveTemporal } from '../usuarios/claves.js';
 import { padronInicial } from '#data/padron.js';
 import { historico2026, RESUMEN } from '#data/historico.js';
+
+const sinTildes = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+const slugArea = area => sinTildes(area).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 /**
  * Carga inicial de la base.
@@ -30,7 +34,7 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
 
   if (forzar) {
     db().exec('DELETE FROM adjuntos; DELETE FROM solicitudes; DELETE FROM autorizaciones; '
-      + 'DELETE FROM personal; DELETE FROM usuarios;');
+      + 'DELETE FROM personal; DELETE FROM usuarios; DELETE FROM credenciales_area; DELETE FROM pedidos_historico;');
     decir('Base vaciada.');
   }
 
@@ -60,9 +64,31 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
     decir('Usuario "admin" creado con clave temporal "admin". Cámbiala en el primer ingreso.');
   }
 
+  // Credenciales de área: el segundo factor del ingreso del solicitante. Se
+  // siembra una por cada área que ya tenga gente en el padrón -si no, nadie
+  // podría entrar hasta que admin las creara a mano, una por una- y, como con
+  // admin, se revisa siempre y no solo la primera vez: un área nueva en el
+  // padrón (o una base restaurada sin esta tabla) no debe quedar sin forma de
+  // entrar. Cada iteración va en su propio try/catch porque es sembrado de
+  // mejor esfuerzo: un choque de nombre de usuario entre dos áreas no debe
+  // impedir que arranque el servidor.
+  const credencialesAreaCreadas = [];
+  for (const area of personal.areas()) {
+    if (credencialesArea.porArea(area)) continue;
+    try {
+      const usuario = slugArea(area);
+      const claveTemporal = generarClaveTemporal();
+      credencialesArea.crear({ area, usuario, claveHash: hashClave(claveTemporal), creadoPor: 'siembra' });
+      credencialesAreaCreadas.push({ area, usuario, claveTemporal });
+      decir('Credencial del área "' + area + '" creada: usuario "' + usuario + '", clave temporal "' + claveTemporal + '".');
+    } catch (e) {
+      decir('No se pudo crear la credencial del área "' + area + '": ' + e.message);
+    }
+  }
+
   ajustes.tocar();
 
-  return { sembrado: !yaHay, credencialesAdmin };
+  return { sembrado: !yaHay, credencialesAdmin, credencialesArea: credencialesAreaCreadas };
 }
 
 // Ejecutable directo: node backend/db/sembrar.js [--forzar]

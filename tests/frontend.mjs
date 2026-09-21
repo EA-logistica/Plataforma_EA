@@ -35,6 +35,15 @@ const servidor = iniciar({ puerto: 0, silencioso: true });
 await new Promise(r => servidor.once('listening', r));
 const BASE = 'http://127.0.0.1:' + servidor.address().port;
 
+// La siembra ya creó una credencial para "Logistica" (el área real de
+// 73012556) con una clave temporal al azar, que solo queda impresa en
+// consola. Se le fija una conocida en texto plano para poder probar el
+// ingreso de dos factores sin tener que pasar antes por el ingreso de admin.
+const credencialesArea = await import('../backend/db/repos/credencialesArea.js');
+const { hashClave } = await import('../backend/usuarios/claves.js');
+const CLAVE_AREA_PRUEBA = 'ClaveDeArea1';
+credencialesArea.cambiarClave('Logistica', hashClave(CLAVE_AREA_PRUEBA), { debeCambiar: false });
+
 // --- fetch del navegador, apuntado al servidor de prueba ---
 const fetchReal = globalThis.fetch;
 globalThis.fetch = (ruta, init) =>
@@ -114,7 +123,14 @@ try {
   console.log('\n-- ingreso --');
   $('dniInput').value = '73012556';
   await globalThis.entrarSolicitante();
-  ok($('miNombre').textContent.includes('AVALOS'), 'un DNI del padrón entra: ' + $('miNombre').textContent);
+  ok($('areaStage').style.display === 'block' && $('dniStage').style.display === 'none',
+     'un DNI del padrón pasa al segundo paso: pedir la credencial del área');
+  ok($('areaNombre').textContent === 'Logistica', 'y muestra el área que detectó el DNI');
+
+  $('areaUsuarioInput').value = 'logistica';
+  $('areaClaveInput').value = CLAVE_AREA_PRUEBA;
+  await globalThis.entrarSolicitanteArea();
+  ok($('miNombre').textContent.includes('AVALOS'), 'con DNI + credencial de área, entra: ' + $('miNombre').textContent);
 
   $('fServicio').value = 'Envío de documentos';
   $('fOrigen').value = 'Plásticos Nacionales - Talleres';
@@ -140,8 +156,11 @@ try {
   ok($('listaParadas').innerHTML === '', 'y el formulario de paradas queda limpio para la próxima');
 
   // Consultar un ticket por id ya no es público: se verifica por la misma vía
-  // pública de verdad, /solicitudes/mias, que es la que usa "Mis servicios".
-  const mias = await (await fetch('/api/solicitudes/mias?dni=73012556')).json();
+  // de verdad que usa "Mis servicios", /solicitudes/mias, con la sesión de área.
+  const ss = await mod('frontend/js/state/sessionState.js');
+  const mias = await (await fetch('/api/solicitudes/mias', {
+    headers: { Authorization: 'Bearer ' + ss.sesion.token }
+  })).json();
   const guardada = mias.solicitudes.find(s => s.id === TICKET);
   ok(guardada && guardada.motivo === 'Entrega de facturas del mes', 'y está de verdad en la base, no solo en pantalla');
   ok(guardada.paradas.length === 1 && guardada.paradas[0].contacto === 'Recepción',

@@ -40,6 +40,10 @@ export async function renderPadron() {
     + '<button class="btn btn-sm btn-ghost" onclick="rechazarAut(\'' + a.dni + '\')">Rechazar</button></div></div>'
   ).join('') : '<div class="muted small">Sin pedidos pendientes.</div>';
 
+  // No viene con /estado -no es un dato de uso constante como autorizaciones-,
+  // así que se pide aparte, cada vez que se abre o se repinta esta pestaña.
+  renderPedidosHistorico();
+
   const vacio = m => '<tr><td colspan="5" class="muted small" style="padding:18px 12px">' + m + '</td></tr>';
   const q = String($('qPadron').value || '').trim();
   const turno = ++ultimaBusqueda;
@@ -120,4 +124,49 @@ export async function rechazarAut(dni) {
   }
   renderPadron();
   toast('Pedido rechazado', 'El DNI ' + dni + ' sigue bloqueado.', 'warn');
+}
+
+/**
+ * Pedidos de un área para ver más de sus últimos 5 servicios. Resolverlo no
+ * desbloquea nada solo -admin ya tiene el histórico completo en su propia
+ * pestaña "Histórico" y se lo hace llegar al área por fuera de la
+ * aplicación-, es solo la marca de que ya se atendió.
+ */
+export async function renderPedidosHistorico() {
+  let filas;
+  try {
+    filas = await api.listarPedidosHistorico();
+  } catch (e) {
+    $('listaPedidosHistorico').innerHTML = '<div class="muted small">No se pudo cargar: ' + esc(e.message) + '</div>';
+    return;
+  }
+  const pend = filas.filter(p => p.estado === 'Pendiente');
+  $('listaPedidosHistorico').innerHTML = pend.length ? pend.map(p =>
+    '<div class="aut"><div><div class="aut-dni">' + esc(p.area) + '</div>'
+    + '<div class="small muted">Pedido por DNI ' + esc(p.dni) + ' · ' + fechaHora(p.solicitado) + '</div></div>'
+    + '<div class="tools"><button class="btn btn-sm" onclick="atenderPedidoHistorico(' + p.id + ')">Marcar atendido</button>'
+    + '<button class="btn btn-sm btn-ghost" onclick="rechazarPedidoHistorico(' + p.id + ')">Rechazar</button></div></div>'
+  ).join('') : '<div class="muted small">Sin pedidos pendientes.</div>';
+}
+
+export async function atenderPedidoHistorico(id) {
+  try {
+    await api.resolverPedidoHistorico(id, 'Atendida');
+  } catch (e) {
+    toast('No se pudo actualizar', e.message, 'bad');
+    return;
+  }
+  renderPedidosHistorico();
+  toast('Pedido marcado como atendido', 'Recuerda hacerle llegar el histórico al área.');
+}
+
+export async function rechazarPedidoHistorico(id) {
+  try {
+    await api.resolverPedidoHistorico(id, 'Rechazada');
+  } catch (e) {
+    toast('No se pudo actualizar', e.message, 'bad');
+    return;
+  }
+  renderPedidosHistorico();
+  toast('Pedido rechazado', '', 'warn');
 }

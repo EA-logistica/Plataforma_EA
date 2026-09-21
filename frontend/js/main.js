@@ -20,13 +20,16 @@ import { iniciarSincronizacion } from './render.js';
 import { aplicarTema, actualizarBoton } from './ui/theme.js';
 import { alternarAccesoLogistica, cerrarAccesoLogistica } from './ui/logisticaPopover.js';
 
-import { entrarSolicitante, pedirAutorizacion, entrarAdmin, salir, abrirCambioClave, guardarCambioClave } from './auth.js';
+import {
+  entrarSolicitante, pedirAutorizacion, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
+  entrarSolicitanteArea, volverAlDni
+} from './auth.js';
 import { tabUser, tabAdmin } from './views/tabs.js';
 import {
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
   agregarParada, editarParada, quitarParada
 } from './views/requestForm.js';
-import { consultarTicket, renderMis, cancelarMiSolicitud } from './views/tickets.js';
+import { consultarTicket, renderMis, cancelarMiSolicitud, pedirHistoricoCompleto } from './views/tickets.js';
 import {
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
   abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud
@@ -36,10 +39,16 @@ import {
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico
 } from './views/history.js';
 import { setFiltroKpi } from './views/kpi.js';
-import { renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut } from './views/roster.js';
+import {
+  renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut,
+  atenderPedidoHistorico, rechazarPedidoHistorico
+} from './views/roster.js';
 import {
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista
 } from './views/usuarios.js';
+import {
+  crearCredencialAreaVista, restablecerClaveAreaVista, cambiarEstadoAreaVista
+} from './views/credencialesArea.js';
 import { subirGuia, abrirAdjunto, eliminarAdjunto } from './views/attachments.js';
 
 // Módulo payback: análisis de contratar motorizado propio frente al courier.
@@ -54,17 +63,20 @@ import {
 Object.assign(window, {
   aplicarTema, alternarAccesoLogistica,
   pedirAutorizacion, entrarSolicitante, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
+  entrarSolicitanteArea, volverAlDni,
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
   agregarParada, editarParada, quitarParada,
   tabUser, tabAdmin,
-  consultarTicket, renderMis, cancelarMiSolicitud,
+  consultarTicket, renderMis, cancelarMiSolicitud, pedirHistoricoCompleto,
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
   abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud,
   renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico,
   setFiltroKpi,
   renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut,
+  atenderPedidoHistorico, rechazarPedidoHistorico,
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista,
+  crearCredencialAreaVista, restablecerClaveAreaVista, cambiarEstadoAreaVista,
   subirGuia, abrirAdjunto, eliminarAdjunto,
   renderPayback, setMotoPayback, setBonoPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
@@ -79,6 +91,8 @@ document.addEventListener('click', e => {
 });
 $('dniInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSolicitante(); });
 $('dniInput').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
+$('areaUsuarioInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSolicitanteArea(); });
+$('areaClaveInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSolicitanteArea(); });
 $('userInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAdmin(); });
 $('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAdmin(); });
 $('qTicket').addEventListener('keydown', e => { if (e.key === 'Enter') consultarTicket(); });

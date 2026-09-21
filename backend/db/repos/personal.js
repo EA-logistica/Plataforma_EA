@@ -26,6 +26,17 @@ export function porDocumento(doc) {
   return aCamel(db().prepare('SELECT * FROM personal WHERE dni = ?').get(d));
 }
 
+/** Áreas distintas con al menos una persona: para sembrar credenciales de área y para validar altas. */
+export function areas() {
+  return db().prepare("SELECT DISTINCT area FROM personal WHERE area != '' ORDER BY area").all().map(r => r.area);
+}
+
+/** Evita crear una credencial para un área que no existe en el padrón, por un simple error de tipeo. */
+export function existeArea(area) {
+  const a = String(area || '').trim();
+  return !!a && !!db().prepare('SELECT 1 FROM personal WHERE area = ? LIMIT 1').get(a);
+}
+
 /**
  * Busca por documento, nombre, apellido, cargo o área. Cada palabra escrita
  * debe aparecer en la ficha, sin importar el orden: 'lopez deyna' encuentra a

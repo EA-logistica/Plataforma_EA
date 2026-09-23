@@ -1,7 +1,6 @@
 import { $, esc } from '../../utils/dom.js';
 import { soles, solesK } from '../../utils/format.js';
 import { DB } from '../../api/estado.js';
-import { MOTOS, MOTO_POR_DEFECTO } from '#data/payback/motos.js';
 import { OPERACION, JORNADA } from '#data/payback/parametros.js';
 import { analizarDemanda } from '#shared/payback/demanda.js';
 import { horasSemanales } from '#shared/payback/planilla.js';
@@ -32,13 +31,11 @@ function proximoMes() {
 
 /** Opciones que el usuario puede mover desde la pantalla. */
 const estado = {
-  idMoto: MOTO_POR_DEFECTO,
   bonoRemunerativo: true,
   asignacionFamiliar: 0,
   inicio: proximoMes()
 };
 
-export function setMotoPayback(id) { estado.idMoto = id; renderPayback(); }
 export function setBonoPayback(v) { estado.bonoRemunerativo = v === 'si'; renderPayback(); }
 export function setAsignacionPayback(v) { estado.asignacionFamiliar = Number(v) || 0; renderPayback(); }
 export function setInicioPayback(v) { if (v) estado.inicio = v; renderPayback(); }
@@ -84,19 +81,14 @@ function controles() {
     '<option value="' + v + '"' + (activo ? ' selected' : '') + '>' + esc(txt) + '</option>';
   return '<div class="card card-pad pb-controles">'
     + '<div class="row">'
-    + '<div class="field" style="margin:0"><label for="pbMoto">Moto a cotizar (escenario 2)</label>'
-    + '<select class="select" id="pbMoto" onchange="setMotoPayback(this.value)">'
-    + MOTOS.map(m => opcion(m.id, m.modelo + ' · US$ ' + m.precioUsdReferencial.toLocaleString('es-PE'),
-        m.id === estado.idMoto)).join('')
-    + '</select></div>'
-    + '<div class="field" style="margin:0"><label for="pbBono">¿El bono es remunerativo?</label>'
+    + '<div class="field" style="margin:0"><label for="pbBono">¿El bono es remunerativo? (escenarios con personal propio)</label>'
     + '<select class="select" id="pbBono" onchange="setBonoPayback(this.value)">'
     + opcion('si', 'Sí: paga gratificaciones, CTS y EsSalud', estado.bonoRemunerativo)
     + opcion('no', 'No: es condición de trabajo (combustible contra comprobante)', !estado.bonoRemunerativo)
     + '</select></div>'
     + '</div>'
-    + '<div class="hint">Cambiar cualquiera de los dos recalcula todo. El tratamiento del bono lo define'
-    + ' RR.HH.: si es condición de trabajo no entra a la base de beneficios y el costo baja.</div>'
+    + '<div class="hint">El tratamiento del bono lo define RR.HH.: si es condición de trabajo no entra a la'
+    + ' base de beneficios y el costo baja. No aplica al proveedor a cuota fija: ese no tiene planilla.</div>'
     + '</div>';
 }
 
@@ -154,47 +146,14 @@ const fact = (k, v, d) => '<div class="fact">' + esc(k) + ' <b>' + esc(v) + '</b
 // ------------------------------------------------------------- escenarios
 function tarjetasEscenarios(cmp, mejor) {
   return '<div class="section-head" style="margin-top:26px"><div><h2>Los tres escenarios</h2>'
-    + '<p>Mismo horario y mismo volumen en los tres. Lo que cambia es quién pone la moto y cuánta gente.</p>'
+    + '<p>Dos formas de tener motorizado propio y una de tercerizarlo a cuota fija.</p>'
     + '</div></div>'
     + '<div class="pb-escenarios">' + cmp.filas.map(f => tarjeta(f, mejor && f === mejor)).join('') + '</div>';
 }
 
 function tarjeta(f, esMejor) {
   const e = f.escenario;
-  const p = e.persona;
-  const linea = (k, v, nota) => '<tr><td>' + esc(k) + (nota ? '<span class="pb-nota">' + esc(nota) + '</span>' : '')
-    + '</td><td class="mono">' + esc(soles(v)) + '</td></tr>';
-
-  let desglose = linea('Sueldo base' + (e.cfg.personas > 1 ? ' (x' + e.cfg.personas + ')' : ''),
-      e.cfg.sueldoBase * e.cfg.personas);
-  if (e.cfg.bono) {
-    desglose += linea('Bono' + (e.cfg.personas > 1 ? ' (x' + e.cfg.personas + ')' : ''),
-      e.cfg.bono * e.cfg.personas, e.cfg.bonoRemunerativo ? 'Remunerativo' : 'Condición de trabajo');
-  }
-  desglose += linea('Gratificaciones', p.gratificaciones * e.cfg.personas, 'Julio y diciembre');
-  desglose += linea('Bonif. extraordinaria', p.bonificacionExtraordinaria * e.cfg.personas, 'Ley 30334');
-  desglose += linea('CTS', p.cts * e.cfg.personas,
-    p.cts ? 'Mayo y noviembre' : 'No aplica al part time');
-  desglose += linea('EsSalud', p.essalud * e.cfg.personas, '9%');
-  desglose += linea('Vida Ley + SCTR', (p.vidaLey + p.sctr) * e.cfg.personas, 'Primas referenciales');
-
-  if (f.gastoMoto) {
-    const g = e.moto.gasto;
-    desglose += '<tr class="pb-sep"><td colspan="2">Moto: ' + esc(e.moto.inversion.moto.modelo) + '</td></tr>';
-    desglose += linea('Combustible', g.combustible, g.kmAlMes.toFixed(0) + ' km al mes');
-    desglose += linea('SOAT, seguro y mantenimiento', g.soat + g.seguro + g.mantenimiento);
-    desglose += linea('Depreciación', g.depreciacion, 'No sale de caja, pero es costo del período');
-  }
-
-  desglose += '<tr class="pb-sep"><td colspan="2">Respaldo</td></tr>';
-  desglose += linea('Cobertura de vacaciones', f.coberturaVacaciones,
-    e.diasSinCoberturaAlAnio.toFixed(0) + ' días al año sin motorizado');
-  if (f.courierResidual > 0) {
-    desglose += linea('Courier para los días cargados', f.courierResidual,
-      f.excedenteDiario.toFixed(1) + ' encargos al día por encima del techo');
-  }
-
-  const avisos = e.persona.avisos.concat(e.riesgos);
+  const { desglose, avisos } = e.cfg.modelo === 'tercero' ? desgloseTercero(e) : desglosePersonal(e, f);
 
   return '<article class="pb-card' + (esMejor ? ' on' : '') + '">'
     + (esMejor ? '<div class="pb-card-tag">Recomendado</div>' : '')
@@ -204,16 +163,51 @@ function tarjeta(f, esMejor) {
     + '<div class="pb-ahorro ' + (f.ahorroMensual > 0 ? 'bien' : 'mal') + '">'
     + (f.ahorroMensual > 0 ? 'Ahorra ' : 'Cuesta ') + esc(soles(Math.abs(f.ahorroMensual)))
     + ' al mes frente al courier</div>'
-    + (f.inversion
-      ? '<div class="pb-inversion">Inversión de ' + esc(soles(f.inversion)) + ' · se recupera en '
-        + (f.mesesRetorno === null ? 'nunca, no genera ahorro' : f.mesesRetorno.toFixed(1) + ' meses') + '</div>'
-      : '<div class="pb-inversion">Sin inversión inicial</div>')
+    + '<div class="pb-inversion">Sin inversión inicial</div>'
     + '<table class="pb-desglose">' + desglose + '</table>'
     + '<div class="pb-avisos">' + avisos.map(a =>
         '<div class="pb-aviso"><span class="chip ' + nivelChip(a.nivel) + '"><i class="dot"></i>'
         + (a.nivel === 'alto' ? 'Cuidado' : a.nivel === 'ok' ? 'En regla' : 'A tener en cuenta')
         + '</span><p>' + esc(a.texto) + '</p></div>').join('')
     + '</div></article>';
+}
+
+const lineaDesglose = (k, v, nota) => '<tr><td>' + esc(k) + (nota ? '<span class="pb-nota">' + esc(nota) + '</span>' : '')
+  + '</td><td class="mono">' + esc(soles(v)) + '</td></tr>';
+
+/** Desglose de un puesto propio: sueldo, ley social y el respaldo de courier para lo que no cubre. */
+function desglosePersonal(e, f) {
+  const p = e.persona;
+  let desglose = lineaDesglose('Sueldo base' + (e.cfg.personas > 1 ? ' (x' + e.cfg.personas + ')' : ''),
+      e.cfg.sueldoBase * e.cfg.personas);
+  if (e.cfg.bono) {
+    desglose += lineaDesglose('Bono' + (e.cfg.personas > 1 ? ' (x' + e.cfg.personas + ')' : ''),
+      e.cfg.bono * e.cfg.personas, e.cfg.bonoRemunerativo ? 'Remunerativo' : 'Condición de trabajo');
+  }
+  desglose += lineaDesglose('Gratificaciones', p.gratificaciones * e.cfg.personas, 'Julio y diciembre');
+  desglose += lineaDesglose('Bonif. extraordinaria', p.bonificacionExtraordinaria * e.cfg.personas, 'Ley 30334');
+  desglose += lineaDesglose('CTS', p.cts * e.cfg.personas,
+    p.cts ? 'Mayo y noviembre' : 'No aplica al part time');
+  desglose += lineaDesglose('EsSalud', p.essalud * e.cfg.personas, '9%');
+  desglose += lineaDesglose('Vida Ley + SCTR', (p.vidaLey + p.sctr) * e.cfg.personas, 'Primas referenciales');
+
+  desglose += '<tr class="pb-sep"><td colspan="2">Respaldo</td></tr>';
+  desglose += lineaDesglose('Cobertura de vacaciones', f.coberturaVacaciones,
+    e.diasSinCoberturaAlAnio.toFixed(0) + ' días al año sin motorizado');
+  if (f.courierResidual > 0) {
+    desglose += lineaDesglose('Courier para los días cargados', f.courierResidual,
+      f.excedenteDiario.toFixed(1) + ' encargos al día por encima del techo');
+  }
+
+  return { desglose, avisos: p.avisos.concat(e.riesgos) };
+}
+
+/** Desglose del proveedor a cuota fija: no hay planilla, solo la cuota y el IGV. */
+function desgloseTercero(e) {
+  const t = e.tercero;
+  const desglose = lineaDesglose('Cuota del proveedor', t.cuotaMensualSinIgv, 'Fija, pactada por contrato')
+    + lineaDesglose('IGV', t.igv, '18%');
+  return { desglose, avisos: e.riesgos };
 }
 
 // ------------------------------------------------------------ condiciones
@@ -308,9 +302,9 @@ function politicaUrgencias(cmp, demanda) {
 function advertencia() {
   return '<div class="banner" style="margin-top:22px"><div><b>Antes de decidir.</b> Las tasas de ley están'
     + ' puestas como referencia del régimen laboral común y las primas de Vida Ley y SCTR varían por'
-    + ' aseguradora: que RR.HH. y contabilidad las validen. Los precios de las motos son marcadores de'
-    + ' posición dentro del rango de mercado indicado, no cotizaciones. Los minutos de viaje por zona son'
-    + ' estimaciones y se ajustan en el simulador.'
-    + ' Todo eso se edita en <span class="mono">payback/data/parametros.js</span> y'
-    + ' <span class="mono">payback/data/motos.js</span> sin tocar el cálculo.</div></div>';
+    + ' aseguradora: que RR.HH. y contabilidad las validen. La cuota del proveedor (S/ 3 500 + IGV) es la'
+    + ' que se planteó para este análisis, no una cotización cerrada: conviene pedir al menos dos'
+    + ' propuestas antes de firmar. Los minutos de viaje por zona son estimaciones y se ajustan en el'
+    + ' simulador.'
+    + ' Todo eso se edita en <span class="mono">payback/data/parametros.js</span> sin tocar el cálculo.</div></div>';
 }

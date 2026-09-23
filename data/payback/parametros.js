@@ -79,41 +79,18 @@ export const LEY = {
   umbralPartTimeHoras: 4
 };
 
-/**
- * Costos de operar una moto propia de la empresa (escenario 2).
- * Los de combustible y mantenimiento son referenciales de mercado en Lima.
- */
-export const FLOTA = {
-  tipoCambio: 3.75,                  // S/ por USD, referencial
-
-  /** Trámites de una moto nueva: placa, tarjeta, notaría. */
-  inscripcionSoles: 450,
-
-  soatAnualSoles: 220,
-  seguroVehicularAnualSoles: 900,    // todo riesgo; opcional pero recomendable
-  mantenimientoAnualSoles: 1200,     // 4 servicios al año + llantas + frenos
-
-  /** Vida útil contable de la moto, para depreciar la inversión. */
-  vidaUtilAnios: 5,
-
-  /** Valor de reventa estimado al final de la vida útil, sobre el precio. */
-  valorResidual: 0.25,
-
-  /** Implementos de seguridad del conductor (casco, chaleco, guantes, tópicos). */
-  equipamientoSoles: 700,
-
-  precioGalonSoles: 17.5,
-  rendimientoKmPorGalon: 110,        // típico de una 150cc en ciudad
-
-  /** Kilómetros promedio por día de ruta. Ver ../backend/capacidad.js */
-  kmPorDia: 85
-};
+/** Impuesto General a las Ventas: se suma sobre cualquier cuota que facture un tercero. */
+export const IGV = { tasa: 0.18 };
 
 /**
  * Escenarios tal como los planteó logística. El bono se marca como
  * remunerativo o no, porque cambia mucho el costo: si es una condición de
  * trabajo (combustible y mantenimiento de su moto, contra comprobante) no
  * entra a la base de gratificaciones, CTS ni EsSalud.
+ *
+ * `modelo: 'tercero'` distingue al único escenario que no es personal propio:
+ * escenarios.js lo arma aparte (sin planilla ni capacidad que evaluar, ver
+ * construirTercero) porque es una cuota fija a un proveedor, no un puesto.
  */
 export const ESCENARIOS = {
   propia: {
@@ -124,19 +101,14 @@ export const ESCENARIOS = {
     sueldoBase: 1800,
     bono: 300,
     bonoRemunerativo: true,
-    jornadaCompleta: true,
-    compraMoto: false
+    jornadaCompleta: true
   },
-  flota: {
-    id: 'flota',
-    nombre: 'Moto de la empresa + un motorizado',
-    detalle: 'La empresa compra una moto de 150 cc y contrata a la persona a tiempo completo. Combustible, mantenimiento y seguros son de la empresa.',
-    personas: 1,
-    sueldoBase: 1800,
-    bono: 0,
-    bonoRemunerativo: true,
-    jornadaCompleta: true,
-    compraMoto: true
+  tercero: {
+    id: 'tercero',
+    nombre: 'Tercerizar con un proveedor a cuota fija',
+    detalle: 'Un proveedor externo se hace cargo de toda la mensajería por una cuota mensual fija de S/ 3 500 + IGV, sin importar cuántos encargos salgan. No es personal de la empresa: no hay planilla, moto que comprar ni vacaciones que cubrir.',
+    modelo: 'tercero',
+    cuotaMensualSinIgv: 3500
   },
   dosPartTime: {
     id: 'dosPartTime',
@@ -146,8 +118,7 @@ export const ESCENARIOS = {
     sueldoBase: 800,
     bono: 250,
     bonoRemunerativo: true,
-    jornadaCompleta: false,
-    compraMoto: false
+    jornadaCompleta: false
   }
 };
 

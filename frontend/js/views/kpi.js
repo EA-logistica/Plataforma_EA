@@ -138,6 +138,23 @@ export function renderKpi() {
     Object.entries(dest).sort((a, b) => b[1].n - a[1].n).slice(0, 8)
       .map(([k, o]) => ({ k: corta(k, 40), v: o.n, t: o.n + ' visitas · ' + soles(o.c) })), null, 'c2');
 
+  // ranking de distritos: la dirección viene "Lugar, calle, DISTRITO" -el
+  // distrito es siempre el último tramo separado por coma-, así que agrupar
+  // por ahí responde una pregunta distinta de "destinos más frecuentes"
+  // (que agrupa por el lugar puntual, el primer tramo): a qué zona de Lima se
+  // dirige más la mensajería, no a qué empresa.
+  const distr = {};
+  lista.forEach(s => {
+    const partes = s.destino.split(',');
+    const k = partes[partes.length - 1].trim();
+    if (!k) return;
+    distr[k] = distr[k] || { n: 0, c: 0 };
+    distr[k].n++; distr[k].c += (s.costo || 0);
+  });
+  $('chDistritos').innerHTML = barras(
+    Object.entries(distr).sort((a, b) => b[1].n - a[1].n).slice(0, 10)
+      .map(([k, o]) => ({ k: corta(k, 40), v: o.n, t: o.n + ' visitas · ' + soles(o.c) })), null, 'c2');
+
   // vehículos
   const veh = {};
   lista.filter(s => s.vehiculo).forEach(s => { veh[s.vehiculo] = veh[s.vehiculo] || { n: 0, c: 0 }; veh[s.vehiculo].n++; veh[s.vehiculo].c += (s.costo || 0); });

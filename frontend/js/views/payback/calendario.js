@@ -17,6 +17,12 @@ import { soles } from '../../utils/format.js';
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
 
 export function calendarioHTML(fila, inicio, gastoActual) {
+  if (fila && fila.escenario.cfg.modelo === 'tercero') {
+    return '<div class="panel" style="margin-top:22px">'
+      + '<h3>Beneficios sociales según la fecha de ingreso</h3>'
+      + '<p class="sub">No aplica: el proveedor a cuota fija no es personal en planilla, así que no hay'
+      + ' gratificación ni CTS que calendarizar.</p></div>';
+  }
   if (!fila || !fila.flujo) {
     return '<div class="panel" style="margin-top:22px">'
       + '<h3>Beneficios sociales según la fecha de ingreso</h3>'

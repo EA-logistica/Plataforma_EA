@@ -2,14 +2,15 @@ import { JORNADA } from '#data/payback/parametros.js';
 import { calendario } from './devengos.js';
 
 /**
- * Compara cada escenario contra lo que se gasta hoy en courier y calcula en
- * cuánto tiempo se recupera la inversión.
+ * Compara cada escenario contra lo que se gasta hoy en courier.
  *
- * Una precisión sobre la palabra "payback": solo el escenario de flota propia
- * tiene algo que recuperar, porque es el único con desembolso inicial. Los
- * otros dos son gasto contra gasto: o cuestan menos que el courier desde el
- * primer mes, o no. Presentarlos con un "plazo de retorno" sería inventarse
- * una métrica que no aplica.
+ * Una precisión sobre la palabra "payback": ningún escenario actual tiene
+ * desembolso inicial que recuperar -ni el personal propio (la moto es del
+ * trabajador) ni el proveedor a cuota fija (no hay nada que comprar)-, así
+ * que `inversion` y `mesesRetorno` siempre salen en cero. Se dejan en la
+ * forma del resultado, en vez de quitarlas, porque son gasto contra gasto
+ * real (o cuesta menos que el courier desde el primer mes, o no) y quitar el
+ * campo obligaría a tocar cada pantalla que ya sabe mostrar "sin inversión".
  */
 
 const DIAS_LABORABLES_AL_MES = JORNADA.diasSemanaAlMes + JORNADA.sabadosAlMes;
@@ -28,7 +29,29 @@ export function comparar(escenarios, demanda, opciones = {}) {
   const viajesPorDia = demanda.viajesPorDia.entreSemana || demanda.viajesPorDia.promedio;
 
   const filas = escenarios.map(e => {
-    const gastoMoto = e.moto ? e.moto.gasto.total : 0;
+    // El proveedor a cuota fija no pasa por planilla, courier residual ni
+    // cobertura de vacaciones: cobra lo mismo mueva la empresa uno o cien
+    // encargos, y esa es justamente la gracia de contratarlo así.
+    if (e.cfg.modelo === 'tercero') {
+      const costoMensual = e.tercero.total;
+      const ahorroMensual = gastoActual - costoMensual;
+      return {
+        escenario: e,
+        excedenteDiario: 0,
+        calendario: { valido: false },
+        flujo: null,
+        planilla: 0,
+        gastoMoto: 0,
+        coberturaVacaciones: 0,
+        courierResidual: 0,
+        costoMensual,
+        ahorroMensual,
+        ahorroAnual: ahorroMensual * 12,
+        inversion: 0,
+        mesesRetorno: 0,
+        resultadoPrimerAnio: ahorroMensual * 12
+      };
+    }
 
     // Los días de vacaciones no se pagan dos veces en planilla, pero esos días
     // igual hay que mover la carga: vuelve el courier. Se provisiona al mes.
@@ -41,17 +64,12 @@ export function comparar(escenarios, demanda, opciones = {}) {
     const excedenteDiario = demanda.viajesPorDia.excedenteSobre(e.capacidad.techoDiario);
     const courierResidual = excedenteDiario * DIAS_LABORABLES_AL_MES * costoPorViaje;
 
-    const costoMensual = e.planilla + gastoMoto + coberturaVacaciones + courierResidual;
+    const costoMensual = e.planilla + coberturaVacaciones + courierResidual;
     const ahorroMensual = gastoActual - costoMensual;
-
-    const inversion = e.moto ? e.moto.inversion.total : 0;
-    const mesesRetorno = inversion > 0
-      ? (ahorroMensual > 0 ? inversion / ahorroMensual : null)
-      : 0;
 
     // Con fecha de ingreso, el flujo real: las gratificaciones y la CTS caen en
     // meses concretos y el primer año casi nunca se pagan completas.
-    const otrosMensuales = gastoMoto + coberturaVacaciones + courierResidual;
+    const otrosMensuales = coberturaVacaciones + courierResidual;
     const cal = opciones.inicio
       ? calendario(opciones.inicio, {
           base: e.persona.base,
@@ -59,7 +77,7 @@ export function comparar(escenarios, demanda, opciones = {}) {
           conCts: e.cfg.jornadaCompleta
         }, 24)
       : { valido: false };
-    const flujo = cal.valido ? construirFlujo(cal, e, otrosMensuales, gastoActual, inversion) : null;
+    const flujo = cal.valido ? construirFlujo(cal, e, otrosMensuales, gastoActual, 0) : null;
 
     return {
       escenario: e,
@@ -67,17 +85,15 @@ export function comparar(escenarios, demanda, opciones = {}) {
       calendario: cal,
       flujo,
       planilla: e.planilla,
-      gastoMoto,
+      gastoMoto: 0,
       coberturaVacaciones,
       courierResidual,
       costoMensual,
       ahorroMensual,
       ahorroAnual: ahorroMensual * 12,
-      inversion,
-      /** Meses para recuperar la inversión. null = no se recupera; 0 = no hay. */
-      mesesRetorno,
-      /** Resultado acumulado al cabo de un año, ya descontada la inversión. */
-      resultadoPrimerAnio: ahorroMensual * 12 - inversion
+      inversion: 0,
+      mesesRetorno: 0,
+      resultadoPrimerAnio: ahorroMensual * 12
     };
   });
 
@@ -183,10 +199,14 @@ function condiciones(filas, demanda) {
  * demanda no gana por ser barato.
  */
 function recomendar(filas) {
+  // El proveedor a cuota fija no tiene "avisos legales" -no es planilla-, así
+  // que solo cuentan los suyos propios (riesgos).
+  const avisosDe = f => f.escenario.persona ? f.escenario.persona.avisos : [];
+
   const viables = filas.filter(f => f.escenario.capacidad.alcanza);
   const sinRiesgoAlto = viables.filter(f =>
     !f.escenario.riesgos.some(r => r.nivel === 'alto') &&
-    !f.escenario.persona.avisos.some(a => a.nivel === 'alto'));
+    !avisosDe(f).some(a => a.nivel === 'alto'));
 
   const candidatos = sinRiesgoAlto.length ? sinRiesgoAlto : viables;
   const mejor = candidatos.slice().sort((a, b) => b.ahorroMensual - a.ahorroMensual)[0] || null;
@@ -195,8 +215,7 @@ function recomendar(filas) {
     mejor,
     viables: viables.map(f => f.escenario.id),
     conRiesgoAlto: filas
-      .filter(f => f.escenario.riesgos.some(r => r.nivel === 'alto')
-        || f.escenario.persona.avisos.some(a => a.nivel === 'alto'))
+      .filter(f => f.escenario.riesgos.some(r => r.nivel === 'alto') || avisosDe(f).some(a => a.nivel === 'alto'))
       .map(f => f.escenario.id),
     /** Ninguno conviene si el courier sale más barato que todos. */
     ningunoConviene: filas.every(f => f.ahorroMensual <= 0)

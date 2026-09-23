@@ -453,8 +453,14 @@ try {
   const pb = await api('GET', '/api/payback?inicio=2026-10-01', undefined, tokenAdmin);
   ok(pb.status === 200 && pb.datos.escenarios.length === 3, 'admin sí, y devuelve los tres escenarios');
   ok(pb.datos.gastoActual > 0 && pb.datos.recomendado, 'con el gasto actual y un recomendado');
-  ok(pb.datos.escenarios.every(e => e.costoPrimerAnio > 0),
-     'y el costo del primer año según la fecha de ingreso');
+  // El proveedor a cuota fija no es planilla: no tiene calendario de
+  // beneficios, así que ese único escenario no trae costo de primer año.
+  ok(pb.datos.escenarios.filter(e => e.id !== 'tercero').every(e => e.costoPrimerAnio > 0),
+     'y el costo del primer año según la fecha de ingreso, para los escenarios de personal propio');
+  ok(pb.datos.escenarios.find(e => e.id === 'tercero').costoPrimerAnio === null,
+     'el de tercerizar no tiene ese dato: no aplica');
+  ok(pb.datos.escenarios.find(e => e.id === 'tercero').capacidad === null,
+     'ni capacidad: esa la asume el proveedor');
 
   // --------------------------------------------- exposición de data/
   // La carpeta data/ tiene el padrón y el histórico junto a los supuestos del

@@ -17,14 +17,12 @@ let fallos = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLA') + ' ' + msg); if (!cond) fallos++; };
 const cerca = (a, b, tol = 0.01) => Math.abs(a - b) <= tol;
 
-const { LEY, JORNADA, ESCENARIOS } = await mod('data/payback/parametros.js');
-const { MOTOS, RANGO_USD } = await mod('data/payback/motos.js');
+const { LEY, JORNADA, ESCENARIOS, IGV } = await mod('data/payback/parametros.js');
 const { zonaDe, ZONAS, zonaPorId } = await mod('data/payback/zonas.js');
 const { minutosEntre, MINUTOS_MISMA_ZONA, claveDePar } = await mod('data/payback/tiempos.js');
 const { simularSalida, mejorOrden } = await mod('shared/payback/ruta.js');
 const { calendario, leerFecha } = await mod('shared/payback/devengos.js');
 const { costoPersona, horasSemanales } = await mod('shared/payback/planilla.js');
-const { inversion, gastoMensual } = await mod('shared/payback/flota.js');
 const { analizarDemanda } = await mod('shared/payback/demanda.js');
 const { minutosRequeridos, minutosDisponibles } = await mod('shared/payback/capacidad.js');
 const { construir } = await mod('shared/payback/escenarios.js');
@@ -67,23 +65,6 @@ const partTimeLargo = costoPersona({ sueldoBase: 800, bono: 250, bonoRemunerativ
 ok(partTimeLargo.avisos.some(a => a.nivel === 'alto' && /ya no es part time/.test(a.texto)),
    'avisa si el "part time" llega o pasa las 4 h diarias');
 ok(pt.avisos.every(a => a.nivel !== 'alto'), 'el part time a media jornada no dispara ningún aviso grave');
-
-// ------------------------------------------------------------------ flota
-console.log('\n-- moto propia --');
-const inv = inversion(MOTOS[0].id);
-ok(inv.total > inv.precioSoles, 'la inversión suma placa y equipamiento, no solo el precio de lista');
-const gm = gastoMensual(MOTOS[0].id, 26);
-ok(gm.depreciacion > 0 && cerca(gm.salidaDeCaja, gm.total - gm.depreciacion),
-   'la depreciación es costo del período pero no salida de caja');
-ok(gm.combustible > 0 && gm.kmAlMes > 0, 'el combustible sale de los km recorridos');
-
-console.log('\n-- cotización de motos --');
-ok(MOTOS.length === 3, `las tres opciones de 150 cc (${MOTOS.length})`);
-ok(MOTOS.every(m => m.precioUsdReferencial >= RANGO_USD.desde && m.precioUsdReferencial <= RANGO_USD.hasta),
-   `todos los precios caen en el rango US$ ${RANGO_USD.desde}-${RANGO_USD.hasta}: `
-   + MOTOS.map(m => m.precioUsdReferencial).join(', '));
-ok(RANGO_USD.desde === 2500 && RANGO_USD.hasta === 5000, 'el rango es el que pidió logística');
-ok(new Set(MOTOS.map(m => m.id)).size === 3, 'sin ids repetidos');
 
 // ----------------------------------------------------------------- zonas
 console.log('\n-- clasificación de destinos --');
@@ -228,16 +209,24 @@ const esc = construir(d);
 ok(esc.length === 3, `los tres escenarios pedidos (${esc.length})`);
 ok(esc.map(e => e.id).join(',') === Object.keys(ESCENARIOS).join(','), 'salen en el orden en que se plantearon');
 
-const [propia, flota, dos] = esc;
+const [propia, tercero, dos] = esc;
 ok(propia.cfg.personas === 1 && propia.cfg.sueldoBase === 1800 && propia.cfg.bono === 300,
    'escenario 1: una persona, S/1800 + S/300, moto suya');
-ok(flota.moto && flota.cfg.bono === 0, 'escenario 2: moto de la empresa, S/1800 sin bono');
 ok(dos.cfg.personas === 2 && dos.cfg.sueldoBase === 800 && dos.cfg.bono === 250 && !dos.cfg.jornadaCompleta,
    'escenario 3: dos part time, S/800 + S/250');
-ok(!propia.moto && !dos.moto, 'solo el escenario 2 compra moto');
+
+console.log('\n-- tercerizar a cuota fija --');
+ok(tercero.cfg.modelo === 'tercero' && tercero.cfg.cuotaMensualSinIgv === 3500,
+   'escenario 2: proveedor externo, cuota fija de S/3500 sin IGV');
+ok(tercero.persona === null, 'no es planilla propia: no calcula costo de persona');
+ok(cerca(tercero.tercero.igv, 3500 * IGV.tasa), `el IGV es el 18% de la cuota (${tercero.tercero.igv.toFixed(2)})`);
+ok(cerca(tercero.tercero.total, 3500 * 1.18), `la cuota con IGV es S/${(3500 * 1.18).toFixed(2)} (${tercero.tercero.total.toFixed(2)})`);
+ok(tercero.capacidad.alcanza === true, 'la capacidad del proveedor se da por cubierta: eso compra la cuota fija');
+ok(tercero.diasSinCoberturaAlAnio === 0, 'no hay vacaciones que cubrir: no es personal propio');
+ok(!tercero.riesgos.some(r => r.nivel === 'alto'), 'tercerizar no dispara ningún riesgo alto por sí solo');
 
 ok(cerca(propia.capacidad.techoDiario, dos.capacidad.techoDiario),
-   'los tres tienen la misma capacidad: dos medias jornadas son una jornada');
+   'los dos escenarios de personal propio tienen la misma capacidad: dos medias jornadas son una jornada');
 ok(propia.riesgos.some(r => r.nivel === 'alto'), 'depender de una sola persona se marca como riesgo alto');
 ok(!dos.riesgos.some(r => r.nivel === 'alto'), 'con dos personas ese riesgo desaparece');
 
@@ -246,17 +235,22 @@ console.log('\n-- comparación y retorno --');
 const cmp = comparar(esc, d);
 ok(cerca(cmp.gastoActual, d.recientes.gastoMensual), 'compara contra el gasto real de los últimos meses');
 cmp.filas.forEach(f => {
-  const suma = f.planilla + f.gastoMoto + f.coberturaVacaciones + f.courierResidual;
-  ok(cerca(suma, f.costoMensual), `[${f.escenario.id}] el costo mensual es la suma de sus partes`);
+  // El proveedor a cuota fija no se arma de planilla + moto + respaldo: su
+  // "suma de partes" es la cuota más el IGV, ya verificado más abajo.
+  if (f.escenario.cfg.modelo !== 'tercero') {
+    const suma = f.planilla + f.gastoMoto + f.coberturaVacaciones + f.courierResidual;
+    ok(cerca(suma, f.costoMensual), `[${f.escenario.id}] el costo mensual es la suma de sus partes`);
+  }
   ok(cerca(f.ahorroMensual, cmp.gastoActual - f.costoMensual), `[${f.escenario.id}] el ahorro es gasto actual menos costo`);
 });
-const fFlota = cmp.filas.find(f => f.escenario.id === 'flota');
-ok(fFlota.inversion > 0 && fFlota.mesesRetorno > 0, `solo el de flota tiene retorno que calcular (${fFlota.mesesRetorno.toFixed(1)} meses)`);
-ok(cerca(fFlota.mesesRetorno, fFlota.inversion / fFlota.ahorroMensual), 'el retorno es inversión entre ahorro mensual');
-ok(cmp.filas.filter(f => f.inversion === 0).every(f => f.mesesRetorno === 0),
-   'los escenarios sin inversión no muestran plazo de retorno inventado');
-ok(cmp.filas.every(f => f.coberturaVacaciones > 0),
-   'todos provisionan los días de vacaciones en que no hay motorizado');
+const fTercero = cmp.filas.find(f => f.escenario.id === 'tercero');
+ok(cerca(fTercero.costoMensual, tercero.tercero.total), 'el costo mensual del tercero es la cuota fija con IGV, sin importar el volumen');
+ok(fTercero.coberturaVacaciones === 0 && fTercero.courierResidual === 0,
+   'no arrastra cobertura de vacaciones ni courier residual: eso es cosa del proveedor');
+ok(cmp.filas.every(f => f.inversion === 0 && f.mesesRetorno === 0),
+   'ningún escenario tiene ya inversión inicial que recuperar (ni personal propio, ni el proveedor)');
+ok(cmp.filas.filter(f => f.escenario.cfg.modelo !== 'tercero').every(f => f.coberturaVacaciones > 0),
+   'los dos escenarios de personal propio sí provisionan los días de vacaciones en que no hay motorizado');
 ok(cmp.recomendacion.mejor, 'hay un escenario recomendado');
 ok(cmp.condiciones.length >= 3, 'se listan las condiciones que valen para cualquier escenario');
 ok(cmp.condiciones.some(c => /agrupan por zona/.test(c.titulo)), 'la primera condición es programar por zona');
@@ -264,18 +258,16 @@ ok(cmp.condiciones.some(c => /agrupan por zona/.test(c.titulo)), 'la primera con
 console.log('\n-- flujo real con fecha de ingreso --');
 ok(cmp.filas.every(f => f.flujo === null), 'sin fecha de ingreso no se inventa un flujo');
 const conFecha = comparar(esc, d, { inicio: '2026-10-01' });
-conFecha.filas.forEach(f => {
+ok(conFecha.filas.find(f => f.escenario.id === 'tercero').flujo === null,
+   'el proveedor a cuota fija nunca tiene calendario de beneficios: no es planilla');
+conFecha.filas.filter(f => f.escenario.cfg.modelo !== 'tercero').forEach(f => {
   ok(f.flujo && f.flujo.meses.length === 24, `[${f.escenario.id}] proyecta 24 meses`);
   ok(cerca(f.flujo.costoPrimerAnio, f.flujo.meses.slice(0, 12).reduce((a, m) => a + m.costo, 0)),
      `[${f.escenario.id}] el costo del primer año es la suma de sus doce meses`);
   ok(f.flujo.mesMasCaro.costo > f.flujo.mesMasBarato.costo,
      `[${f.escenario.id}] hay meses que aprietan más que otros`);
+  ok(f.flujo.mesRecuperacion === null, `[${f.escenario.id}] sin inversión no hay mes de recuperación`);
 });
-const flotaConFecha = conFecha.filas.find(f => f.escenario.id === 'flota');
-ok(flotaConFecha.flujo.mesRecuperacion > 0,
-   `el retorno real de la inversión sale en ${flotaConFecha.flujo.mesRecuperacion} meses`);
-ok(conFecha.filas.filter(f => f.inversion === 0).every(f => f.flujo.mesRecuperacion === null),
-   'sin inversión no hay mes de recuperación');
 const enEnero = comparar(esc, d, { inicio: '2027-01-01' });
 ok(enEnero.filas[0].flujo.costoPrimerAnio !== conFecha.filas[0].flujo.costoPrimerAnio,
    'cambiar la fecha de ingreso cambia el costo del primer año');
@@ -325,7 +317,7 @@ ok(/S\/\s/.test(html), 'muestra importes en soles');
 ok(/¿Alcanza una sola moto\?/.test(html), 'responde si alcanza una sola moto');
 ok(/Cómo se dejan de tener urgencias/.test(html), 'incluye las medidas contra las urgencias');
 ok(/Hora de corte diaria/.test(html), 'la primera medida es la hora de corte');
-MOTOS.forEach(m => ok(html.includes(m.modelo), `ofrece cotizar la ${m.modelo}`));
+ok(/Cuota del proveedor/.test(html) && /IGV/.test(html), 'el escenario de tercerizar muestra la cuota y el IGV, no un desglose de planilla');
 ok(!/undefined|NaN|\[object/.test(html), 'no se cuela ningún undefined, NaN ni [object Object]');
 
 ok(/Simulador de una salida/.test(html), 'incluye el simulador de una salida');
@@ -334,8 +326,6 @@ ok(/Beneficios sociales según la fecha de ingreso/.test(html), 'incluye el cale
 ok(/id="pbInicio"/.test(html), 'deja elegir la fecha de ingreso');
 ok(/Ajustar los tiempos de viaje/.test(html), 'deja editar los tiempos de viaje');
 
-vista.setMotoPayback(MOTOS[2].id);
-ok(registro.get('pbCuerpo').innerHTML.includes(MOTOS[2].modelo), 'cambiar de moto vuelve a pintar con la elegida');
 vista.setBonoPayback('no');
 ok(/Condición de trabajo/.test(registro.get('pbCuerpo').innerHTML),
    'cambiar el tratamiento del bono se refleja en el desglose');

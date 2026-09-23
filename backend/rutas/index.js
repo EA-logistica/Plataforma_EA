@@ -313,7 +313,6 @@ api.get('/payback', requiereSesion, requiereRol('admin'), (req, res) => {
   if (!demanda.hay) throw error('Todavía no hay servicios registrados para analizar.', 409);
 
   const opciones = {
-    idMoto: req.query.moto,
     bonoRemunerativo: req.query.bono !== 'no',
     inicio: req.query.inicio
   };
@@ -334,7 +333,9 @@ api.get('/payback', requiereSesion, requiereRol('admin'), (req, res) => {
       mesesRetorno: f.mesesRetorno,
       costoPrimerAnio: f.flujo ? f.flujo.costoPrimerAnio : null,
       mesRecuperacion: f.flujo ? f.flujo.mesRecuperacion : null,
-      capacidad: {
+      // El proveedor a cuota fija no tiene techo ni uso de jornada que
+      // reportar: esa capacidad es suya, no se dimensiona contra planilla propia.
+      capacidad: f.escenario.cfg.modelo === 'tercero' ? null : {
         techoDiario: f.escenario.capacidad.techoDiario,
         usoConPrograma: f.escenario.capacidad.usoConPrograma,
         usoSinPrograma: f.escenario.capacidad.usoSinPrograma

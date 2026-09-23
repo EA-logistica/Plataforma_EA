@@ -23,6 +23,15 @@ import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 /** Marca de la búsqueda en curso, para que una respuesta lenta no pise a otra. */
 let ultimaBusqueda = 0;
 
+/**
+ * Apellidos, nombres y área son texto libre que escribe quien pide el
+ * acceso (a diferencia del DNI, que ya viene normalizado a solo dígitos), así
+ * que pueden traer una comilla. Se escapa primero para la cadena de JS del
+ * onclick y recién después para el atributo HTML, o una comilla suelta
+ * rompería el uno o el otro.
+ */
+const jsStr = s => esc(String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+
 /** Repinta solo si la pestaña está a la vista: si no, es una consulta de más. */
 export function renderPadronSiVisible() {
   if ($('aPadron').classList.contains('on')) return renderPadron();
@@ -33,12 +42,20 @@ export async function renderPadron() {
   $('cntAut').textContent = pend.length;
   $('cntPadron').textContent = DB.totalPersonal;
 
-  $('listaAut').innerHTML = pend.length ? pend.map(a =>
-    '<div class="aut"><div><div class="aut-dni">' + esc(a.dni) + '</div>'
-    + '<div class="small muted">Solicitado el ' + fechaHora(a.solicitado) + '</div></div>'
-    + '<div class="tools"><button class="btn btn-sm" onclick="formAlta(\'' + a.dni + '\')">Habilitar</button>'
-    + '<button class="btn btn-sm btn-ghost" onclick="rechazarAut(\'' + a.dni + '\')">Rechazar</button></div></div>'
-  ).join('') : '<div class="muted small">Sin pedidos pendientes.</div>';
+  $('listaAut').innerHTML = pend.length ? pend.map(a => {
+    const nombreCompleto = [a.nombres, a.apellidos].filter(Boolean).join(' ');
+    const detalle = [
+      nombreCompleto,
+      a.celular ? 'cel. ' + a.celular : '',
+      a.email || '',
+      a.area ? 'área: ' + a.area : ''
+    ].filter(Boolean).join(' · ');
+    return '<div class="aut"><div><div class="aut-dni">' + esc(a.dni) + '</div>'
+      + (detalle ? '<div class="small">' + esc(detalle) + '</div>' : '')
+      + '<div class="small muted">Solicitado el ' + fechaHora(a.solicitado) + '</div></div>'
+      + '<div class="tools"><button class="btn btn-sm" onclick="formAlta(\'' + jsStr(a.dni) + '\',\'' + jsStr(nombreCompleto) + '\',\'' + jsStr(a.area) + '\')">Habilitar</button>'
+      + '<button class="btn btn-sm btn-ghost" onclick="rechazarAut(\'' + jsStr(a.dni) + '\')">Rechazar</button></div></div>';
+  }).join('') : '<div class="muted small">Sin pedidos pendientes.</div>';
 
   // No viene con /estado -no es un dato de uso constante como autorizaciones-,
   // así que se pide aparte, cada vez que se abre o se repinta esta pestaña.
@@ -110,9 +127,15 @@ export async function quitarPersona(dni) {
   toast('Retirado del padrón', 'El DNI ' + dni + ' ya no puede solicitar servicios.', 'warn');
 }
 
-export function formAlta(dni) {
-  $('pDni').value = dni; $('pNom').focus();
-  toast('Completa los datos', 'Escribe nombre, cargo y área para habilitar el documento ' + dni + '.');
+export function formAlta(dni, nombre, area) {
+  $('pDni').value = dni;
+  // Vienen del propio pedido de autorización: se prellenan, pero admin los
+  // revisa igual antes de guardar -son datos que escribió el solicitante,
+  // no el padrón oficial de RR.HH.-.
+  if (nombre) $('pNom').value = nombre;
+  if (area) $('pArea').value = area;
+  $('pNom').focus();
+  toast('Completa los datos', 'Revisa nombre, cargo y área antes de habilitar el documento ' + dni + '.');
 }
 
 export async function rechazarAut(dni) {

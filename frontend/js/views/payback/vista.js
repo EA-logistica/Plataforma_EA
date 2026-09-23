@@ -33,12 +33,18 @@ function proximoMes() {
 const estado = {
   bonoRemunerativo: true,
   asignacionFamiliar: 0,
-  inicio: proximoMes()
+  inicio: proximoMes(),
+  // Por defecto activado: una empresa en Régimen General o MYPE Tributario
+  // que genera débito fiscal por sus propias ventas usa el IGV de la factura
+  // del proveedor como crédito fiscal, así que no es un costo real. Se puede
+  // apagar si no aplica (Nuevo RUS, o débito fiscal insuficiente ese mes).
+  creditoFiscalIgv: true
 };
 
 export function setBonoPayback(v) { estado.bonoRemunerativo = v === 'si'; renderPayback(); }
 export function setAsignacionPayback(v) { estado.asignacionFamiliar = Number(v) || 0; renderPayback(); }
 export function setInicioPayback(v) { if (v) estado.inicio = v; renderPayback(); }
+export function setCreditoFiscalPayback(v) { estado.creditoFiscalIgv = v === 'si'; renderPayback(); }
 
 // Los controles del simulador de ruta se reexportan desde aquí para que main.js
 // tenga un solo punto de entrada al módulo.
@@ -68,7 +74,7 @@ export function renderPayback() {
     + situacionActual(demanda)
     + tarjetasEscenarios(cmp, mejor)
     + condicionesHTML(cmp)
-    + calendarioHTML(mejor, estado.inicio, cmp.gastoActual)
+    + calendarioHTML(cmp, estado.inicio)
     + capacidadHTML(cmp, demanda)
     + simuladorHTML()
     + politicaUrgencias(cmp, demanda)
@@ -86,9 +92,16 @@ function controles() {
     + opcion('si', 'Sí: paga gratificaciones, CTS y EsSalud', estado.bonoRemunerativo)
     + opcion('no', 'No: es condición de trabajo (combustible contra comprobante)', !estado.bonoRemunerativo)
     + '</select></div>'
+    + '<div class="field" style="margin:0"><label for="pbCreditoFiscal">¿Se puede usar el IGV como crédito fiscal? (tercerizar)</label>'
+    + '<select class="select" id="pbCreditoFiscal" onchange="setCreditoFiscalPayback(this.value)">'
+    + opcion('si', 'Sí: Régimen General/MYPE Tributario, con débito fiscal suficiente', estado.creditoFiscalIgv)
+    + opcion('no', 'No: se cuenta el IGV como costo real', !estado.creditoFiscalIgv)
+    + '</select></div>'
     + '</div>'
     + '<div class="hint">El tratamiento del bono lo define RR.HH.: si es condición de trabajo no entra a la'
-    + ' base de beneficios y el costo baja. No aplica al proveedor a cuota fija: ese no tiene planilla.</div>'
+    + ' base de beneficios y el costo baja. El del IGV lo define contabilidad: si la empresa puede usarlo como'
+    + ' crédito fiscal, no es un costo real -se descuenta del IGV que ya paga por sus ventas- y el costo de'
+    + ' tercerizar que compite contra el courier es la cuota sin IGV, no el total facturado.</div>'
     + '</div>';
 }
 
@@ -202,11 +215,21 @@ function desglosePersonal(e, f) {
   return { desglose, avisos: p.avisos.concat(e.riesgos) };
 }
 
-/** Desglose del proveedor a cuota fija: no hay planilla, solo la cuota y el IGV. */
+/**
+ * Desglose del proveedor a cuota fija: no hay planilla, solo la cuota, el IGV
+ * y -si aplica- el costo real ya neto de crédito fiscal. Se muestran las tres
+ * líneas siempre, para que se vea de dónde sale el "costo mensual" del
+ * encabezado y no parezca un número que aparece de la nada.
+ */
 function desgloseTercero(e) {
   const t = e.tercero;
-  const desglose = lineaDesglose('Cuota del proveedor', t.cuotaMensualSinIgv, 'Fija, pactada por contrato')
-    + lineaDesglose('IGV', t.igv, '18%');
+  let desglose = lineaDesglose('Cuota del proveedor', t.cuotaMensualSinIgv, 'Fija, pactada por contrato');
+  desglose += lineaDesglose('IGV (18%)', t.igv);
+  desglose += lineaDesglose('Total facturado', t.total, 'Lo que cobra el proveedor');
+  desglose += '<tr class="pb-sep"><td colspan="2">Costo real</td></tr>';
+  desglose += t.creditoFiscalIgv
+    ? lineaDesglose('Costo real (con crédito fiscal)', t.costoReal, 'El IGV se descuenta del que la empresa ya paga por sus ventas')
+    : lineaDesglose('Costo real (sin crédito fiscal)', t.costoReal, 'El IGV no se puede recuperar en este caso');
   return { desglose, avisos: e.riesgos };
 }
 
@@ -223,8 +246,11 @@ function condicionesHTML(cmp) {
 }
 
 // -------------------------------------------------------------- capacidad
+/** El escenario de UN motorizado: es del único del que tiene sentido preguntar "¿alcanza una sola moto?". */
+const unMotorizado = cmp => cmp.filas.find(f => f.escenario.cfg.personas === 1);
+
 function capacidadHTML(cmp, demanda) {
-  const cap = cmp.filas[0].escenario.capacidad;
+  const cap = unMotorizado(cmp).escenario.capacidad;
   const filas = cap.conPrograma.porZona
     .filter(z => z.viajesSemana > 0)
     .sort((a, b) => b.minutosSemana - a.minutosSemana)
@@ -259,7 +285,7 @@ function capacidadHTML(cmp, demanda) {
 
 // ------------------------------------------------- política de urgencias
 function politicaUrgencias(cmp, demanda) {
-  const cap = cmp.filas[0].escenario.capacidad;
+  const cap = unMotorizado(cmp).escenario.capacidad;
   const medidas = [
     ['Hora de corte diaria',
       'Lo que entra hasta las 16:00 se programa en la ruta del día siguiente. Después de esa hora, salvo'
@@ -282,7 +308,7 @@ function politicaUrgencias(cmp, demanda) {
       + ' de la hora de corte, publicado por área cada mes, suele bastar: casi nadie quiere aparecer primero'
       + ' en esa lista.'],
     ['Encargos recurrentes en calendario',
-      'Buena parte de los viajes se repiten: ' + esc(cmp.filas[0].escenario.capacidad.conPrograma.porZona
+      'Buena parte de los viajes se repiten: ' + esc(unMotorizado(cmp).escenario.capacidad.conPrograma.porZona
         .slice().sort((a, b) => b.viajesSemana - a.viajesSemana)[0].zona.nombre)
       + ' concentra el grueso. Lo que se repite todas las semanas no debería pedirse cada vez: se programa'
       + ' una vez y se repite solo.']

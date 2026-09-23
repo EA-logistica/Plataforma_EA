@@ -33,7 +33,7 @@ export function comparar(escenarios, demanda, opciones = {}) {
     // cobertura de vacaciones: cobra lo mismo mueva la empresa uno o cien
     // encargos, y esa es justamente la gracia de contratarlo así.
     if (e.cfg.modelo === 'tercero') {
-      const costoMensual = e.tercero.total;
+      const costoMensual = e.tercero.costoReal;
       const ahorroMensual = gastoActual - costoMensual;
       return {
         escenario: e,
@@ -147,13 +147,20 @@ function construirFlujo(cal, e, otrosMensuales, gastoActual, inversion) {
 }
 
 /**
- * Lo que tiene que ser cierto para que CUALQUIERA de los tres escenarios
- * funcione. Va aparte de los riesgos de cada uno porque no depende de a quién
- * se contrate: depende de cómo se pidan los envíos.
+ * Lo que tiene que ser cierto para que los escenarios de personal propio
+ * funcionen. Va aparte de los riesgos de cada uno porque no depende de a
+ * quién se contrate: depende de cómo se pidan los envíos.
+ *
+ * El proveedor a cuota fija (tercero) queda fuera de esta sección a
+ * propósito: no tiene "capacidad" que agrupar por zona ni que se desborde
+ * -eso es exactamente lo que compra la cuota fija-, así que estas
+ * condiciones se calculan sobre el primer escenario que sí es personal
+ * propio, no sobre `filas[0]` a ciegas.
  */
 function condiciones(filas, demanda) {
   const lista = [];
-  const uno = filas[0];
+  const personal = filas.filter(f => f.escenario.cfg.modelo !== 'tercero');
+  const uno = personal[0];
   if (!uno) return lista;
   const cap = uno.escenario.capacidad;
   const viajes = demanda.viajesPorDia.entreSemana;
@@ -162,8 +169,8 @@ function condiciones(filas, demanda) {
     nivel: cap.alcanza ? 'ok' : 'alto',
     titulo: 'Los envíos se agrupan por zona',
     texto: 'Agrupando, la carga de un día promedio (' + viajes.toFixed(1) + ' encargos) ocupa el '
-      + (cap.usoConPrograma * 100).toFixed(0) + '% del tiempo útil. Atendiendo cada pedido por separado, en'
-      + ' cuanto llega, haría falta el ' + (cap.usoSinPrograma * 100).toFixed(0)
+      + (cap.usoConPrograma * 100).toFixed(0) + '% del tiempo útil de "' + uno.escenario.nombre + '". Atendiendo'
+      + ' cada pedido por separado, en cuanto llega, haría falta el ' + (cap.usoSinPrograma * 100).toFixed(0)
       + '%: más del doble de la jornada. La programación no es una mejora, es la condición para que esto exista.'
   });
 
@@ -181,14 +188,27 @@ function condiciones(filas, demanda) {
     });
   }
 
-  lista.push({
-    nivel: 'aviso',
-    titulo: 'La capacidad es la misma en los tres escenarios',
-    texto: 'Una persona a tiempo completo y dos a media jornada suman las mismas horas de reparto a la semana.'
-      + ' Dos motos no rinden el doble si se turnan para cubrir el mismo horario; rinden el doble solo si salen'
-      + ' a la vez, y entonces media jornada queda sin cubrir. Lo que cambia entre escenarios es el costo y el'
-      + ' riesgo, no cuántos encargos se mueven.'
-  });
+  // A diferencia de la versión anterior de este análisis (una persona a
+  // tiempo completo frente a dos a media jornada, que sí sumaban las mismas
+  // horas), ahora los dos escenarios de personal propio tienen jornadas
+  // distintas: uno y dos motorizados a tiempo completo. La capacidad SÍ
+  // cambia, y conviene decirlo con el número real en vez de una regla fija.
+  const otrosPersonal = personal.slice(1);
+  if (otrosPersonal.length) {
+    const distintos = personal.filter(f => f.escenario.capacidad.techoDiario !== uno.escenario.capacidad.techoDiario);
+    if (distintos.length) {
+      const mayor = personal.slice().sort((a, b) => b.escenario.capacidad.techoDiario - a.escenario.capacidad.techoDiario)[0];
+      const menor = personal.slice().sort((a, b) => a.escenario.capacidad.techoDiario - b.escenario.capacidad.techoDiario)[0];
+      lista.push({
+        nivel: 'aviso',
+        titulo: 'La capacidad sí cambia entre uno y dos motorizados',
+        texto: '"' + mayor.escenario.nombre + '" aguanta ' + mayor.escenario.capacidad.techoDiario.toFixed(1)
+          + ' encargos al día contra ' + menor.escenario.capacidad.techoDiario.toFixed(1) + ' de "'
+          + menor.escenario.nombre + '". Más gente da más margen frente a un pico de demanda o para cubrir dos'
+          + ' zonas el mismo día. El proveedor a cuota fija no tiene este límite: la capacidad la pone él, no la empresa.'
+      });
+    }
+  }
 
   return lista;
 }

@@ -16,16 +16,44 @@ import { soles } from '../../utils/format.js';
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
 
-export function calendarioHTML(fila, inicio, gastoActual) {
-  if (fila && fila.escenario.cfg.modelo === 'tercero') {
-    return '<div class="panel" style="margin-top:22px">'
-      + '<h3>Beneficios sociales según la fecha de ingreso</h3>'
-      + '<p class="sub">No aplica: el proveedor a cuota fija no es personal en planilla, así que no hay'
-      + ' gratificación ni CTS que calendarizar.</p></div>';
-  }
+/**
+ * El control de fecha vive siempre, sin importar qué salga recomendado: es
+ * una entrada general del análisis, no un accesorio de una tarjeta puntual.
+ */
+function controlFecha(inicio) {
+  return '<div class="pb-cal-controles">'
+    + '<div class="field" style="margin:0"><label for="pbInicio">Fecha de ingreso del motorizado</label>'
+    + '<input class="input" type="date" id="pbInicio" value="' + esc(inicio)
+    + '" onchange="setInicioPayback(this.value)"></div>'
+    + '<div class="pb-cal-atajos">'
+    + atajo('Este mes', primerDiaRelativo(0))
+    + atajo('El próximo', primerDiaRelativo(1))
+    + atajo('En enero', primerDeEnero())
+    + '</div></div>';
+}
+
+/**
+ * @param {object} cmp     salida de payback.js#comparar
+ * @param {string} inicio  fecha elegida en el control, 'AAAA-MM-DD'
+ */
+export function calendarioHTML(cmp, inicio) {
+  const mejor = cmp.recomendacion.mejor;
+  // El proveedor a cuota fija no tiene calendario propio -no es planilla-,
+  // así que si es el recomendado se ilustra con el mejor escenario de
+  // personal propio en su lugar. El control de fecha sigue siendo el mismo
+  // para cualquiera de los dos: cambiarlo recalcula lo que se esté mostrando.
+  const esTercero = mejor && mejor.escenario.cfg.modelo === 'tercero';
+  const fila = !esTercero ? mejor : cmp.filas.find(f => f.flujo);
+  const notaTercero = esTercero
+    ? '<div class="banner" style="margin-bottom:14px"><div>El escenario recomendado -tercerizar- no tiene'
+      + ' calendario de beneficios: no es planilla. Se muestra "' + esc(fila ? fila.escenario.nombre : '')
+      + '" como referencia, para lo que sí es personal propio.</div></div>'
+    : '';
+
   if (!fila || !fila.flujo) {
     return '<div class="panel" style="margin-top:22px">'
       + '<h3>Beneficios sociales según la fecha de ingreso</h3>'
+      + controlFecha(inicio)
       + '<p class="sub">Elige una fecha válida para ver el calendario.</p></div>';
   }
 
@@ -41,21 +69,14 @@ export function calendarioHTML(fila, inicio, gastoActual) {
     + ' (por julio-diciembre). La CTS se deposita en mayo y noviembre. Cambiando la fecha de ingreso,'
     + ' todo el calendario se recalcula.</p>'
 
-    + '<div class="pb-cal-controles">'
-    + '<div class="field" style="margin:0"><label for="pbInicio">Fecha de ingreso del motorizado</label>'
-    + '<input class="input" type="date" id="pbInicio" value="' + esc(inicio)
-    + '" onchange="setInicioPayback(this.value)"></div>'
-    + '<div class="pb-cal-atajos">'
-    + atajo('Este mes', primerDiaRelativo(0))
-    + atajo('El próximo', primerDiaRelativo(1))
-    + atajo('En enero', primerDeEnero())
-    + '</div></div>'
+    + controlFecha(inicio)
+    + notaTercero
 
     + '<div class="kpis" style="margin-top:18px">'
     + kpi('', soles(f.costoPrimerAnio), 'Costo del primer año',
         'Contra ' + soles(fila.costoMensual * 12) + ' en un año de régimen')
     + kpi('ok', soles(f.ahorroPrimerAnio), 'Ahorro del primer año',
-        'Frente a ' + soles(gastoActual * 12) + ' de courier')
+        'Frente a ' + soles(cmp.gastoActual * 12) + ' de courier')
     + kpi('info', f.mesMasCaro.etiqueta, 'El mes que más aprieta',
         soles(f.mesMasCaro.costo) + ', por la gratificación')
     + (fila.inversion

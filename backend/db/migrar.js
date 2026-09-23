@@ -13,11 +13,12 @@ import { leer, escribir } from './repos/ajustes.js';
  * salta solo si ya se aplicó, comprobando `esquema_version` en `ajustes` —
  * misma tabla que ya guarda la revisión y `version_datos`.
  */
-const VERSION_ACTUAL = 2;
+const VERSION_ACTUAL = 3;
 
 export function migrar() {
   const desde = Number(leer('esquema_version', '1'));
   if (desde < 2) migrarA2();
+  if (desde < 3) migrarA3();
   if (desde < VERSION_ACTUAL) escribir('esquema_version', String(VERSION_ACTUAL));
 }
 
@@ -107,5 +108,38 @@ function migrarA2() {
     throw e;
   } finally {
     base.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+/**
+ * v3: agrega a `autorizaciones` quién es la persona que pide el alta -antes
+ * solo quedaba el DNI, y admin tenía que aprobarla a ciegas-.
+ *
+ * Son columnas nuevas con un valor por defecto constante ('') y sin CHECK: a
+ * diferencia de v2, esto SÍ lo permite `ALTER TABLE ADD COLUMN` directo, sin
+ * recrear la tabla ni copiar filas.
+ *
+ * Cada columna se agrega solo si todavía no existe: una base NUEVA ya la creó
+ * con esta forma desde `esquema.sql` -que siempre refleja la versión más
+ * reciente-, así que para ella esto no debe hacer nada. Solo una base vieja,
+ * creada antes de este cambio, de verdad necesita el `ALTER TABLE`.
+ */
+function migrarA3() {
+  const base = db();
+  const columnas = new Set(base.prepare('PRAGMA table_info(autorizaciones)').all().map(c => c.name));
+  const agregar = (nombre, tipo) => {
+    if (!columnas.has(nombre)) base.exec('ALTER TABLE autorizaciones ADD COLUMN ' + nombre + ' ' + tipo);
+  };
+  base.exec('BEGIN');
+  try {
+    agregar('apellidos', "TEXT NOT NULL DEFAULT ''");
+    agregar('nombres', "TEXT NOT NULL DEFAULT ''");
+    agregar('celular', "TEXT NOT NULL DEFAULT ''");
+    agregar('email', "TEXT NOT NULL DEFAULT ''");
+    agregar('area', "TEXT NOT NULL DEFAULT ''");
+    base.exec('COMMIT');
+  } catch (e) {
+    base.exec('ROLLBACK');
+    throw e;
   }
 }

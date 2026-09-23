@@ -355,13 +355,27 @@ try {
   console.log('\n-- autorizaciones --');
   // Pedirla sigue siendo autoservicio del solicitante, sin sesión. Verla y
   // resolverla es "Padrón y accesos": cosa de admin, seguimiento no entra.
-  const pedido = await api('POST', '/api/autorizaciones', { dni: '99999999' });
-  ok(pedido.status === 201 && pedido.datos.repetido === false, 'se registra un pedido de acceso sin sesión');
-  ok((await api('POST', '/api/autorizaciones', { dni: '99999999' })).datos.repetido === true,
+  const datosAut = { dni: '99999999', apellidos: 'PEREZ GOMEZ', nombres: 'JUAN CARLOS', celular: '987654321' };
+  ok((await api('POST', '/api/autorizaciones', { dni: '99999998' })).status === 400,
+     'sin apellidos, nombres ni celular, no se registra el pedido');
+  ok((await api('POST', '/api/autorizaciones', { ...datosAut, celular: '123' })).status === 400,
+     'un celular que no tiene forma de celular tampoco');
+  ok((await api('POST', '/api/autorizaciones', { ...datosAut, email: 'no-es-un-email' })).status === 400,
+     'un email con formato inválido, si se escribe, se rechaza');
+
+  const pedido = await api('POST', '/api/autorizaciones', { ...datosAut, email: 'juan@example.com', area: 'Ventas' });
+  ok(pedido.status === 201 && pedido.datos.repetido === false,
+     'con apellidos, nombres y celular válidos, se registra el pedido de acceso sin sesión');
+  ok((await api('POST', '/api/autorizaciones', datosAut)).datos.repetido === true,
      'pedirlo dos veces no duplica');
   ok((await api('GET', '/api/autorizaciones', undefined, tokenSeg)).status === 403,
      'seguimiento no puede ver la lista de pedidos pendientes: es "Padrón y accesos"');
-  ok((await api('GET', '/api/autorizaciones', undefined, tokenAdmin)).status === 200, 'admin sí');
+  const listaAut = await api('GET', '/api/autorizaciones', undefined, tokenAdmin);
+  ok(listaAut.status === 200, 'admin sí');
+  const filaAut = listaAut.datos.find(a => a.dni === '99999999');
+  ok(filaAut && filaAut.apellidos === 'PEREZ GOMEZ' && filaAut.nombres === 'JUAN CARLOS'
+     && filaAut.celular === '987654321' && filaAut.email === 'juan@example.com' && filaAut.area === 'Ventas',
+     'y ve quién es, no solo el DNI: apellidos, nombres, celular, email y área quedaron guardados');
   ok((await api('PATCH', '/api/autorizaciones/99999999', { estado: 'Rechazada' }, tokenSeg)).status === 403,
      'y resolverla —aprobar o rechazar— tampoco es suyo');
   ok((await api('PATCH', '/api/autorizaciones/99999999', { estado: 'Rechazada' }, tokenAdmin)).status === 200,

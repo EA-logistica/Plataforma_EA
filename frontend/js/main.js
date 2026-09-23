@@ -54,7 +54,7 @@ import { subirGuia, abrirAdjunto, eliminarAdjunto } from './views/attachments.js
 // Módulo payback: análisis de contratar motorizado propio frente al courier.
 // Vive fuera de js/ a propósito, con su propia data, backend y frontend.
 import {
-  renderPayback, setBonoPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setCreditoFiscalPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
   pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
 } from './views/payback/vista.js';
@@ -78,7 +78,7 @@ Object.assign(window, {
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista,
   crearCredencialAreaVista, restablecerClaveAreaVista, cambiarEstadoAreaVista,
   subirGuia, abrirAdjunto, eliminarAdjunto,
-  renderPayback, setBonoPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setCreditoFiscalPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
   pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
 });

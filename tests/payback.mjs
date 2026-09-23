@@ -209,15 +209,16 @@ const esc = construir(d);
 ok(esc.length === 3, `los tres escenarios pedidos (${esc.length})`);
 ok(esc.map(e => e.id).join(',') === Object.keys(ESCENARIOS).join(','), 'salen en el orden en que se plantearon');
 
-const [propia, tercero, dos] = esc;
+const [tercero, dosMotorizados, propia] = esc;
 ok(propia.cfg.personas === 1 && propia.cfg.sueldoBase === 1800 && propia.cfg.bono === 300,
-   'escenario 1: una persona, S/1800 + S/300, moto suya');
-ok(dos.cfg.personas === 2 && dos.cfg.sueldoBase === 800 && dos.cfg.bono === 250 && !dos.cfg.jornadaCompleta,
-   'escenario 3: dos part time, S/800 + S/250');
+   'escenario 3: una persona, S/1800 + S/300, moto suya');
+ok(dosMotorizados.cfg.personas === 2 && dosMotorizados.cfg.sueldoBase === 900
+   && dosMotorizados.cfg.bono === 0 && dosMotorizados.cfg.jornadaCompleta,
+   'escenario 2: dos personas a tiempo completo, S/900 cada una, sin bono aparte');
 
 console.log('\n-- tercerizar a cuota fija --');
 ok(tercero.cfg.modelo === 'tercero' && tercero.cfg.cuotaMensualSinIgv === 3500,
-   'escenario 2: proveedor externo, cuota fija de S/3500 sin IGV');
+   'escenario 1: proveedor externo, cuota fija de S/3500 sin IGV');
 ok(tercero.persona === null, 'no es planilla propia: no calcula costo de persona');
 ok(cerca(tercero.tercero.igv, 3500 * IGV.tasa), `el IGV es el 18% de la cuota (${tercero.tercero.igv.toFixed(2)})`);
 ok(cerca(tercero.tercero.total, 3500 * 1.18), `la cuota con IGV es S/${(3500 * 1.18).toFixed(2)} (${tercero.tercero.total.toFixed(2)})`);
@@ -225,10 +226,30 @@ ok(tercero.capacidad.alcanza === true, 'la capacidad del proveedor se da por cub
 ok(tercero.diasSinCoberturaAlAnio === 0, 'no hay vacaciones que cubrir: no es personal propio');
 ok(!tercero.riesgos.some(r => r.nivel === 'alto'), 'tercerizar no dispara ningún riesgo alto por sí solo');
 
-ok(cerca(propia.capacidad.techoDiario, dos.capacidad.techoDiario),
-   'los dos escenarios de personal propio tienen la misma capacidad: dos medias jornadas son una jornada');
+console.log('\n-- IGV: crédito fiscal o costo real --');
+ok(tercero.tercero.creditoFiscalIgv === true, 'por defecto se asume que la empresa puede usar el crédito fiscal');
+ok(cerca(tercero.tercero.costoReal, 3500), 'con crédito fiscal, el costo real es la cuota sin IGV (S/3500)');
+
+const [sinCredito] = construir(d, { creditoFiscalIgv: false });
+ok(sinCredito.tercero.creditoFiscalIgv === false, 'se puede apagar el supuesto (Nuevo RUS, o débito insuficiente)');
+ok(cerca(sinCredito.tercero.costoReal, sinCredito.tercero.total),
+   'sin crédito fiscal, el costo real es el total facturado con IGV (S/4130)');
+ok(sinCredito.tercero.costoReal > tercero.tercero.costoReal,
+   'sin poder usar el crédito, tercerizar sale más caro en la comparación');
+const cmpSinCredito = comparar(construir(d, { creditoFiscalIgv: false }), d);
+ok(cerca(cmpSinCredito.filas.find(f => f.escenario.id === 'tercero').costoMensual, sinCredito.tercero.total),
+   'y ese costo mayor es el que de verdad entra a competir contra el courier');
+
+console.log('\n-- uno o dos motorizados en planilla --');
+ok(dosMotorizados.capacidad.techoDiario > propia.capacidad.techoDiario,
+   `dos motorizados a tiempo completo aguantan más encargos al día que uno solo (${dosMotorizados.capacidad.techoDiario.toFixed(1)} contra ${propia.capacidad.techoDiario.toFixed(1)})`);
 ok(propia.riesgos.some(r => r.nivel === 'alto'), 'depender de una sola persona se marca como riesgo alto');
-ok(!dos.riesgos.some(r => r.nivel === 'alto'), 'con dos personas ese riesgo desaparece');
+ok(!dosMotorizados.riesgos.some(r => r.nivel === 'alto'), 'con dos personas ese riesgo puntual desaparece');
+// S/900 de básico a tiempo completo queda por debajo de la RMV (S/1130): es un
+// hallazgo real, no un capricho del cálculo, y el módulo ya sabía detectarlo.
+ok(dosMotorizados.persona.avisos.some(a => a.nivel === 'alto' && /mínima vital/.test(a.texto)),
+   'S/900 a tiempo completo queda debajo de la RMV: el módulo lo marca como aviso legal grave');
+ok(!propia.persona.avisos.some(a => a.nivel === 'alto'), 'S/1800 sí supera la RMV para jornada completa');
 
 // --------------------------------------------------------------- payback
 console.log('\n-- comparación y retorno --');
@@ -244,7 +265,12 @@ cmp.filas.forEach(f => {
   ok(cerca(f.ahorroMensual, cmp.gastoActual - f.costoMensual), `[${f.escenario.id}] el ahorro es gasto actual menos costo`);
 });
 const fTercero = cmp.filas.find(f => f.escenario.id === 'tercero');
-ok(cerca(fTercero.costoMensual, tercero.tercero.total), 'el costo mensual del tercero es la cuota fija con IGV, sin importar el volumen');
+ok(cerca(fTercero.costoMensual, tercero.tercero.costoReal),
+   'el costo mensual del tercero es el costo real (neto de crédito fiscal por defecto), no el total facturado');
+ok(cerca(tercero.tercero.costoReal, tercero.tercero.cuotaMensualSinIgv),
+   'con crédito fiscal (el supuesto por defecto), el costo real es la cuota sin IGV: el IGV no es un costo');
+ok(tercero.tercero.total > tercero.tercero.costoReal,
+   'el total facturado sigue siendo mayor: eso es lo que factura el proveedor, no lo que cuesta de verdad');
 ok(fTercero.coberturaVacaciones === 0 && fTercero.courierResidual === 0,
    'no arrastra cobertura de vacaciones ni courier residual: eso es cosa del proveedor');
 ok(cmp.filas.every(f => f.inversion === 0 && f.mesesRetorno === 0),
@@ -269,7 +295,8 @@ conFecha.filas.filter(f => f.escenario.cfg.modelo !== 'tercero').forEach(f => {
   ok(f.flujo.mesRecuperacion === null, `[${f.escenario.id}] sin inversión no hay mes de recuperación`);
 });
 const enEnero = comparar(esc, d, { inicio: '2027-01-01' });
-ok(enEnero.filas[0].flujo.costoPrimerAnio !== conFecha.filas[0].flujo.costoPrimerAnio,
+const conModelo = filas => filas.find(f => f.escenario.cfg.modelo !== 'tercero');
+ok(conModelo(enEnero.filas).flujo.costoPrimerAnio !== conModelo(conFecha.filas).flujo.costoPrimerAnio,
    'cambiar la fecha de ingreso cambia el costo del primer año');
 
 // ------------------------------------------------------------ la pantalla

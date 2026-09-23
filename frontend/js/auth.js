@@ -52,6 +52,7 @@ export async function entrarSolicitante() {
     $('loginAlertTitle').textContent = 'Acceso denegado. Solicitar autorización a Logística';
     $('loginAlertMsg').textContent = 'El documento ' + dni + ' no figura en la base de personal de Plásticos Nacionales, así que no es posible registrar solicitudes con este DNI.';
     $('loginAlertActions').style.display = 'block';
+    $('eAutorizacion').classList.remove('on');
     box.classList.add('on');
     return;
   }
@@ -106,9 +107,25 @@ export async function pedirAutorizacion() {
   const dni = normalizarDoc($('dniInput').value);
   if (!DOC_VALIDO.test(dni)) return;
 
+  const datos = {
+    apellidos: $('autApellidos').value.trim(),
+    nombres: $('autNombres').value.trim(),
+    celular: $('autCelular').value.replace(/\D/g, ''),
+    email: $('autEmail').value.trim(),
+    area: $('autArea').value.trim()
+  };
+  // El servidor valida igual (nunca se confía solo en el navegador), pero
+  // avisar acá evita el viaje de red por un campo vacío obvio.
+  if (datos.apellidos.length < 2 || datos.nombres.length < 2
+      || datos.celular.length < 9 || datos.celular.length > 11) {
+    $('eAutorizacion').classList.add('on');
+    return;
+  }
+  $('eAutorizacion').classList.remove('on');
+
   let r;
   try {
-    r = await apiPedirAutorizacion(dni);
+    r = await apiPedirAutorizacion(dni, datos);
   } catch (e) {
     toast('No se pudo registrar el pedido', e.message, 'bad');
     return;
@@ -121,6 +138,7 @@ export async function pedirAutorizacion() {
   $('loginAlertMsg').textContent = 'Registramos el DNI ' + dni + ' para revisión. Vuelve a intentar el ingreso cuando logística confirme tu alta en el padrón.';
   $('loginAlert').classList.add('ok');
   $('loginAlertActions').style.display = 'none';
+  ['autApellidos', 'autNombres', 'autCelular', 'autEmail', 'autArea'].forEach(id => { $(id).value = ''; });
   toast('Autorización solicitada', 'DNI ' + dni + ' en cola de revisión.');
 }
 

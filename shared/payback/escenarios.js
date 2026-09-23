@@ -30,7 +30,7 @@ export function construir(demanda, opciones = {}) {
   const viajesPorDia = demanda.viajesPorDia.entreSemana || demanda.viajesPorDia.promedio;
 
   return Object.values(ESCENARIOS).map(base => {
-    if (base.modelo === 'tercero') return construirTercero(base);
+    if (base.modelo === 'tercero') return construirTercero(base, opciones);
 
     const cfg = {
       ...base,
@@ -77,9 +77,24 @@ export function construir(demanda, opciones = {}) {
  * este escenario no pasa por costoPersona/evaluar -esas cuentas son de
  * planilla propia- y arma su resultado aparte, con la forma mínima que
  * payback.js necesita para compararlo con los otros dos.
+ *
+ * @param {object} base
+ * @param {object} [opciones]
+ * @param {boolean} [opciones.creditoFiscalIgv]  ver la nota sobre `costoReal` abajo
  */
-function construirTercero(base) {
+function construirTercero(base, opciones = {}) {
   const igv = base.cuotaMensualSinIgv * IGV.tasa;
+  const total = base.cuotaMensualSinIgv + igv;
+  // El IGV que factura un proveedor formal es crédito fiscal para una empresa
+  // del Régimen General/MYPE Tributario que ya genera débito fiscal por sus
+  // propias ventas: lo paga en la factura, pero ese mismo mes descuenta el
+  // mismo monto de lo que le debe a SUNAT. No es una salida de caja neta, es
+  // un traslado -por eso el costo que de verdad compite contra el gasto
+  // actual en courier es la cuota SIN IGV, no el total facturado-.
+  // El supuesto es editable (`creditoFiscalIgv`, por defecto activado) porque
+  // solo vale si la empresa puede usar el crédito: no aplica bajo el Nuevo
+  // RUS, ni si el débito fiscal del mes no alcanza para absorberlo.
+  const creditoFiscalIgv = opciones.creditoFiscalIgv !== false;
   return {
     id: base.id,
     nombre: base.nombre,
@@ -89,24 +104,37 @@ function construirTercero(base) {
     tercero: {
       cuotaMensualSinIgv: base.cuotaMensualSinIgv,
       igv,
-      total: base.cuotaMensualSinIgv + igv
+      total,
+      creditoFiscalIgv,
+      /** El costo que de verdad se compara contra el courier: neto de IGV si se puede usar el crédito, bruto si no. */
+      costoReal: creditoFiscalIgv ? base.cuotaMensualSinIgv : total
     },
     // No es nuestro que cubrir: el proveedor responde por su propia gente y
     // su propio vehículo. "Alcanza" siempre, que es justo lo que compra la
     // cuota fija.
     capacidad: { alcanza: true },
     diasSinCoberturaAlAnio: 0,
-    riesgos: riesgosTercero()
+    riesgos: riesgosTercero(creditoFiscalIgv)
   };
 }
 
-function riesgosTercero() {
+function riesgosTercero(creditoFiscalIgv) {
   return [
+    { nivel: 'ok', texto: 'Accidentes, seguros y contratar personal dejan de ser un problema de la empresa:'
+      + ' son responsabilidad del proveedor, no de logística. Lo único que queda por vigilar es que cumpla los'
+      + ' viajes asignados del día -esa es la única condición real de este escenario, no una entre varias.' },
     { nivel: 'ok', texto: 'La cuota es fija: cueste lo que cueste el volumen del mes, no cambia. El riesgo de'
       + ' la demanda lo asume el proveedor, no la empresa.' },
-    { nivel: 'aviso', texto: 'La capacidad, la cobertura de vacaciones y la moto son responsabilidad del'
-      + ' proveedor, no de logística: conviene dejarlo explícito en el contrato, con tiempos de respuesta y'
-      + ' penalidad si no cumple.' },
+    creditoFiscalIgv
+      ? { nivel: 'ok', texto: 'El IGV de la factura se está tratando como crédito fiscal: se descuenta del'
+          + ' IGV que la empresa ya paga por sus propias ventas, así que el costo real de decisión es la cuota'
+          + ' SIN IGV. Vale solo si la empresa está en Régimen General o MYPE Tributario y genera débito fiscal'
+          + ' suficiente para absorberlo cada mes; si no, el costo real es el total facturado.' }
+      : { nivel: 'aviso', texto: 'Se está contando el IGV como costo (no se puede usar como crédito fiscal en'
+          + ' este caso), así que el costo real es el total facturado con IGV incluido.' },
+    { nivel: 'aviso', texto: 'Justamente porque la responsabilidad es del proveedor, el control real se reduce a'
+      + ' un solo indicador: viajes asignados contra viajes cumplidos, por día. Sin ese seguimiento explícito, un'
+      + ' incumplimiento se nota recién cuando el área afectada se queja, no cuando ocurre.' },
     { nivel: 'aviso', texto: 'No hay activo ni personal propio que perder si el proveedor falla un día, pero'
       + ' tampoco hay control directo sobre quién reparte ni cómo. Conviene pedir referencias y una cláusula'
       + ' de salida sin permanencia larga.' },

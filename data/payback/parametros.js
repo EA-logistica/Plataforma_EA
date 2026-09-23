@@ -93,6 +93,23 @@ export const IGV = { tasa: 0.18 };
  * construirTercero) porque es una cuota fija a un proveedor, no un puesto.
  */
 export const ESCENARIOS = {
+  tercero: {
+    id: 'tercero',
+    nombre: 'Tercerizar con un proveedor a cuota fija',
+    detalle: 'Un proveedor externo se hace cargo de toda la mensajería por una cuota mensual fija de S/ 3 500 + IGV, sin importar cuántos encargos salgan. No es personal de la empresa: no hay planilla, moto que comprar ni vacaciones que cubrir. A cambio, la empresa depende de que el proveedor cumpla los viajes asignados del día.',
+    modelo: 'tercero',
+    cuotaMensualSinIgv: 3500
+  },
+  dosMotorizados: {
+    id: 'dosMotorizados',
+    nombre: 'Dos motorizados en planilla, tiempo completo',
+    detalle: 'Dos personas contratadas a tiempo completo, S/ 900 de básico cada una y todos los beneficios de ley (gratificaciones, CTS, EsSalud, Vida Ley, SCTR). La moto, el combustible y el mantenimiento corren por cuenta de cada una.',
+    personas: 2,
+    sueldoBase: 900,
+    bono: 0,
+    bonoRemunerativo: true,
+    jornadaCompleta: true
+  },
   propia: {
     id: 'propia',
     nombre: 'Un motorizado con moto propia',
@@ -102,23 +119,6 @@ export const ESCENARIOS = {
     bono: 300,
     bonoRemunerativo: true,
     jornadaCompleta: true
-  },
-  tercero: {
-    id: 'tercero',
-    nombre: 'Tercerizar con un proveedor a cuota fija',
-    detalle: 'Un proveedor externo se hace cargo de toda la mensajería por una cuota mensual fija de S/ 3 500 + IGV, sin importar cuántos encargos salgan. No es personal de la empresa: no hay planilla, moto que comprar ni vacaciones que cubrir.',
-    modelo: 'tercero',
-    cuotaMensualSinIgv: 3500
-  },
-  dosPartTime: {
-    id: 'dosPartTime',
-    nombre: 'Dos motorizados part time con moto propia',
-    detalle: 'Dos personas que se reparten la jornada, cada una por debajo de 4 horas diarias. Con dos motos en paralelo se cubren dos zonas a la vez.',
-    personas: 2,
-    sueldoBase: 800,
-    bono: 250,
-    bonoRemunerativo: true,
-    jornadaCompleta: false
   }
 };
 

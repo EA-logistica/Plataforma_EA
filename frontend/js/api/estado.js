@@ -182,10 +182,14 @@ export async function exportarExcel(desde, hasta) {
 }
 
 // --------------------------------------------------------- autorizaciones
-export async function pedirAutorizacion(dni) {
-  const r = await crear('/autorizaciones', { dni });
+export async function pedirAutorizacion(dni, datos) {
+  const r = await crear('/autorizaciones', { dni, ...datos });
   if (!r.repetido) {
-    DB.autorizaciones.unshift({ dni: r.dni, solicitado: new Date().toISOString(), estado: 'Pendiente' });
+    DB.autorizaciones.unshift({
+      dni: r.dni, solicitado: new Date().toISOString(), estado: 'Pendiente',
+      apellidos: datos.apellidos, nombres: datos.nombres, celular: datos.celular,
+      email: datos.email || '', area: datos.area || ''
+    });
   }
   return r;
 }

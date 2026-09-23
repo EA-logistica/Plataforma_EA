@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plásticos Nacionales · Mensajería y Encargos</title>
 <script src="js/ui/themeBoot.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 
 <script type="importmap">
@@ -99,6 +102,32 @@
             <strong id="loginAlertTitle">Acceso denegado</strong>
             <p id="loginAlertMsg"></p>
             <div style="margin-top:11px;display:none" id="loginAlertActions">
+              <p class="hint" style="margin:0 0 10px">Para que logística sepa a quién habilita, identifícate:</p>
+              <div class="row">
+                <div class="field" style="margin-bottom:10px">
+                  <label for="autApellidos">Apellidos <span class="req">*</span></label>
+                  <input class="input" id="autApellidos" autocomplete="off">
+                </div>
+                <div class="field" style="margin-bottom:10px">
+                  <label for="autNombres">Nombres <span class="req">*</span></label>
+                  <input class="input" id="autNombres" autocomplete="off">
+                </div>
+              </div>
+              <div class="row">
+                <div class="field" style="margin-bottom:10px">
+                  <label for="autCelular">Celular <span class="req">*</span></label>
+                  <input class="input" id="autCelular" inputmode="numeric" maxlength="12" placeholder="999999999" autocomplete="off">
+                </div>
+                <div class="field" style="margin-bottom:10px">
+                  <label for="autEmail">Email <span class="hint" style="display:inline">(opcional)</span></label>
+                  <input class="input" id="autEmail" type="email" autocomplete="off">
+                </div>
+              </div>
+              <div class="field" style="margin-bottom:10px">
+                <label for="autArea">Área <span class="hint" style="display:inline">(opcional)</span></label>
+                <input class="input" id="autArea" autocomplete="off">
+              </div>
+              <div class="err" id="eAutorizacion">Completa apellidos, nombres y un celular válido de 9 dígitos.</div>
               <button class="btn btn-sm" onclick="pedirAutorizacion()">Pedir autorización a logística</button>
             </div>
           </div>

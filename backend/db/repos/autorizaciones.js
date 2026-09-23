@@ -5,12 +5,23 @@ import { tocar } from './ajustes.js';
 /**
  * Pedidos de acceso de quien intentó entrar sin figurar en el padrón.
  *
- * Es la única vía por la que alguien de fuera deja rastro en el sistema, así
- * que se guarda el documento tal como quedó normalizado y nada más: no se
- * pregunta nombre ni correo a alguien sin verificar.
+ * Es la única vía por la que alguien de fuera deja rastro en el sistema. Con
+ * solo el DNI, admin no tenía forma de saber a quién estaba habilitando ni de
+ * contactarlo para confirmar; por eso apellidos, nombres y celular son
+ * obligatorios para pedirla -email y área quedan a criterio de quien la pide,
+ * porque no siempre se conocen o aplican-.
  */
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
+
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LARGO_MAX = { apellidos: 120, nombres: 120, email: 150, area: 120 };
+
+function tope(campo, valor) {
+  if (valor.length > LARGO_MAX[campo]) {
+    throw error('El campo "' + campo + '" no puede superar los ' + LARGO_MAX[campo] + ' caracteres.');
+  }
+}
 
 export function listar() {
   return db().prepare('SELECT * FROM autorizaciones ORDER BY solicitado DESC').all().map(aCamel);
@@ -19,9 +30,21 @@ export function listar() {
 export const pendientes = () =>
   listar().filter(a => a.estado === 'Pendiente');
 
-export function pedir(doc) {
+export function pedir(doc, datos = {}) {
   const dni = normalizarDoc(doc);
   if (!DOC_VALIDO.test(dni)) throw error('Documento inválido.');
+
+  const apellidos = String(datos.apellidos || '').trim();
+  const nombres = String(datos.nombres || '').trim();
+  const celular = String(datos.celular || '').replace(/\D/g, '');
+  const email = String(datos.email || '').trim();
+  const area = String(datos.area || '').trim();
+
+  if (apellidos.length < 2) throw error('Escribe los apellidos de quien solicita el acceso.');
+  if (nombres.length < 2) throw error('Escribe los nombres de quien solicita el acceso.');
+  if (celular.length < 9 || celular.length > 11) throw error('Ingresa un celular válido de 9 dígitos.');
+  if (email && !EMAIL_VALIDO.test(email)) throw error('El email no tiene un formato válido.');
+  tope('apellidos', apellidos); tope('nombres', nombres); tope('email', email); tope('area', area);
 
   const yaHay = db().prepare(
     "SELECT 1 FROM autorizaciones WHERE dni = ? AND estado = 'Pendiente'"
@@ -29,8 +52,9 @@ export function pedir(doc) {
   if (yaHay) return { dni, repetido: true };
 
   db().prepare(
-    "INSERT INTO autorizaciones (dni, solicitado, estado) VALUES (?, ?, 'Pendiente')"
-  ).run(dni, new Date().toISOString());
+    "INSERT INTO autorizaciones (dni, apellidos, nombres, celular, email, area, solicitado, estado) "
+    + "VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente')"
+  ).run(dni, apellidos, nombres, celular, email, area, new Date().toISOString());
   tocar();
   return { dni, repetido: false };
 }

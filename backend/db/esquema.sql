@@ -98,9 +98,17 @@ CREATE INDEX IF NOT EXISTS idx_paradas_ticket ON paradas (ticket_id);
 
 -- ---------------------------------------------------------- autorizaciones
 -- Pedidos de alta en el padrón de quien intentó entrar sin figurar en él.
+-- Antes solo se guardaba el DNI: no alcanzaba para que admin supiera a quién
+-- estaba habilitando. Apellidos, nombres y celular son obligatorios para
+-- pedirla; email y área quedan a criterio de quien la pide.
 CREATE TABLE IF NOT EXISTS autorizaciones (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   dni         TEXT NOT NULL,
+  apellidos   TEXT NOT NULL DEFAULT '',
+  nombres     TEXT NOT NULL DEFAULT '',
+  celular     TEXT NOT NULL DEFAULT '',
+  email       TEXT NOT NULL DEFAULT '',
+  area        TEXT NOT NULL DEFAULT '',
   solicitado  TEXT NOT NULL,
   estado      TEXT NOT NULL DEFAULT 'Pendiente'
               CHECK (estado IN ('Pendiente', 'Aprobada', 'Rechazada'))

@@ -246,7 +246,8 @@ const frenoAutorizaciones = limitarPeticiones({
   maximo: 10, ventanaMs: 5 * 60 * 1000, nombre: 'autorizaciones',
   mensaje: 'Demasiados pedidos en poco tiempo. Espera unos minutos.'
 });
-api.post('/autorizaciones', frenoAutorizaciones, (req, res) => res.status(201).json(autorizaciones.pedir(req.body?.dni)));
+api.post('/autorizaciones', frenoAutorizaciones, (req, res) =>
+  res.status(201).json(autorizaciones.pedir(req.body?.dni, req.body || {})));
 api.patch('/autorizaciones/:dni', requiereSesion, requiereRol('admin'), (req, res) => {
   const r = autorizaciones.resolver(req.params.dni, req.body?.estado);
   log('autorizacion_resuelta', req, 'DNI ' + req.params.dni + ' → ' + req.body?.estado);
@@ -314,6 +315,7 @@ api.get('/payback', requiereSesion, requiereRol('admin'), (req, res) => {
 
   const opciones = {
     bonoRemunerativo: req.query.bono !== 'no',
+    creditoFiscalIgv: req.query.creditoFiscal !== 'no',
     inicio: req.query.inicio
   };
   const cmp = comparar(construir(demanda, opciones), demanda, opciones);
@@ -333,6 +335,10 @@ api.get('/payback', requiereSesion, requiereRol('admin'), (req, res) => {
       mesesRetorno: f.mesesRetorno,
       costoPrimerAnio: f.flujo ? f.flujo.costoPrimerAnio : null,
       mesRecuperacion: f.flujo ? f.flujo.mesRecuperacion : null,
+      // Solo el proveedor a cuota fija factura IGV: se expone el desglose
+      // para que quede claro que costoMensual ya es el neto de crédito
+      // fiscal, no el total que aparece en la factura.
+      tercero: f.escenario.cfg.modelo === 'tercero' ? f.escenario.tercero : null,
       // El proveedor a cuota fija no tiene techo ni uso de jornada que
       // reportar: esa capacidad es suya, no se dimensiona contra planilla propia.
       capacidad: f.escenario.cfg.modelo === 'tercero' ? null : {

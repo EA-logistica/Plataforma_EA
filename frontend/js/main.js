@@ -38,7 +38,7 @@ import {
   renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico
 } from './views/history.js';
-import { setFiltroKpi } from './views/kpi.js';
+import { setFiltroKpi, setQKpi, limpiarFiltroKpi } from './views/kpi.js';
 import {
   renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut,
   atenderPedidoHistorico, rechazarPedidoHistorico
@@ -54,7 +54,7 @@ import { subirGuia, abrirAdjunto, eliminarAdjunto } from './views/attachments.js
 // Módulo payback: análisis de contratar motorizado propio frente al courier.
 // Vive fuera de js/ a propósito, con su propia data, backend y frontend.
 import {
-  renderPayback, setBonoPayback, setCreditoFiscalPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
   pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
 } from './views/payback/vista.js';
@@ -72,13 +72,13 @@ Object.assign(window, {
   abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud,
   renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico,
-  setFiltroKpi,
+  setFiltroKpi, setQKpi, limpiarFiltroKpi,
   renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut,
   atenderPedidoHistorico, rechazarPedidoHistorico,
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista,
   crearCredencialAreaVista, restablecerClaveAreaVista, cambiarEstadoAreaVista,
   subirGuia, abrirAdjunto, eliminarAdjunto,
-  renderPayback, setBonoPayback, setCreditoFiscalPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
   pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
 });

@@ -62,8 +62,6 @@
 
       <div class="logistica-popover" id="logisticaPopover">
         <section class="card card-pad">
-          <h2 class="card-title">Acceso de logística</h2>
-          <p class="card-note">Bandeja de despacho, tarifas e indicadores. Usuario y clave los entrega el administrador.</p>
           <div class="field">
             <label for="userInput">Usuario</label>
             <input class="input" id="userInput" placeholder="usuario" autocomplete="off">
@@ -73,7 +71,7 @@
             <input class="input" id="pinInput" type="password" placeholder="••••••••" autocomplete="off">
             <div class="err" id="pinErr">Usuario o clave incorrectos.</div>
           </div>
-          <button class="btn btn-ghost btn-wide" onclick="entrarAdmin()">Entrar como logística</button>
+          <button class="btn btn-ghost btn-wide" onclick="entrarAdmin()">Ingresar</button>
         </section>
       </div>
     </div>
@@ -94,7 +92,7 @@
     <section class="waybill card-pad">
       <div id="dniStage">
         <h2 class="card-title">Ingreso del solicitante</h2>
-        <p class="card-note">Escribe tu DNI para validar que estás en el padrón de personal.</p>
+        <p class="card-note">Escribe tu DNI para validar que estás en el headcount de la empresa.</p>
 
         <div class="alert" id="loginAlert">
           <div class="alert-icon" id="loginAlertIcon">!</div>
@@ -376,6 +374,7 @@
         <button class="btn btn-sm" onclick="abrirExportarExcel()">Exportar a Excel</button>
       </div>
     </div>
+    <div id="histMetricsWrap"></div>
     <div class="filters">
       <input class="input" id="qHist" placeholder="Persona o DNI" style="width:190px" oninput="filtrarHistorico()">
       <input class="input" id="histTicket" placeholder="Ticket" style="width:120px" oninput="filtrarHistorico()">
@@ -394,6 +393,10 @@
         <p id="kpiRango">—</p>
       </div>
       <div class="tools" id="fKpi"></div>
+    </div>
+    <div class="filters">
+      <input class="input" id="qKpi" placeholder="Buscar por persona, DNI, área o destino" style="width:280px" oninput="setQKpi(this.value)">
+      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroKpi()">Limpiar búsqueda</button>
     </div>
     <div class="kpis" id="kpiCards"></div>
     <div class="panel">

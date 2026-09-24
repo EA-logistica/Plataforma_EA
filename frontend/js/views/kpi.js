@@ -8,8 +8,12 @@ import { origenCorto } from './presenters.js';
  * columnas SVG) sobre el rango de fechas seleccionado.
  */
 let filtroKpi = 0;
+/** Busca por persona, DNI, área o destino: acota los mismos indicadores de abajo, no una tabla aparte. */
+let qKpi = '';
 
 export function setFiltroKpi(d) { filtroKpi = d; renderKpi(); }
+export function setQKpi(v) { qKpi = v || ''; renderKpi(); }
+export function limpiarFiltroKpi() { qKpi = ''; $('qKpi').value = ''; renderKpi(); }
 export function renderKpiSiVisible() { if ($('aKpi').classList.contains('on')) renderKpi(); }
 
 function barras(items, total, clase) {
@@ -50,7 +54,12 @@ function columnas(dias) {
 export function renderKpi() {
   const corte = new Date(); corte.setHours(0, 0, 0, 0); corte.setDate(corte.getDate() - (filtroKpi - 1));
   const todo = filtroKpi === 0;
-  const enRango = DB.solicitudes.filter(s => todo || new Date(s.creado) >= corte);
+  let enRango = DB.solicitudes.filter(s => todo || new Date(s.creado) >= corte);
+  const q = qKpi.trim().toLowerCase();
+  if (q) {
+    enRango = enRango.filter(s =>
+      (s.nombre + ' ' + s.dni + ' ' + s.area + ' ' + s.destino + ' ' + (s.servicio || '')).toLowerCase().includes(q));
+  }
   // Un servicio cancelado no se ejecutó: no debe inflar "viajes totales" ni
   // el valorizado, ni aparecer entre los rankings. Se cuenta aparte, en su
   // propia tarjeta, porque igual es información operativa útil.
@@ -72,9 +81,10 @@ export function renderKpi() {
   const tiempos = concluidos.map(s => horasEntre(s.tsEspera, s.tsConcluido)).filter(h => h != null);
   const promAtencion = tiempos.length ? tiempos.reduce((a, b) => a + b, 0) / tiempos.length : null;
 
-  $('kpiRango').textContent = todo
+  $('kpiRango').textContent = (todo
     ? 'Todo el histórico · ' + lista.length + ' servicios'
-    : 'Últimos ' + filtroKpi + ' días · ' + fechaCorta(corte) + ' al ' + fechaCorta(new Date());
+    : 'Últimos ' + filtroKpi + ' días · ' + fechaCorta(corte) + ' al ' + fechaCorta(new Date()))
+    + (q ? ' · filtrado por "' + qKpi.trim() + '"' : '');
 
   $('kpiCards').innerHTML = [
     { c: 'primary', v: lista.length, k: 'Viajes totales', d: diasSet.size + ' días con movimiento' },

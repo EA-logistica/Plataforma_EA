@@ -38,13 +38,16 @@ const estado = {
   // que genera débito fiscal por sus propias ventas usa el IGV de la factura
   // del proveedor como crédito fiscal, así que no es un costo real. Se puede
   // apagar si no aplica (Nuevo RUS, o débito fiscal insuficiente ese mes).
-  creditoFiscalIgv: true
+  creditoFiscalIgv: true,
+  /** A cuántos días se paga la factura del proveedor: no cambia la cuota, cambia cuándo sale de caja. */
+  plazoPagoDias: 30
 };
 
 export function setBonoPayback(v) { estado.bonoRemunerativo = v === 'si'; renderPayback(); }
 export function setAsignacionPayback(v) { estado.asignacionFamiliar = Number(v) || 0; renderPayback(); }
 export function setInicioPayback(v) { if (v) estado.inicio = v; renderPayback(); }
 export function setCreditoFiscalPayback(v) { estado.creditoFiscalIgv = v === 'si'; renderPayback(); }
+export function setPlazoPagoPayback(v) { estado.plazoPagoDias = Number(v) || 30; renderPayback(); }
 
 // Los controles del simulador de ruta se reexportan desde aquí para que main.js
 // tenga un solo punto de entrada al módulo.
@@ -97,11 +100,17 @@ function controles() {
     + opcion('si', 'Sí: Régimen General/MYPE Tributario, con débito fiscal suficiente', estado.creditoFiscalIgv)
     + opcion('no', 'No: se cuenta el IGV como costo real', !estado.creditoFiscalIgv)
     + '</select></div>'
+    + '<div class="field" style="margin:0"><label for="pbPlazoPago">Plazo de pago al proveedor (tercerizar)</label>'
+    + '<select class="select" id="pbPlazoPago" onchange="setPlazoPagoPayback(this.value)">'
+    + opcion('30', '30 días', estado.plazoPagoDias === 30)
+    + opcion('45', '45 días', estado.plazoPagoDias === 45)
+    + '</select></div>'
     + '</div>'
     + '<div class="hint">El tratamiento del bono lo define RR.HH.: si es condición de trabajo no entra a la'
     + ' base de beneficios y el costo baja. El del IGV lo define contabilidad: si la empresa puede usarlo como'
     + ' crédito fiscal, no es un costo real -se descuenta del IGV que ya paga por sus ventas- y el costo de'
-    + ' tercerizar que compite contra el courier es la cuota sin IGV, no el total facturado.</div>'
+    + ' tercerizar que compite contra el courier es la cuota sin IGV, no el total facturado. El plazo de pago no'
+    + ' cambia la cuota, solo cuánto tiempo queda ese dinero en caja antes de pagarla.</div>'
     + '</div>';
 }
 
@@ -226,6 +235,8 @@ function desgloseTercero(e) {
   let desglose = lineaDesglose('Cuota del proveedor', t.cuotaMensualSinIgv, 'Fija, pactada por contrato');
   desglose += lineaDesglose('IGV (18%)', t.igv);
   desglose += lineaDesglose('Total facturado', t.total, 'Lo que cobra el proveedor');
+  desglose += '<tr><td>Plazo de pago<span class="pb-nota">No cambia la cuota, solo cuándo sale de caja</span></td>'
+    + '<td class="mono">' + t.plazoPagoDias + ' días</td></tr>';
   desglose += '<tr class="pb-sep"><td colspan="2">Costo real</td></tr>';
   desglose += t.creditoFiscalIgv
     ? lineaDesglose('Costo real (con crédito fiscal)', t.costoReal, 'El IGV se descuenta del que la empresa ya paga por sus ventas')

@@ -236,9 +236,17 @@ try {
   globalThis.filtrarHistorico();
   ok(filas() > 0, 'el filtro de destino encuentra coincidencias');
 
+  $('qHist').value = ''; $('histDestino').value = ''; $('histTicket').value = TICKET;
+  globalThis.filtrarHistorico();
+  const metrTicket = $('histMetricsWrap').innerHTML;
+  ok(/<div class="v">1<\/div>/.test(metrTicket) && /Según el filtro aplicado/.test(metrTicket),
+     'las métricas de arriba se recalculan sobre el filtro, no sobre todo el histórico');
+
   globalThis.limpiarFiltrosHistorico();
   ok(filas() === 20 && $('qHist').value === '' && $('histTicket').value === '' && $('histDestino').value === '',
      'limpiar filtros vuelve al listado completo, página 1');
+  ok($('histMetricsWrap').innerHTML.includes('Todo el histórico'),
+     'y las métricas vuelven a ser las del histórico completo');
 
   globalThis.abrirExportarExcel();
   ok($('modalBody').innerHTML.includes('expDesde') && $('modalBody').innerHTML.includes('expHasta'),
@@ -246,6 +254,23 @@ try {
   globalThis.cerrarModal();
   // La descarga en sí (fetch + Blob + URL.createObjectURL) se prueba contra el
   // servidor real en tests/api.mjs: ese lado no tiene sentido simularlo aquí.
+
+  // ------------------------------------------------------------ indicadores
+  console.log('\n-- indicadores --');
+  globalThis.tabAdmin('kpi');
+  ok($('aKpi').classList.contains('on'), 'la pestaña de indicadores abre');
+  const totalSinFiltro = Number($('kpiCards').innerHTML.match(/<div class="v">([\d.,]+)<\/div>/)[1].replace(/,/g, ''));
+  ok(totalSinFiltro > 0, `sin búsqueda, muestra los viajes totales del rango (${totalSinFiltro})`);
+
+  globalThis.setQKpi('73012556');
+  ok($('kpiRango').textContent.includes('filtrado por "73012556"'), 'buscar por DNI se refleja en el rótulo del rango');
+  const totalConFiltro = Number($('kpiCards').innerHTML.match(/<div class="v">([\d.,]+)<\/div>/)[1].replace(/,/g, ''));
+  ok(totalConFiltro > 0 && totalConFiltro < totalSinFiltro,
+     `y acota los indicadores a esa persona, no a todo el rango (${totalConFiltro} de ${totalSinFiltro})`);
+
+  globalThis.limpiarFiltroKpi();
+  ok($('qKpi').value === '' && !$('kpiRango').textContent.includes('filtrado por'),
+     'limpiar la búsqueda vuelve a los indicadores del rango completo');
 
   // --------------------------------------------------------------- payback
   console.log('\n-- payback --');

@@ -81,10 +81,16 @@ export function construir(demanda, opciones = {}) {
  * @param {object} base
  * @param {object} [opciones]
  * @param {boolean} [opciones.creditoFiscalIgv]  ver la nota sobre `costoReal` abajo
+ * @param {number} [opciones.plazoPagoDias]  30 o 45: a cuántos días se paga la factura del proveedor
  */
 function construirTercero(base, opciones = {}) {
   const igv = base.cuotaMensualSinIgv * IGV.tasa;
   const total = base.cuotaMensualSinIgv + igv;
+  // El plazo de pago no cambia cuánto se debe -la cuota es la misma-, cambia
+  // CUÁNDO sale de caja: a más días, más tiempo circula ese dinero en la
+  // empresa antes de pagarlo. Es una condición de negociación con el
+  // proveedor, no un costo, así que no toca costoReal ni costoMensual.
+  const plazoPagoDias = [30, 45].includes(opciones.plazoPagoDias) ? opciones.plazoPagoDias : 30;
   // El IGV que factura un proveedor formal es crédito fiscal para una empresa
   // del Régimen General/MYPE Tributario que ya genera débito fiscal por sus
   // propias ventas: lo paga en la factura, pero ese mismo mes descuenta el
@@ -107,7 +113,8 @@ function construirTercero(base, opciones = {}) {
       total,
       creditoFiscalIgv,
       /** El costo que de verdad se compara contra el courier: neto de IGV si se puede usar el crédito, bruto si no. */
-      costoReal: creditoFiscalIgv ? base.cuotaMensualSinIgv : total
+      costoReal: creditoFiscalIgv ? base.cuotaMensualSinIgv : total,
+      plazoPagoDias
     },
     // No es nuestro que cubrir: el proveedor responde por su propia gente y
     // su propio vehículo. "Alcanza" siempre, que es justo lo que compra la

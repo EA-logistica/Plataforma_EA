@@ -213,8 +213,8 @@ const [tercero, dosMotorizados, propia] = esc;
 ok(propia.cfg.personas === 1 && propia.cfg.sueldoBase === 1800 && propia.cfg.bono === 300,
    'escenario 3: una persona, S/1800 + S/300, moto suya');
 ok(dosMotorizados.cfg.personas === 2 && dosMotorizados.cfg.sueldoBase === 900
-   && dosMotorizados.cfg.bono === 0 && dosMotorizados.cfg.jornadaCompleta,
-   'escenario 2: dos personas a tiempo completo, S/900 cada una, sin bono aparte');
+   && dosMotorizados.cfg.bono === 0 && !dosMotorizados.cfg.jornadaCompleta,
+   'escenario 2: dos personas part time en planilla, S/900 cada una, sin bono aparte');
 
 console.log('\n-- tercerizar a cuota fija --');
 ok(tercero.cfg.modelo === 'tercero' && tercero.cfg.cuotaMensualSinIgv === 3500,
@@ -225,6 +225,15 @@ ok(cerca(tercero.tercero.total, 3500 * 1.18), `la cuota con IGV es S/${(3500 * 1
 ok(tercero.capacidad.alcanza === true, 'la capacidad del proveedor se da por cubierta: eso compra la cuota fija');
 ok(tercero.diasSinCoberturaAlAnio === 0, 'no hay vacaciones que cubrir: no es personal propio');
 ok(!tercero.riesgos.some(r => r.nivel === 'alto'), 'tercerizar no dispara ningún riesgo alto por sí solo');
+
+console.log('\n-- plazo de pago al proveedor --');
+ok(tercero.tercero.plazoPagoDias === 30, 'por defecto, 30 días');
+const [terceroA45] = construir(d, { plazoPagoDias: 45 });
+ok(terceroA45.tercero.plazoPagoDias === 45, 'se puede pedir a 45 días');
+ok(cerca(terceroA45.tercero.costoReal, tercero.tercero.costoReal),
+   'el plazo no cambia cuánto se debe, solo cuándo se paga');
+ok(construir(d, { plazoPagoDias: 60 })[0].tercero.plazoPagoDias === 30,
+   'un plazo que no es 30 ni 45 cae al valor por defecto, no se inventa uno');
 
 console.log('\n-- IGV: crédito fiscal o costo real --');
 ok(tercero.tercero.creditoFiscalIgv === true, 'por defecto se asume que la empresa puede usar el crédito fiscal');
@@ -241,14 +250,16 @@ ok(cerca(cmpSinCredito.filas.find(f => f.escenario.id === 'tercero').costoMensua
    'y ese costo mayor es el que de verdad entra a competir contra el courier');
 
 console.log('\n-- uno o dos motorizados en planilla --');
-ok(dosMotorizados.capacidad.techoDiario > propia.capacidad.techoDiario,
-   `dos motorizados a tiempo completo aguantan más encargos al día que uno solo (${dosMotorizados.capacidad.techoDiario.toFixed(1)} contra ${propia.capacidad.techoDiario.toFixed(1)})`);
+// Dos personas a media jornada suman las mismas horas que una completa: la
+// capacidad no se duplica solo por ser dos, hay que salir a la vez.
+ok(cerca(dosMotorizados.capacidad.techoDiario, propia.capacidad.techoDiario),
+   `dos motorizados part time aguantan lo mismo que uno solo a tiempo completo (${dosMotorizados.capacidad.techoDiario.toFixed(1)} contra ${propia.capacidad.techoDiario.toFixed(1)})`);
 ok(propia.riesgos.some(r => r.nivel === 'alto'), 'depender de una sola persona se marca como riesgo alto');
 ok(!dosMotorizados.riesgos.some(r => r.nivel === 'alto'), 'con dos personas ese riesgo puntual desaparece');
-// S/900 de básico a tiempo completo queda por debajo de la RMV (S/1130): es un
-// hallazgo real, no un capricho del cálculo, y el módulo ya sabía detectarlo.
-ok(dosMotorizados.persona.avisos.some(a => a.nivel === 'alto' && /mínima vital/.test(a.texto)),
-   'S/900 a tiempo completo queda debajo de la RMV: el módulo lo marca como aviso legal grave');
+// S/900 de básico a media jornada SÍ supera la mínima proporcional (a
+// diferencia de a tiempo completo, donde no alcanzaría la RMV de S/1130).
+ok(dosMotorizados.persona.avisos.every(a => a.nivel !== 'alto'),
+   'S/900 a media jornada no dispara ningún aviso legal grave: supera la mínima proporcional a esa jornada');
 ok(!propia.persona.avisos.some(a => a.nivel === 'alto'), 'S/1800 sí supera la RMV para jornada completa');
 
 // --------------------------------------------------------------- payback

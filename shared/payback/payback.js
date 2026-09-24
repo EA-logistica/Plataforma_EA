@@ -188,26 +188,32 @@ function condiciones(filas, demanda) {
     });
   }
 
-  // A diferencia de la versión anterior de este análisis (una persona a
-  // tiempo completo frente a dos a media jornada, que sí sumaban las mismas
-  // horas), ahora los dos escenarios de personal propio tienen jornadas
-  // distintas: uno y dos motorizados a tiempo completo. La capacidad SÍ
-  // cambia, y conviene decirlo con el número real en vez de una regla fija.
+  // Se calcula con el número real en vez de asumir una regla fija: dos
+  // personas a tiempo completo sí duplicarían la capacidad de una, pero dos a
+  // media jornada (como está planteado hoy) suman las mismas horas que una
+  // completa. La comparación se adapta sola a lo que de verdad esté configurado.
   const otrosPersonal = personal.slice(1);
   if (otrosPersonal.length) {
-    const distintos = personal.filter(f => f.escenario.capacidad.techoDiario !== uno.escenario.capacidad.techoDiario);
-    if (distintos.length) {
-      const mayor = personal.slice().sort((a, b) => b.escenario.capacidad.techoDiario - a.escenario.capacidad.techoDiario)[0];
-      const menor = personal.slice().sort((a, b) => a.escenario.capacidad.techoDiario - b.escenario.capacidad.techoDiario)[0];
-      lista.push({
-        nivel: 'aviso',
-        titulo: 'La capacidad sí cambia entre uno y dos motorizados',
-        texto: '"' + mayor.escenario.nombre + '" aguanta ' + mayor.escenario.capacidad.techoDiario.toFixed(1)
-          + ' encargos al día contra ' + menor.escenario.capacidad.techoDiario.toFixed(1) + ' de "'
-          + menor.escenario.nombre + '". Más gente da más margen frente a un pico de demanda o para cubrir dos'
-          + ' zonas el mismo día. El proveedor a cuota fija no tiene este límite: la capacidad la pone él, no la empresa.'
-      });
-    }
+    const mayor = personal.slice().sort((a, b) => b.escenario.capacidad.techoDiario - a.escenario.capacidad.techoDiario)[0];
+    const menor = personal.slice().sort((a, b) => a.escenario.capacidad.techoDiario - b.escenario.capacidad.techoDiario)[0];
+    const distintos = Math.abs(mayor.escenario.capacidad.techoDiario - menor.escenario.capacidad.techoDiario) > 0.05;
+
+    lista.push(distintos ? {
+      nivel: 'aviso',
+      titulo: 'La capacidad sí cambia entre uno y dos motorizados',
+      texto: '"' + mayor.escenario.nombre + '" aguanta ' + mayor.escenario.capacidad.techoDiario.toFixed(1)
+        + ' encargos al día contra ' + menor.escenario.capacidad.techoDiario.toFixed(1) + ' de "'
+        + menor.escenario.nombre + '". Más gente da más margen frente a un pico de demanda o para cubrir dos'
+        + ' zonas el mismo día. El proveedor a cuota fija no tiene este límite: la capacidad la pone él, no la empresa.'
+    } : {
+      nivel: 'aviso',
+      titulo: 'La capacidad es la misma entre uno y dos motorizados',
+      texto: 'Una persona a tiempo completo y dos a media jornada suman las mismas horas de reparto a la semana:'
+        + ' ambas aguantan ' + uno.escenario.capacidad.techoDiario.toFixed(1) + ' encargos al día. Dos motos no'
+        + ' rinden el doble si se turnan para cubrir el mismo horario; rendirían el doble si salieran a la vez,'
+        + ' y entonces cada una cubriría media jornada, no la jornada entera. El proveedor a cuota fija no tiene'
+        + ' este límite: la capacidad la pone él, no la empresa.'
+    });
   }
 
   return lista;

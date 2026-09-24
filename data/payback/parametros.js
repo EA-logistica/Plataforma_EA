@@ -102,13 +102,13 @@ export const ESCENARIOS = {
   },
   dosMotorizados: {
     id: 'dosMotorizados',
-    nombre: 'Dos motorizados en planilla, tiempo completo',
-    detalle: 'Dos personas contratadas a tiempo completo, S/ 900 de básico cada una y todos los beneficios de ley (gratificaciones, CTS, EsSalud, Vida Ley, SCTR). La moto, el combustible y el mantenimiento corren por cuenta de cada una.',
+    nombre: 'Dos motorizados part time en planilla',
+    detalle: 'Dos personas en planilla que se reparten la jornada, cada una por debajo de 4 horas diarias, con S/ 900 de básico cada una. La moto, el combustible y el mantenimiento corren por cuenta de cada una.',
     personas: 2,
     sueldoBase: 900,
     bono: 0,
     bonoRemunerativo: true,
-    jornadaCompleta: true
+    jornadaCompleta: false
   },
   propia: {
     id: 'propia',

@@ -1,5 +1,5 @@
 import { $, esc } from '../utils/dom.js';
-import { fechaCorta, horasEntre, corta, hoyISO } from '../utils/format.js';
+import { fechaCorta, horasEntre, corta, hoyISO, soles } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import { DB, exportarExcel } from '../api/estado.js';
 import { chipEstado, origenCorto, vehiculoHTML } from './presenters.js';
@@ -84,9 +84,42 @@ export function limpiarFiltrosHistorico() {
   filtrarHistorico();
 }
 
+/**
+ * Métricas del histórico, recalculadas sobre lo que de verdad se está viendo:
+ * si hay un filtro puesto, son las métricas DE ESE filtro, no del histórico
+ * completo. Así "¿cuánto se gastó con esta persona?" o "¿cuántos viajes a
+ * este destino?" se responde con el mismo filtro que ya se usa para buscar,
+ * sin tener que sumarlo a mano fila por fila.
+ */
+function metricasHTML(lista, filtrado) {
+  const conCosto = lista.filter(s => s.costo != null);
+  const costoTotal = conCosto.reduce((a, s) => a + s.costo, 0);
+  const cancelados = lista.filter(s => s.estado === 'Cancelado').length;
+  const concluidos = lista.filter(s => s.estado === 'Concluido').length;
+  const enCurso = lista.length - cancelados - concluidos;
+  const tiempos = lista.filter(s => s.estado === 'Concluido')
+    .map(s => horasEntre(s.tsEspera, s.tsConcluido)).filter(h => h != null);
+  const promAtencion = tiempos.length ? tiempos.reduce((a, b) => a + b, 0) / tiempos.length : null;
+
+  const tarjeta = (clase, v, k, d) => '<div class="kpi ' + clase + '"><div class="v">' + esc(String(v))
+    + '</div><div class="k">' + esc(k) + '</div><div class="d">' + esc(d) + '</div></div>';
+
+  return '<div class="kpis" id="histMetrics">'
+    + tarjeta('primary', lista.length, 'Servicios', filtrado ? 'Según el filtro aplicado' : 'Todo el histórico')
+    + tarjeta('ok', soles(costoTotal), 'Costo valorizado', conCosto.length + ' de ' + lista.length + ' con tarifa cargada')
+    + tarjeta('', conCosto.length ? soles(costoTotal / conCosto.length) : 'N/D', 'Costo promedio', 'Por viaje con tarifa')
+    + tarjeta('info', enCurso, 'En curso', concluidos + ' concluidos en el filtro')
+    + tarjeta(cancelados ? 'bad' : '', cancelados, 'Cancelados',
+        lista.length ? ((cancelados / lista.length) * 100).toFixed(1) + '% del filtro' : '—')
+    + tarjeta('', promAtencion != null ? promAtencion.toFixed(1) + ' h' : 'N/D', 'Atención promedio', 'Del registro al cierre')
+    + '</div>';
+}
+
 export function renderHistorico() {
   $('cntHist').textContent = DB.solicitudes.length;
   const lista = listaFiltrada();
+  const hayFiltro = ['qHist', 'histTicket', 'histDestino', 'histDesde', 'histHasta'].some(id => $(id).value);
+  $('histMetricsWrap').innerHTML = metricasHTML(lista, hayFiltro);
 
   if (!lista.length) {
     $('tHist').innerHTML = '<div class="empty"><strong>Sin coincidencias</strong>Prueba con otro filtro.</div>';

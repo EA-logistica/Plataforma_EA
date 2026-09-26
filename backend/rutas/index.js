@@ -13,6 +13,8 @@ import { limitarIntentos, limitarPeticiones } from '../middleware/limites.js';
 import { asinc } from '../middleware/errores.js';
 import { usuarios } from '../usuarios/rutas.js';
 import { areas } from '../areas/rutas.js';
+import { compras } from './compras.js';
+import { emitirTicket } from '../almacen/acceso.js';
 import { requiereSesion, requiereRol, sesionOpcional } from '../usuarios/middleware.js';
 import { log, eventosRecientes } from '../seguridad/log.js';
 import { CONFIG } from '../config.js';
@@ -47,7 +49,24 @@ api.use(usuarios);
 // razón que usuarios/: agrupa algo que no tiene que ver con el resto de la API.
 api.use(areas);
 
+// Exportaciones, requerimientos de compra y servicios de logística: propio
+// del coordinador de logística, ajeno a la mensajería. Solo admin.
+api.use(compras);
+
 const error = (msg, status) => Object.assign(new Error(msg), { status });
+
+// ------------------------------------------------------------------ almacén
+/**
+ * Pase de un solo uso hacia el módulo de Almacén (otro repositorio, montado
+ * en /almacen). Que el sidebar solo le muestre el botón a admin no alcanza
+ * -cualquiera con la URL igual entraría-: este ticket es la verificación de
+ * verdad, del lado del servidor. Se exige requiereRol('admin') aquí, con la
+ * MISMA sesión de PLANSA_DELIVERY que ya se validó en el login; el ticket
+ * solo traslada esa autorización hacia el otro módulo (ver almacen/acceso.js).
+ */
+api.post('/almacen/ticket', requiereSesion, requiereRol('admin'), (req, res) => {
+  res.json({ ticket: emitirTicket() });
+});
 
 // ------------------------------------------------------------------ estado
 /**
@@ -70,7 +89,7 @@ api.get('/estado', sesionOpcional, (req, res) => {
     revision: ajustes.revision(),
     versionDatos: ajustes.leer('version_datos', ''),
     // Aquí va el CONTEO del padrón, no el padrón. Mandarlo entero ponía los
-    // 212 nombres con su DNI en la memoria de cualquier navegador que abriera
+    // 114 nombres con su DNI en la memoria de cualquier navegador que abriera
     // la página, lo que dejaba sin efecto la decisión de no listarlo en
     // pantalla: bastaba con abrir la consola. Las fichas se piden de a una
     // por /api/personal?q= y por /api/auth/solicitante/:doc.

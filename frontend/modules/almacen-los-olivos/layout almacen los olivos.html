@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Almacén Los Olivos — Plano y Control de Espacios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="/assets/js/theme-sync.js"></script>
+<style>
+  :root{
+    --bg:#F4F6F9; --bg-panel:#FFFFFF; --bg-card:#F3F5F9;
+    --border:#DFE4EC; --border-soft:#ECEFF4;
+    --text:#1D1D1F; --text-muted:#565E6C; --text-dim:#6B7280;
+    --apt:#1B4E8E; --apt-soft:rgba(27,78,142,0.10); --apt-line:rgba(27,78,142,0.45);
+    --mp:#2FA84F; --mp-soft:rgba(47,168,79,0.12); --mp-line:rgba(47,168,79,0.5);
+    --caution:#1B4E8E; --alert:#B0271E; --alert-soft:rgba(176,39,30,0.1);
+    --ok:#1F8A46; --ok-soft:rgba(31,138,70,0.12);
+    --radius:10px;
+    --grid-line:rgba(16,24,40,0.035);
+  }
+  /* Modo oscuro 1 (media luna): mismas zonas (apt/mp) que en claro, para no
+     perder de un vistazo cuál es cuál en el plano; lo que cambia es el
+     fondo/texto/bordes -de superficie clara a grafito-. */
+  :root[data-theme="dark"]{
+    --bg:#0B121C; --bg-panel:#141E2B; --bg-card:#1B2836;
+    --border:#2A3B4E; --border-soft:#20303F;
+    --text:#E7EEF6; --text-muted:#93A7BC; --text-dim:#647B92;
+    --apt:#63B0EE; --apt-soft:rgba(99,176,238,0.12); --apt-line:rgba(99,176,238,0.45);
+    --mp:#4FCB90; --mp-soft:rgba(79,203,144,0.12); --mp-line:rgba(79,203,144,0.5);
+    --caution:#63B0EE; --alert:#EC6C66; --alert-soft:rgba(236,108,102,0.12);
+    --ok:#4FCB90; --ok-soft:rgba(79,203,144,0.12);
+    --grid-line:rgba(255,255,255,0.03);
+  }
+  /* Modo oscuro 2 (luna llena): superficie negra/grafito monocromática, como
+     el resto de la plataforma en este modo; las zonas del plano (apt/mp) y
+     las alertas se quedan con color -son información funcional del plano,
+     no una preferencia de marca, así que monocromarlas lo haría ilegible-. */
+  :root[data-theme="black"]{
+    --bg:#0D0D0E; --bg-panel:#1E1E22; --bg-card:#26262B;
+    --border:rgba(255,255,255,0.08); --border-soft:rgba(255,255,255,0.05);
+    --text:#FFFFFF; --text-muted:#E1E1E6; --text-dim:#A1A1AA;
+    --apt:#63B0EE; --apt-soft:rgba(99,176,238,0.12); --apt-line:rgba(99,176,238,0.45);
+    --mp:#4FCB90; --mp-soft:rgba(79,203,144,0.12); --mp-line:rgba(79,203,144,0.5);
+    --caution:#63B0EE; --alert:#EC6C66; --alert-soft:rgba(236,108,102,0.12);
+    --ok:#4FCB90; --ok-soft:rgba(79,203,144,0.12);
+    --grid-line:rgba(255,255,255,0.035);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      linear-gradient(var(--bg),var(--bg)),
+      repeating-linear-gradient(0deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 28px),
+      repeating-linear-gradient(90deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 28px);
+    color:var(--text); font-family:'Inter',system-ui,sans-serif; min-height:100vh; padding:28px 32px 60px;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  header.page{
+    display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:18px;
+    border-bottom:1px solid var(--border);padding-bottom:18px;margin-bottom:18px;
+  }
+  header.page h1{font-family:'Inter',sans-serif;font-weight:700;font-size:25px;letter-spacing:0.01em;margin:0 0 6px;}
+  header.page .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--caution);margin-bottom:8px;}
+  header.page .sub{color:var(--text-muted);font-size:13.5px;max-width:620px;line-height:1.5;}
+  .titleblock{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-muted);
+    border:1px solid var(--border);border-radius:8px;padding:12px 16px;
+    display:grid;grid-template-columns:auto auto;gap:4px 14px;background:var(--bg-panel);min-width:260px;
+  }
+  .titleblock b{color:var(--text);font-weight:600;}
+  .titleblock .k{color:var(--text-dim);}
+
+  .tabbar{display:flex;gap:8px;margin-bottom:22px;border-bottom:1px solid var(--border);}
+  .tab-btn{
+    background:none;border:none;color:var(--text-muted);font-family:'Inter',sans-serif;font-weight:600;
+    font-size:13.5px;padding:11px 18px;cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.01em;
+  }
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--caution);}
+  .tab-btn:hover{color:var(--text);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  .section-title{
+    font-family:'Inter',sans-serif;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;
+    color:var(--text-dim);margin:34px 0 14px;padding-top:20px;border-top:1px solid var(--border);
+    display:flex;align-items:center;gap:10px;
+  }
+  .section-title::after{content:"";flex:1;height:1px;background:var(--border-soft);}
+
+  .layout{display:grid;grid-template-columns:1.55fr 1fr;gap:22px;align-items:start;}
+  .layout-equal{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;}
+  @media (max-width:980px){
+    .layout, .layout-equal{grid-template-columns:1fr;}
+    body{padding:20px 16px 48px;}
+  }
+
+  .panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px 18px 20px;}
+  .panel h2{
+    font-family:'Inter',sans-serif;font-size:14px;letter-spacing:0.04em;text-transform:uppercase;
+    color:var(--text-muted);margin:0 0 4px;display:flex;align-items:center;gap:8px;
+  }
+  .panel h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--caution);flex:none;}
+  .panel .h2-note{font-size:11.5px;color:var(--text-dim);margin:0 0 14px;padding-left:15px;}
+
+  svg{width:100%;height:auto;display:block;}
+  .zone-label{font-family:'IBM Plex Mono',monospace;fill:var(--text);}
+  .zone-tag{fill:var(--bg-panel);stroke-width:1;}
+  .caption{font-family:'Inter',sans-serif;fill:var(--text-muted);}
+  .cota-label{font-family:'IBM Plex Mono',monospace;font-size:10px;fill:#B7BFC9;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:12px 20px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);font-size:11.5px;color:var(--text-muted);}
+  .legend .item{display:flex;align-items:center;gap:7px;}
+  .legend .chip{width:14px;height:14px;border-radius:3px;flex:none;}
+  .legend .chip.outline{background:none;border:1.5px dashed var(--alert);}
+  .legend .chip.outline-caution{background:none;border:1.5px dashed var(--caution);}
+  .legend .chip.hatch{background:repeating-linear-gradient(45deg,#3A4454 0 2px,#ECEFF4 2px 6px);}
+  .legend .chip.grid{background:repeating-linear-gradient(0deg,#DFE4EC 0 1px,transparent 1px 6px),repeating-linear-gradient(90deg,#DFE4EC 0 1px,transparent 1px 6px);background-color:var(--mp);}
+
+  .field{margin-bottom:14px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;color:var(--text-muted);margin-bottom:6px;}
+  .field label .val{font-family:'IBM Plex Mono',monospace;color:var(--text);font-size:12.5px;}
+  .field input[type="number"], .field input[type="text"], .field input[type="date"], select{
+    width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:7px;color:var(--text);
+    font-family:'IBM Plex Mono',monospace;font-size:13.5px;padding:9px 11px;
+  }
+  select{appearance:none;-webkit-appearance:none;}
+  .field input:focus, select:focus{outline:2px solid var(--apt-line);outline-offset:1px;}
+  .field .unit{position:relative;}
+  .field .unit span.suffix{position:absolute;right:11px;top:50%;transform:translateY(-50%);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-dim);pointer-events:none;}
+  .field .hint{font-size:11px;color:var(--text-dim);margin-top:5px;}
+  .field-row{display:flex;gap:10px;}
+  .field-row .field{flex:1;}
+
+  .sum-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--border-soft);font-size:13px;}
+  .sum-row:last-child{border-bottom:none;}
+  .sum-row .k{color:var(--text-muted);}
+  .sum-row .v{font-family:'IBM Plex Mono',monospace;font-size:13.5px;}
+  .sum-row.indent{padding-left:14px;font-size:12px;}
+  .sum-row.indent .k{color:var(--text-dim);}
+  .sum-sub{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim);margin:14px 0 2px;}
+
+  .highlight-card{background:var(--apt-soft);border:1px solid var(--apt-line);border-radius:8px;padding:13px 15px;margin-top:12px;}
+  .highlight-card.warn{background:var(--alert-soft);border-color:var(--alert);}
+  .highlight-card.money{background:rgba(27,78,142,0.10);border-color:rgba(27,78,142,0.45);}
+  .highlight-card .k{font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:4px;}
+  .highlight-card .v{font-family:'Inter',sans-serif;font-weight:700;font-size:21px;}
+
+  details.howto{margin-top:22px;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;}
+  details.howto summary{cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;color:var(--text);list-style:none;}
+  details.howto summary::-webkit-details-marker{display:none;}
+  details.howto summary::before{content:"▸ ";color:var(--caution);}
+  details.howto[open] summary::before{content:"▾ ";}
+  details.howto p, details.howto ol{color:var(--text-muted);font-size:13px;line-height:1.65;}
+  details.howto ol{padding-left:20px;}
+  details.howto code{font-family:'IBM Plex Mono',monospace;color:var(--text);background:var(--bg-card);padding:1px 5px;border-radius:4px;}
+
+  table.log-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;}
+  table.log-table th{text-align:left;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;padding:6px 5px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.log-table td{padding:7px 5px;border-bottom:1px solid var(--border-soft);font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
+  table.log-table tr:last-child td{border-bottom:none;}
+  table.log-table td.num{text-align:right;}
+  table.log-table .obs{white-space:normal;font-family:'Inter',sans-serif;color:var(--text-muted);max-width:160px;}
+  .table-scroll{overflow-x:auto;}
+  .log-empty{color:var(--text-dim);font-size:12px;padding:16px 6px;text-align:center;}
+
+  .btn-add{background:var(--apt);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-family:'Inter',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer;}
+  .btn-add:hover{opacity:0.88;}
+  .btn-add.ext{background:var(--mp);}
+  .btn-del{background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:12px;line-height:1;}
+  .btn-del:hover{border-color:var(--alert);color:var(--alert);}
+  .btn-move{background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px;line-height:1;}
+  .btn-move:hover:not(:disabled){border-color:var(--apt-line);color:var(--text);}
+  .btn-move:disabled{opacity:0.28;cursor:default;}
+  .veh-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 13px 13px;margin-bottom:12px;}
+  .veh-card:last-child{margin-bottom:0;}
+  .veh-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px;}
+  .veh-card-head .veh-title{font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:var(--text);letter-spacing:0.01em;}
+  .veh-card-actions{display:flex;gap:5px;flex:none;}
+  .veh-card select{margin-bottom:10px;}
+
+  .ai-analysis{background:linear-gradient(180deg,rgba(27,78,142,0.08),rgba(27,78,142,0.02));border:1px solid var(--apt-line);border-radius:10px;padding:16px 18px 18px;margin-top:18px;}
+  .ai-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+  .ai-title{font-family:'Inter',sans-serif;font-size:12.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--apt);}
+  .ai-badge{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:20px;letter-spacing:0.03em;text-transform:uppercase;flex:none;}
+  .ai-badge.ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(31,138,70,0.5);}
+  .ai-badge.caution{background:rgba(27,78,142,0.14);color:var(--caution);border:1px solid rgba(27,78,142,0.45);}
+  .ai-badge.alert{background:var(--alert-soft);color:var(--alert);border:1px solid rgba(176,39,30,0.5);}
+  .ai-badge.dim{background:var(--bg-card);color:var(--text-dim);border:1px solid var(--border);}
+  .ai-motivo{font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:0 0 10px;}
+  .ai-narrative p{font-size:13px;color:var(--text);line-height:1.65;margin:0 0 10px;}
+  .ai-narrative p:last-child{margin-bottom:0;}
+  .ai-delta{font-size:12px;color:var(--apt);background:var(--apt-soft);border:1px solid var(--apt-line);border-radius:7px;padding:9px 12px;margin:12px 0 0;line-height:1.55;}
+  .ai-indicator{margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);text-align:center;}
+  .ai-indicator-label{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;}
+  .ai-indicator-value{font-family:'Inter',sans-serif;font-size:32px;font-weight:700;color:var(--apt);line-height:1.2;}
+  .ai-indicator-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);margin-top:2px;}
+
+  .zoom-toolbar{display:flex;align-items:center;gap:8px;margin:14px 0 8px;flex-wrap:wrap;}
+  .zoom-toolbar .btn-move{width:28px;height:28px;font-size:14px;}
+  .zoom-pct{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-dim);min-width:40px;text-align:center;}
+  .despacho-zoom-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:6px;max-height:75vh;}
+  .despacho-zoom-wrap svg{display:block;}
+  .real-badge{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:0.02em;}
+  .real-badge.ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(31,138,70,0.5);}
+  .real-badge.alert{background:var(--alert-soft);color:var(--alert);border:1px solid rgba(176,39,30,0.5);}
+  .storage-note{font-size:11px;color:var(--text-dim);}
+
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}
+  @media (max-width:980px){.kpi-row{grid-template-columns:1fr 1fr;}}
+  .kpi-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:15px 16px;}
+  .kpi-card .k{font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);margin-bottom:6px;}
+  .kpi-card .v{font-family:'Inter',sans-serif;font-weight:700;font-size:22px;}
+  .kpi-card.blue .v{color:var(--apt);}
+  .kpi-card.red .v{color:var(--alert);}
+  .kpi-card.gold .v{color:var(--caution);}
+
+  .chart-legend{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:8px;font-size:11px;color:var(--text-muted);}
+  .chart-legend .item{display:flex;align-items:center;gap:6px;}
+  .chart-legend .sw{width:10px;height:10px;border-radius:2px;}
+  .chart-empty{color:var(--text-dim);font-size:12.5px;text-align:center;padding:40px 10px;}
+</style>
+</head>
+<body>
+
+<header class="page">
+  <div>
+    <div class="eyebrow">Compras y Logística · PLANSA</div>
+    <h1>Almacén Los Olivos — Plano y Control de Espacios</h1>
+    <div class="sub">Plano logístico a escala con medidas reales, costos de área fija y excedente en USD, zona externa de despacho editable y simulación de posiciones de parihuela.</div>
+  </div>
+  <div class="titleblock">
+    <span class="k">Proyecto</span><b>Almacén Los Olivos</b>
+    <span class="k">Orientación</span><b>Vertical</b>
+    <span class="k">Escala</span><b style="color:var(--ok)">Proporcional real</b>
+    <span class="k">Estado</span><b style="color:var(--caution)">Editable en vivo</b>
+  </div>
+</header>
+
+<div class="tabbar">
+  <button class="tab-btn active" data-tab="plano">Plano del Almacén</button>
+  <button class="tab-btn" data-tab="control">Control de Espacios</button>
+</div>
+
+<!-- ======================= TAB 1: PLANO ======================= -->
+<div id="tab-plano" class="tab-panel active">
+
+  <div class="kpi-row">
+    <div class="kpi-card blue"><div class="k">Total metraje (APT + M.P. + Exc. M.P.)</div><div class="v" id="kpiMetraje">—</div></div>
+    <div class="kpi-card red"><div class="k">Total excedente (APT completo + Exc. M.P.)</div><div class="v" id="kpiExcedente">—</div></div>
+    <div class="kpi-card"><div class="k">Costo fijo mensual</div><div class="v" id="kpiCostoFijo">—</div></div>
+    <div class="kpi-card gold"><div class="k">Costo excedente / semana</div><div class="v" id="kpiCostoExc">—</div></div>
+  </div>
+
+  <div class="layout">
+
+    <div class="panel">
+      <h2><span class="dot"></span>Plano del almacén (a escala)</h2>
+      <p class="h2-note">APT es 100% excedente (borde rojo punteado). Materia Prima es el área fija (relleno sólido) más su excedente registrado. El corredor va incluido, no se suma.</p>
+      <svg id="planoSvg" viewBox="0 0 1000 800" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="hatchCirc" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+            <rect width="8" height="8" fill="#20262F"/>
+            <line x1="0" y1="0" x2="0" y2="8" stroke="#3A4454" stroke-width="3"/>
+          </pattern>
+          <marker id="arrowFlow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--ok)"/>
+          </marker>
+        </defs>
+        <g id="dynamicZones"></g>
+      </svg>
+
+      <div class="section-title" style="margin:22px 0 10px;">Zona de despacho / maniobras externa — simulador</div>
+      <p class="h2-note" style="padding-left:0;">Zona real sincerada: 5.90 × 18.00 m (≈106 m²). Agrega, edita o elimina unidades y ajusta las holguras para comparar el espacio simulado contra el espacio real disponible.</p>
+
+      <div class="zoom-toolbar">
+        <button class="btn-move" onclick="zoomDespacho(-0.15)" title="Alejar">−</button>
+        <span class="zoom-pct" id="zoomPct">100%</span>
+        <button class="btn-move" onclick="zoomDespacho(0.15)" title="Acercar">+</button>
+        <button class="btn-move" onclick="zoomDespachoReset()" title="Restablecer zoom">⟳</button>
+        <span class="h2-note" style="margin:0;padding:0;">Rueda del mouse sobre el plano = acercar / alejar</span>
+      </div>
+      <div class="despacho-zoom-wrap" id="despachoZoomWrap">
+        <svg id="despachoSvg" viewBox="0 0 700 780" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrowFlow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--ok)"/>
+            </marker>
+          </defs>
+          <g id="dynamicDespacho"></g>
+        </svg>
+      </div>
+
+      <div class="legend">
+        <div class="item"><span class="chip" style="background:var(--mp)"></span>Materia Prima — área fija (relleno sólido)</div>
+        <div class="item"><span class="chip outline"></span>APT / Excedente M.P. — borde rojo punteado (excedente)</div>
+        <div class="item"><span class="chip hatch"></span>Zona de circulación interna — incluida, no se suma</div>
+        <div class="item"><span class="chip grid"></span>Simulación de posiciones de parihuela</div>
+        <div class="item"><span class="chip" style="background:#5B6472"></span>Vehículos — área ocupada</div>
+        <div class="item"><span class="chip outline-caution"></span>Maniobra lateral (izq./der., editable)</div>
+        <div class="item"><span class="chip" style="background:rgba(31,138,70,0.25);border:1.5px dashed var(--ok)"></span>Maniobra posterior / carga y descarga</div>
+        <div class="item"><span class="chip" style="background:rgba(27,78,142,0.14);border:1.5px solid var(--apt)"></span>Zona real disponible (5.90 × 18.00 m, sincerada)</div>
+        <div class="item" style="color:var(--ok)">→ Flujo de carga/descarga (posterior o lateral, según unidad)</div>
+        <div class="item" style="color:var(--alert)">┃ Frente sin holgura — alineado al límite del área</div>
+        <div class="item">┅ Puertas piloto/copiloto — carros particulares</div>
+      </div>
+
+      <div class="ai-analysis" id="analisisIA"></div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div>
+      <div class="panel">
+        <h2><span class="dot"></span>APT — Almacén Producto Terminado</h2>
+        <p class="h2-note">La totalidad de APT se trata como excedente — no tiene área fija propia.</p>
+        <div class="field-row">
+          <div class="field"><label>Ancho <span class="val" id="aptAnchoLbl">17.80 m</span></label><div class="unit"><input type="number" id="aptAncho" value="17.80" min="0" step="0.01" oninput="renderAll()"><span class="suffix">m</span></div></div>
+          <div class="field"><label>Largo <span class="val" id="aptLargoLbl">66.20 m</span></label><div class="unit"><input type="number" id="aptLargo" value="66.20" min="0" step="0.01" oninput="renderAll()"><span class="suffix">m</span></div></div>
+        </div>
+        <div class="field"><label>Área (automática, 100% excedente)</label><div class="unit" style="background:var(--bg-card);border:1px solid var(--border);border-radius:7px;padding:9px 11px;"><b class="mono" id="aptAreaOut">1,178.36 m²</b></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <h2><span class="dot"></span>Materia Prima</h2>
+        <div class="field-row">
+          <div class="field"><label>Ancho <span class="val" id="mpAnchoLbl">18.30 m</span></label><div class="unit"><input type="number" id="mpAncho" value="18.30" min="0" step="0.01" oninput="renderAll()"><span class="suffix">m</span></div></div>
+          <div class="field"><label>Largo <span class="val" id="mpLargoLbl">28.00 m</span></label><div class="unit"><input type="number" id="mpLargo" value="28.00" min="0" step="0.01" oninput="renderAll()"><span class="suffix">m</span></div></div>
+        </div>
+        <div class="field"><label>Área (automática)</label><div class="unit" style="background:var(--bg-card);border:1px solid var(--border);border-radius:7px;padding:9px 11px;"><b class="mono" id="mpAreaOut">512.40 m²</b></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <h2><span class="dot"></span>Excedente Materia Prima</h2>
+        <p class="h2-note">Ancho igual al de Materia Prima (misma huella).</p>
+        <div class="field"><label>Largo adicional <span class="val" id="excMpLargoLbl">5.10 m</span></label><div class="unit"><input type="number" id="excMpLargo" value="5.10" min="0" step="0.01" oninput="renderAll()"><span class="suffix">m</span></div></div>
+        <div class="field"><label>Área (automática)</label><div class="unit" style="background:var(--bg-card);border:1px solid var(--border);border-radius:7px;padding:9px 11px;"><b class="mono" id="excMpAreaOut">93.33 m²</b></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <h2><span class="dot"></span>Corredor / circulación interna</h2>
+        <p class="h2-note">Largo = largo de APT (automático). Incluido dentro de APT y Materia Prima — no se suma.</p>
+        <div class="field"><label>Ancho del corredor <span class="val" id="corrAnchoLbl">2.50 m</span></label><div class="unit"><input type="number" id="corrAncho" value="2.50" min="0" step="0.01" oninput="renderAll()"><span class="suffix">m</span></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <h2><span class="dot"></span>Parihuelas en Materia Prima</h2>
+        <p class="h2-note">Simulación de posiciones de 1.00 × 1.20 m dentro de toda Materia Prima (área fija + excedente).</p>
+        <div class="field"><label>Niveles de apilamiento <span class="val" id="nivelesLbl">2</span></label><div class="unit"><input type="number" id="niveles" value="2" min="1" step="1" oninput="renderAll()"><span class="suffix">niv.</span></div></div>
+        <div class="sum-row"><span class="k">Posiciones en piso</span><span class="v" id="palletPos">—</span></div>
+        <div class="sum-row"><span class="k">Capacidad total (piso × niveles)</span><span class="v" id="palletCap">—</span></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <h2><span class="dot"></span>Zona de despacho — simulador de vehículos y maniobras</h2>
+        <p class="h2-note">Agrega, edita, reordena o elimina vehículos. La maniobra se calcula solo en laterales y parte posterior — nunca al frente.</p>
+
+        <div class="sum-sub">Zona real disponible (sincerada)</div>
+        <div class="field-row">
+          <div class="field"><label>Ancho real <span class="val" id="realAnchoLbl">5.90 m</span></label><div class="unit"><input type="number" id="realAncho" value="5.90" min="0.1" step="0.05" oninput="renderDespacho()"><span class="suffix">m</span></div></div>
+          <div class="field"><label>Largo real <span class="val" id="realLargoLbl">18.00 m</span></label><div class="unit"><input type="number" id="realLargo" value="18.00" min="0.1" step="0.1" oninput="renderDespacho()"><span class="suffix">m</span></div></div>
+        </div>
+        <div class="sum-row"><span class="k">Área real (ancho × largo)</span><span class="v" id="realAreaLbl">106 m²</span></div>
+        <p class="h2-note" style="padding-left:0;margin:6px 0 16px;">Límite físico confirmado del terreno. La configuración simulada se compara automáticamente contra este espacio real.</p>
+
+        <div class="sum-sub">Parámetros de maniobra (editables)</div>
+        <div class="field-row">
+          <div class="field"><label>Lateral izquierdo <span class="val" id="holguraIzqLbl">2.00 m</span></label><div class="unit"><input type="number" id="holguraIzq" value="2.00" min="0" step="0.1" oninput="renderDespacho()"><span class="suffix">m</span></div></div>
+          <div class="field"><label>Lateral derecho <span class="val" id="holguraDerLbl">2.00 m</span></label><div class="unit"><input type="number" id="holguraDer" value="2.00" min="0" step="0.1" oninput="renderDespacho()"><span class="suffix">m</span></div></div>
+        </div>
+        <div class="field"><label>Posterior — carga / descarga <span class="val" id="holguraPostLbl">2.00 m</span></label><div class="unit"><input type="number" id="holguraPost" value="2.00" min="0" step="0.1" oninput="renderDespacho()"><span class="suffix">m</span></div></div>
+        <p class="h2-note" style="padding-left:0;margin:8px 0 16px;color:var(--alert)">Sin holgura al frente: la parte delantera de todas las unidades queda alineada al límite del área asignada.</p>
+
+        <div class="sum-sub">Vehículos en la zona</div>
+        <div id="vehiculosList"></div>
+
+        <div class="field-row" style="margin-top:4px;">
+          <div class="field" style="flex:1;">
+            <label>Tipo de vehículo a agregar</label>
+            <select id="nuevoVehiculoTipo">
+              <option value="trailer">Tráiler + contenedor 40' (descarga posterior)</option>
+              <option value="camion">Camión APT (carga/descarga lateral)</option>
+              <option value="furgon">Furgón (carga lateral)</option>
+              <option value="carro">Carro particular (van / SUV)</option>
+              <option value="otro">Otro vehículo</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-add" style="width:100%;" onclick="addVehiculo()">+ Agregar vehículo</button>
+
+        <div class="sum-sub" style="margin-top:18px;">Zona de despacho — resumen</div>
+        <div id="vehiculosResumen"></div>
+        <div class="sum-row"><span class="k">Total vehículos</span><span class="v" id="despachoAreaUnidades">—</span></div>
+        <div class="sum-row"><span class="k">Área de maniobra (laterales + posterior)</span><span class="v" id="despachoAreaManiobra">—</span></div>
+        <div class="sum-row"><span class="k">Área total operativa</span><span class="v" id="despachoAreaTotal">—</span></div>
+        <div class="sum-row"><span class="k">Costo maniobra (área maniobra × $/m²)</span><span class="v" id="despachoCostoManiobra">—</span></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <h2><span class="dot"></span>Parámetros de costo</h2>
+        <div class="field"><label>Área fija contratada <span class="val" id="areaFijaLbl">500 m²</span></label><div class="unit"><input type="number" id="areaFija" value="500" min="0" step="10" oninput="renderAll()"><span class="suffix">m²</span></div></div>
+        <div class="field"><label>Costo por m² — área fija (mensual) <span class="val" id="costoFijoM2Lbl">$ 5.50</span></label><div class="unit"><input type="number" id="costoFijoM2" value="5.5" min="0" step="0.01" oninput="renderAll()"><span class="suffix">$/m²</span></div></div>
+        <div class="field"><label>Costo por m² — excedente (semanal) <span class="val" id="costoExcM2Lbl">$ 1.375</span></label><div class="unit"><input type="number" id="costoExcM2" value="1.375" min="0" step="0.001" oninput="renderAll()"><span class="suffix">$/m²/sem</span></div></div>
+        <div class="field"><label>Costo por m² — zona de maniobras (mensual) <span class="val" id="costoManiobraM2Lbl">$ 3.00</span></label><div class="unit"><input type="number" id="costoManiobraM2" value="3.00" min="0" step="0.01" oninput="renderDespacho()"><span class="suffix">$/m²</span></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <h2><span class="dot"></span>Resumen de áreas y costos</h2>
+        <div class="field">
+          <label>Área total del predio/contrato (opcional) <span class="val" id="predioTotalLbl">—</span></label>
+          <div class="unit"><input type="number" id="predioTotal" value="" min="0" step="1" placeholder="opcional" oninput="renderAll()"><span class="suffix">m²</span></div>
+        </div>
+        <div class="sum-sub">Áreas</div>
+        <div class="sum-row"><span class="k">Área utilizada (APT + Materia Prima)</span><span class="v" id="sumUtilizada">—</span></div>
+        <div class="sum-row"><span class="k">Área excedente (APT completo + Exc. M.P.)</span><span class="v" id="sumExcedente">—</span></div>
+        <div class="sum-row" id="rowDisponible" style="display:none;"><span class="k">Área disponible (predio − utilizada − excedente)</span><span class="v" id="sumDisponible">—</span></div>
+        <div class="sum-row indent"><span class="k">Área de circulación (informativa)</span><span class="v" id="sumCirculacion">—</span></div>
+        <div class="sum-row indent"><span class="k">Área externa de maniobras (laterales + posterior, sin frente)</span><span class="v" id="sumExterna">—</span></div>
+        <div class="sum-sub">Costos (USD)</div>
+        <div class="highlight-card">
+          <div class="k">Costo fijo mensual (área fija × $/m²)</div>
+          <div class="v" id="outCostoFijo">$ 0.00</div>
+        </div>
+        <div class="highlight-card money">
+          <div class="k">Costo excedente semanal (área excedente × $/m²)</div>
+          <div class="v" id="outCostoExc">$ 0.00</div>
+        </div>
+        <div class="highlight-card" style="background:var(--apt-soft);border-color:var(--apt-line);">
+          <div class="k">Costo zona de maniobras (mensual, área maniobra × $/m²)</div>
+          <div class="v" id="outCostoManiobra" style="color:var(--apt);">$ 0.00</div>
+        </div>
+      </div>
+
+      <details class="howto">
+        <summary>Regla de cálculo — evitar duplicar superficies</summary>
+        <ol>
+          <li>El corredor de circulación está <code>incluido</code> dentro de APT y Materia Prima — nunca se suma aparte.</li>
+          <li><code>APT</code> es 100% excedente: no tiene un área fija propia, por eso ya no existe un panel separado de "Excedente APT".</li>
+          <li>Materia Prima sí tiene área fija (relleno sólido); su <code>Excedente M.P.</code> se dibuja aparte, con borde rojo punteado.</li>
+          <li>Costo fijo mensual = Área fija contratada × costo/m² fijo. No depende de las medidas reales de Materia Prima.</li>
+          <li>Costo excedente semanal = (APT completo + Excedente M.P.) × costo/m² excedente.</li>
+          <li>La zona externa de despacho es independiente — no se confunde ni se suma con APT/Materia Prima.</li>
+          <li>En la zona de despacho, la maniobra se define con tres holguras independientes: <code>lateral izquierdo</code>, <code>lateral derecho</code> y <code>posterior</code>. El <code>frente</code> de todas las unidades queda alineado al límite del área, sin holgura adicional.</li>
+          <li>Área de maniobra = Área total operativa − Área de vehículos. Nunca se suma dos veces la misma superficie, incluso al agregar más unidades.</li>
+          <li>La <code>zona real</code> (5.90 × 18.00 m ≈ 106 m², editable) es el límite físico confirmado. La configuración simulada se compara contra ella; si la excede, se marca en rojo.</li>
+          <li>Carga/descarga por tipo de unidad: <code>tráiler</code> → parte posterior (atrás del contenedor); <code>camión APT</code> y <code>furgón</code> → laterales; <code>carro particular</code> → sin operación de carga, solo ocupa espacio (se muestran sus puertas piloto/copiloto).</li>
+          <li>Costo de zona de maniobras (mensual) = Área de maniobra × $/m² de maniobra. Es independiente del costo fijo y del costo excedente de APT/Materia Prima.</li>
+        </ol>
+        <p>Si algún criterio no coincide con la operación real, indícalo y se ajusta la fórmula.</p>
+      </details>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= TAB 2: CONTROL DE ESPACIOS ======================= -->
+<div id="tab-control" class="tab-panel">
+
+  <div class="panel">
+    <h2><span class="dot"></span>Último reporte registrado</h2>
+    <div class="kpi-row" style="margin-bottom:0;">
+      <div class="kpi-card"><div class="k">Fecha</div><div class="v" id="kpiFecha">—</div></div>
+      <div class="kpi-card"><div class="k">Espacio ocupado</div><div class="v" id="kpiAreaUtil">—</div></div>
+      <div class="kpi-card"><div class="k">Área excedente</div><div class="v" id="kpiAreaExc">—</div></div>
+      <div class="kpi-card"><div class="k">Costo mensual USD</div><div class="v" id="kpiCostoTotal">—</div></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:18px;">
+    <h2><span class="dot"></span>Registrar reporte periódico</h2>
+    <p class="h2-note">Cada registro guarda fecha, tipo de espacio, dimensiones, costo por m² en USD y observaciones. El área y el costo total se calculan solos.</p>
+    <div class="field-row">
+      <div class="field"><label>Fecha de reporte</label><input type="date" id="ctrlFecha"></div>
+      <div class="field"><label>Tipo de espacio</label>
+        <select id="ctrlTipo">
+          <option>APT</option>
+          <option>Materia Prima</option>
+          <option>Excedente MP</option>
+          <option>Circulación</option>
+          <option>Maniobras</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Largo</label><div class="unit"><input type="number" id="ctrlLargo" min="0" step="0.01" oninput="updateCtrlPreview()"><span class="suffix">m</span></div></div>
+      <div class="field"><label>Ancho</label><div class="unit"><input type="number" id="ctrlAncho" min="0" step="0.01" oninput="updateCtrlPreview()"><span class="suffix">m</span></div></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Área <span class="val" id="ctrlAreaPreview">0.00 m²</span></label></div>
+      <div class="field"><label>Costo por m² <span class="val" id="ctrlCostoM2Lbl">$ 0.00</span></label><div class="unit"><input type="number" id="ctrlCostoM2" min="0" step="0.001" placeholder="0.00" oninput="updateCtrlPreview()"><span class="suffix">$/m²</span></div></div>
+    </div>
+    <div class="field"><label>Observaciones</label><input type="text" id="ctrlObs" placeholder="opcional"></div>
+    <div class="highlight-card money" style="margin-top:2px;">
+      <div class="k">Costo total del registro</div>
+      <div class="v" id="ctrlCostoTotalPreview">$ 0.00</div>
+    </div>
+    <button class="btn-add" style="margin-top:14px;" onclick="addControlEntry()">+ Registrar</button>
+
+    <div class="table-scroll" style="margin-top:18px;">
+      <table class="log-table">
+        <thead><tr><th>Fecha</th><th>Tipo</th><th style="text-align:right">Largo</th><th style="text-align:right">Ancho</th><th style="text-align:right">Área</th><th style="text-align:right">$/m²</th><th style="text-align:right">Costo</th><th>Obs.</th><th></th></tr></thead>
+        <tbody id="tblControl"></tbody>
+      </table>
+    </div>
+    <div id="controlEmpty" class="log-empty">Sin registros todavía.</div>
+
+    <div class="field-row" style="margin-top:16px;">
+      <button class="btn-add" onclick="exportControlCSV()">⬇ Exportar registro (CSV)</button>
+      <label class="btn-add ext" style="cursor:pointer;">⬆ Importar registro (CSV)<input type="file" accept=".csv" onchange="importControlCSV(event)" style="display:none;"></label>
+    </div>
+    <p class="storage-note" style="margin-top:10px;">Los registros viven en esta pestaña mientras la tengas abierta — se pierden al cerrar o recargar. Usa <b style="color:var(--text)">Exportar CSV</b> antes de cerrar e <b style="color:var(--text)">Importar CSV</b> al volver a abrir el archivo.</p>
+  </div>
+
+  <div class="section-title">Indicadores de evolución</div>
+
+  <div class="layout-equal">
+    <div class="panel">
+      <h2><span class="dot"></span>Evolución del espacio ocupado (m²)</h2>
+      <p class="h2-note">Línea blanca gruesa = total ocupado por fecha. Líneas de color = detalle por tipo.</p>
+      <svg id="chartArea" viewBox="0 0 560 220"></svg>
+      <div class="chart-legend" id="chartAreaLegend"></div>
+      <div class="chart-empty" id="chartAreaEmpty">Aún no hay registros para graficar.</div>
+    </div>
+    <div class="panel">
+      <h2><span class="dot"></span>Evolución del costo mensual (USD)</h2>
+      <p class="h2-note">Suma de todos los tipos registrados por fecha de reporte.</p>
+      <svg id="chartCosto" viewBox="0 0 560 220"></svg>
+      <div class="chart-empty" id="chartCostoEmpty">Aún no hay registros para graficar.</div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:18px;">
+    <h2><span class="dot"></span>Comparación APT vs Materia Prima (área total por fecha)</h2>
+    <svg id="chartComparacion" viewBox="0 0 1100 220"></svg>
+    <div class="chart-legend" id="chartComparacionLegend"></div>
+    <div class="chart-empty" id="chartComparacionEmpty">Aún no hay registros para graficar.</div>
+  </div>
+
+</div>
+
+<script>
+// ===================== helpers =====================
+function num(id){ const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? 0 : v; }
+function val(id){ return document.getElementById(id).value; }
+function setText(id,t){ document.getElementById(id).textContent = t; }
+function show(id){ document.getElementById(id).style.display=''; }
+function hide(id){ document.getElementById(id).style.display='none'; }
+function fmtArea(v){ return v.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' m²'; }
+function fmtMoney(v){ return '$ ' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtInt(v){ return v.toLocaleString('en-US',{maximumFractionDigits:0}); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+// ===================== tabs =====================
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab==='control'){ refreshControl(); }
+  });
+});
+
+// ===================== dimension line helpers =====================
+function dimH(x0,x1,y,label){
+  return `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#7A8494" stroke-width="1"/>
+    <line x1="${x0}" y1="${y-5}" x2="${x0}" y2="${y+5}" stroke="#7A8494" stroke-width="1"/>
+    <line x1="${x1}" y1="${y-5}" x2="${x1}" y2="${y+5}" stroke="#7A8494" stroke-width="1"/>
+    <text x="${(x0+x1)/2}" y="${y-7}" text-anchor="middle" class="cota-label">${label}</text>`;
+}
+function dimV(y0,y1,x,label,side){
+  const tx = side==='right' ? x+9 : x-9;
+  const anchor = side==='right' ? 'start' : 'end';
+  return `<line x1="${x}" y1="${y0}" x2="${x}" y2="${y1}" stroke="#7A8494" stroke-width="1"/>
+    <line x1="${x-5}" y1="${y0}" x2="${x+5}" y2="${y0}" stroke="#7A8494" stroke-width="1"/>
+    <line x1="${x-5}" y1="${y1}" x2="${x+5}" y2="${y1}" stroke="#7A8494" stroke-width="1"/>
+    <text x="${tx}" y="${(y0+y1)/2}" text-anchor="${anchor}" dominant-baseline="middle" class="cota-label">${label}</text>`;
+}
+function labelBox(x,y,lines,color){
+  const longest = Math.max(...lines.map(l=>l.length));
+  const w = longest*7.3+20;
+  const h = lines.length*16+14;
+  let s = `<rect x="${x-4}" y="${y-14}" width="${w}" height="${h}" fill="#F4F6F9" fill-opacity="0.62" rx="4"/>`;
+  lines.forEach((l,i)=>{
+    const fw = i===0 ? 700 : (i===lines.length-1?600:400);
+    const fs = i===0 ? 11.5 : 10.5;
+    const c = i===0? color : '#1D1D1F';
+    s += `<text x="${x}" y="${y+i*16}" class="zone-label" font-size="${fs}" font-weight="${fw}" fill="${c}">${l}</text>`;
+  });
+  return s;
+}
+
+// pallet orientation helper: returns {pw,pl,count} best fit for WxL rectangle with 1.0x1.2 pallets
+function bestPalletFit(W,L){
+  const a = Math.floor(W/1.0)*Math.floor(L/1.2);
+  const b = Math.floor(W/1.2)*Math.floor(L/1.0);
+  if(b>=a) return {pw:1.2, pl:1.0, count:b};
+  return {pw:1.0, pl:1.2, count:a};
+}
+
+// ===================== plano rendering =====================
+function renderPlano(){
+  const aptA = num('aptAncho'), aptL = num('aptLargo');
+  const mpA = num('mpAncho'), mpL = num('mpLargo');
+  const excMpL = num('excMpLargo');
+  const corrA = num('corrAncho');
+  const predioTotal = num('predioTotal');
+  const areaFija = num('areaFija'), costoFijoM2 = num('costoFijoM2'), costoExcM2 = num('costoExcM2');
+  const niveles = Math.max(1, num('niveles'));
+
+  const aptArea = aptA*aptL;
+  const mpArea = mpA*mpL;
+  const excMpArea = mpA*excMpL;
+  const corrL = aptL;
+  const corrArea = corrA*corrL;
+
+  document.getElementById('aptAnchoLbl').textContent = aptA.toFixed(2)+' m';
+  document.getElementById('aptLargoLbl').textContent = aptL.toFixed(2)+' m';
+  document.getElementById('aptAreaOut').textContent = fmtArea(aptArea);
+  document.getElementById('mpAnchoLbl').textContent = mpA.toFixed(2)+' m';
+  document.getElementById('mpLargoLbl').textContent = mpL.toFixed(2)+' m';
+  document.getElementById('mpAreaOut').textContent = fmtArea(mpArea);
+  document.getElementById('excMpLargoLbl').textContent = excMpL.toFixed(2)+' m';
+  document.getElementById('excMpAreaOut').textContent = fmtArea(excMpArea);
+  document.getElementById('corrAnchoLbl').textContent = corrA.toFixed(2)+' m';
+  document.getElementById('predioTotalLbl').textContent = predioTotal>0 ? fmtArea(predioTotal) : '—';
+  document.getElementById('areaFijaLbl').textContent = areaFija.toFixed(0)+' m²';
+  document.getElementById('costoFijoM2Lbl').textContent = fmtMoney(costoFijoM2);
+  document.getElementById('costoExcM2Lbl').textContent = fmtMoney(costoExcM2);
+  document.getElementById('nivelesLbl').textContent = niveles;
+
+  const areaUtilizada = aptArea+mpArea;
+  const areaExcedenteTotal = aptArea+excMpArea; // APT completo + excedente M.P.
+  const totalMetraje = aptArea+mpArea+excMpArea;
+  const costoFijoMensual = areaFija*costoFijoM2;
+  const costoExcSemanal = areaExcedenteTotal*costoExcM2;
+
+  document.getElementById('sumUtilizada').textContent = fmtArea(areaUtilizada);
+  document.getElementById('sumExcedente').textContent = fmtArea(areaExcedenteTotal);
+  document.getElementById('sumCirculacion').textContent = fmtArea(corrArea);
+  document.getElementById('outCostoFijo').textContent = fmtMoney(costoFijoMensual);
+  document.getElementById('outCostoExc').textContent = fmtMoney(costoExcSemanal);
+  if(predioTotal>0){
+    show('rowDisponible');
+    document.getElementById('sumDisponible').textContent = fmtArea(Math.max(0,predioTotal-areaUtilizada-areaExcedenteTotal));
+  } else { hide('rowDisponible'); }
+
+  // KPIs (top of tab)
+  setText('kpiMetraje', fmtArea(totalMetraje));
+  setText('kpiExcedente', fmtArea(areaExcedenteTotal));
+  setText('kpiCostoFijo', fmtMoney(costoFijoMensual));
+  setText('kpiCostoExc', fmtMoney(costoExcSemanal));
+
+  // pallets
+  const fitMain = bestPalletFit(mpA, mpL);
+  const fitExc = excMpArea>0 ? bestPalletFit(mpA, excMpL) : {pw:fitMain.pw, pl:fitMain.pl, count:0};
+  const posTotal = fitMain.count + fitExc.count;
+  document.getElementById('palletPos').textContent = fmtInt(posTotal)+' parihuelas';
+  document.getElementById('palletCap').textContent = fmtInt(posTotal*niveles)+' parihuelas';
+
+  // ---- geometry (true proportional scale) ----
+  const Y_TOP=120, HEIGHT_BUDGET=560, Y_BASE=Y_TOP+HEIGHT_BUDGET;
+  const X_LEFT=150, WIDTH_BUDGET=760;
+
+  const maxL = Math.max(aptL, mpL+excMpL, 1);
+  const totalAncho = (aptA+corrA+mpA) || 1;
+  const scale = Math.min(HEIGHT_BUDGET/maxL, WIDTH_BUDGET/totalAncho);
+
+  const aptPxA=aptA*scale, aptPxL=aptL*scale;
+  const corrPxA=corrA*scale, corrPxL=corrL*scale;
+  const mpPxA=mpA*scale, mpPxL=mpL*scale, excMpPxL=excMpL*scale;
+
+  const drawWidth = aptPxA+corrPxA+mpPxA;
+  const xStart = X_LEFT + Math.max(0,(WIDTH_BUDGET-drawWidth)/2);
+
+  const aptX0=xStart, aptX1=aptX0+aptPxA;
+  const corrX0=aptX1, corrX1=corrX0+corrPxA;
+  const mpX0=corrX1, mpX1=mpX0+mpPxA;
+  const midX=(corrX0+corrX1)/2;
+
+  const aptY1=Y_BASE, aptY0=aptY1-aptPxL;
+  const corrY1=Y_BASE, corrY0=corrY1-corrPxL;
+  const mpY1=Y_BASE, mpY0=mpY1-mpPxL;
+  const excMpY1=mpY0, excMpY0=excMpY1-excMpPxL;
+
+  let s='';
+
+  // pallet grid pattern (shared by MP main + MP excedente)
+  const palletPxW = fitMain.pw*scale, palletPxL = fitMain.pl*scale;
+  s += `<defs><pattern id="palletGrid" width="${palletPxW}" height="${palletPxL}" patternUnits="userSpaceOnUse">
+    <rect width="${palletPxW}" height="${palletPxL}" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="0.6"/>
+  </pattern></defs>`;
+
+  // APT — 100% excedente (dashed, sin relleno sólido)
+  s+=`<rect x="${aptX0}" y="${aptY0}" width="${aptPxA}" height="${aptPxL}" fill="var(--alert)" fill-opacity="0.10" stroke="var(--alert)" stroke-width="2" stroke-dasharray="7 5"/>`;
+  s+=labelBox(aptX0+8, aptY0+16, ['APT (EXCEDENTE)', aptA.toFixed(2)+' × '+aptL.toFixed(2)+' m', fmtArea(aptArea)], 'var(--alert)');
+
+  // Corredor (incluido, hatch)
+  s+=`<rect x="${corrX0}" y="${corrY0}" width="${corrPxA}" height="${corrPxL}" fill="url(#hatchCirc)" stroke="#7A8494" stroke-width="1" stroke-dasharray="4 3"/>`;
+  s+=`<path d="M ${midX} ${corrY0+36} L ${midX} ${corrY0+86}" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#arrowFlow)"/>`;
+  s+=`<path d="M ${midX} ${corrY1-36} L ${midX} ${corrY1-86}" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#arrowFlow)"/>`;
+  s+=`<line x1="${midX}" y1="106" x2="${midX}" y2="${Math.min(aptY0,mpY0)}" stroke="#7A8494" stroke-width="1" stroke-dasharray="2 3"/>`;
+  s+=`<rect class="zone-tag" x="${midX-118}" y="18" width="236" height="60" rx="5" stroke="#7A8494"/>`;
+  s+=`<text x="${midX}" y="34" text-anchor="middle" class="zone-label" font-size="10.5" font-weight="600">ZONA DE CIRCULACIÓN / MANIOBRA</text>`;
+  s+=`<text x="${midX}" y="49" text-anchor="middle" class="zone-label" font-size="9" fill="var(--text-dim)">incluida en APT/M.P. — no se suma</text>`;
+  s+=`<text x="${midX}" y="65" text-anchor="middle" class="zone-label" font-size="9.5" fill="var(--caution)">Ancho: ${corrA.toFixed(2)} m</text>`;
+
+  // Materia Prima principal (área fija, relleno sólido) + grid de parihuelas
+  s+=`<rect x="${mpX0}" y="${mpY0}" width="${mpPxA}" height="${mpPxL}" fill="var(--mp)" fill-opacity="0.85" stroke="var(--mp)" stroke-width="1"/>`;
+  s+=`<rect x="${mpX0}" y="${mpY0}" width="${mpPxA}" height="${mpPxL}" fill="url(#palletGrid)"/>`;
+  s+=labelBox(mpX0+8, mpY0+16, ['MATERIA PRIMA (FIJA)', mpA.toFixed(2)+' × '+mpL.toFixed(2)+' m', fmtArea(mpArea)], 'var(--mp)');
+
+  // Excedente MP (dashed) + grid de parihuelas
+  if(excMpArea>0){
+    s+=`<rect x="${mpX0}" y="${excMpY0}" width="${mpPxA}" height="${excMpPxL}" fill="none" stroke="var(--alert)" stroke-width="2" stroke-dasharray="7 5"/>`;
+    s+=`<rect x="${mpX0}" y="${excMpY0}" width="${mpPxA}" height="${excMpPxL}" fill="url(#palletGrid)"/>`;
+    const excLabelLines = ['EXCEDENTE M.P.', mpA.toFixed(2)+' × '+excMpL.toFixed(2)+' m', fmtArea(excMpArea)];
+    const excLabelH = excLabelLines.length*16+14;
+    const excLabelTextY = excMpY0-8-excLabelH+14;
+    s+=`<line x1="${mpX0+8}" y1="${excMpY0-6}" x2="${mpX0+8}" y2="${excMpY0}" stroke="var(--alert)" stroke-width="1"/>`;
+    s+=labelBox(mpX0+8, excLabelTextY, excLabelLines, 'var(--alert)');
+  }
+
+  // cotas
+  s+=dimH(aptX0, aptX1, aptY0-16, aptA.toFixed(2)+' m');
+  s+=dimV(aptY0, aptY1, aptX0-18, aptL.toFixed(2)+' m', 'left');
+  const mpTopY = excMpArea>0 ? excMpY0 : mpY0;
+  s+=dimH(mpX0, mpX1, mpTopY-16, mpA.toFixed(2)+' m');
+  s+=dimV(mpY0, mpY1, mpX1+18, mpL.toFixed(2)+' m', 'right');
+  if(excMpArea>0){ s+=dimV(excMpY0, excMpY1, mpX1+18, excMpL.toFixed(2)+' m', 'right'); }
+
+  // puerta (en el corredor, base común)
+  s+=`<g transform="translate(${midX-20},${Y_BASE})">
+        <line x1="0" y1="0" x2="0" y2="-32" stroke="#C7CCD4" stroke-width="2"/>
+        <path d="M 0 -32 A 32 32 0 0 1 32 0" fill="none" stroke="#C7CCD4" stroke-width="1" stroke-dasharray="3 3"/>
+        <line x1="0" y1="-32" x2="32" y2="0" stroke="#C7CCD4" stroke-width="2"/>
+      </g>`;
+  s+=`<text x="${midX}" y="${Y_BASE+22}" text-anchor="middle" class="caption" font-size="10.5" font-weight="600">PUERTA DE INGRESO / SALIDA</text>`;
+  s+=`<text x="${midX}" y="${Y_BASE+40}" text-anchor="middle" class="caption" font-size="9.5" fill="#4A5568" font-style="italic">LÍMITE EXTERIOR DEL ALMACÉN — zona de despacho continúa abajo</text>`;
+
+  document.getElementById('dynamicZones').innerHTML = s;
+}
+
+// ===================== despacho — simulador de vehículos =====================
+const TIPO_DEFAULTS = {
+  trailer: {nombre:"Tráiler + Contenedor 40'", largo:16.50, ancho:2.60, carga:'posterior'},
+  camion:  {nombre:'Camión APT', largo:8.50, ancho:2.40, carga:'lateral'},
+  furgon:  {nombre:'Furgón', largo:7.50, ancho:2.50, carga:'lateral'},
+  carro:   {nombre:'Carro particular (SUV)', largo:4.80, ancho:1.85, carga:'ninguna'},
+  otro:    {nombre:'Otro vehículo', largo:5.00, ancho:2.20, carga:'ninguna'}
+};
+const CARRO_SUBTIPOS = {
+  suv: {nombre:'Carro particular (SUV)', largo:4.80, ancho:1.85},
+  van: {nombre:'Carro particular (Van)', largo:5.20, ancho:1.90}
+};
+const CARGA_LABELS = {posterior:'Parte posterior (atrás)', lateral:'Laterales / costados', ninguna:'Sin operación de carga'};
+let despachoVehiculos = [
+  {id:1, tipo:'trailer', nombre:TIPO_DEFAULTS.trailer.nombre, largo:16.50, ancho:2.60, carga:'posterior'}
+];
+let nextVehId = 2;
+
+function vehLabel(v){
+  if(v.tipo==='otro') return (v.nombre && v.nombre.trim()) ? v.nombre.trim() : 'Otro vehículo';
+  if(v.tipo==='carro') return CARRO_SUBTIPOS[v.subtipo||'suv'].nombre;
+  return TIPO_DEFAULTS[v.tipo].nombre;
+}
+function vehShortLabel(v){
+  if(v.tipo==='trailer') return "TRÁILER 40'";
+  if(v.tipo==='camion') return 'CAMIÓN APT';
+  if(v.tipo==='furgon') return 'FURGÓN';
+  if(v.tipo==='carro') return (v.subtipo==='van') ? 'VAN' : 'SUV';
+  return ((v.nombre && v.nombre.trim()) ? v.nombre.trim() : 'OTRO').toUpperCase();
+}
+
+function addVehiculo(){
+  const tipo = document.getElementById('nuevoVehiculoTipo').value;
+  const def = TIPO_DEFAULTS[tipo];
+  const v = {id:nextVehId++, tipo, nombre:def.nombre, largo:def.largo, ancho:def.ancho, carga:def.carga};
+  if(tipo==='carro') v.subtipo='suv';
+  despachoVehiculos.push(v);
+  renderVehiculoCards();
+  renderDespacho();
+}
+function removeVehiculo(id){
+  despachoVehiculos = despachoVehiculos.filter(v=>v.id!==id);
+  renderVehiculoCards();
+  renderDespacho();
+}
+function moveVehiculo(id,dir){
+  const i = despachoVehiculos.findIndex(v=>v.id===id);
+  const j = i+dir;
+  if(i<0||j<0||j>=despachoVehiculos.length) return;
+  const tmp = despachoVehiculos[i]; despachoVehiculos[i]=despachoVehiculos[j]; despachoVehiculos[j]=tmp;
+  renderVehiculoCards();
+  renderDespacho();
+}
+function updateVehiculo(id, field, rawValue){
+  const v = despachoVehiculos.find(x=>x.id===id);
+  if(!v) return;
+  if(field==='tipo'){
+    v.tipo = rawValue;
+    const def = TIPO_DEFAULTS[rawValue];
+    v.nombre = def.nombre; v.largo = def.largo; v.ancho = def.ancho; v.carga = def.carga;
+    if(rawValue==='carro') v.subtipo='suv'; else delete v.subtipo;
+    renderVehiculoCards();
+    renderDespacho();
+    return;
+  }
+  if(field==='subtipo'){
+    v.subtipo = rawValue;
+    const def = CARRO_SUBTIPOS[rawValue];
+    v.nombre = def.nombre; v.largo = def.largo; v.ancho = def.ancho;
+    renderVehiculoCards();
+    renderDespacho();
+    return;
+  }
+  if(field==='carga'){ v.carga = rawValue; renderDespacho(); return; }
+  if(field==='nombre'){ v.nombre = rawValue; renderDespacho(); return; }
+  if(field==='largo' || field==='ancho'){
+    const n = parseFloat(rawValue);
+    v[field] = isNaN(n) ? 0 : Math.max(0.1,n);
+    const lblEl = document.getElementById('vehVal_'+field+'_'+id);
+    if(lblEl) lblEl.textContent = v[field].toFixed(2)+' m';
+    const areaEl = document.getElementById('vehArea_'+id);
+    if(areaEl) areaEl.textContent = fmtArea(v.largo*v.ancho);
+    renderDespacho();
+    return;
+  }
+}
+
+function renderVehiculoCards(){
+  const cont = document.getElementById('vehiculosList');
+  if(!cont) return;
+  if(despachoVehiculos.length===0){
+    cont.innerHTML = '<p class="h2-note" style="padding-left:0;">Sin vehículos — usa "+ Agregar vehículo" para comenzar.</p>';
+    return;
+  }
+  cont.innerHTML = despachoVehiculos.map((v,idx)=>`
+    <div class="veh-card">
+      <div class="veh-card-head">
+        <span class="veh-title">#${idx+1} · ${vehLabel(v)}</span>
+        <div class="veh-card-actions">
+          <button class="btn-move" title="Mover a la izquierda" onclick="moveVehiculo(${v.id},-1)" ${idx===0?'disabled':''}>◀</button>
+          <button class="btn-move" title="Mover a la derecha" onclick="moveVehiculo(${v.id},1)" ${idx===despachoVehiculos.length-1?'disabled':''}>▶</button>
+          <button class="btn-del" title="Eliminar vehículo" onclick="removeVehiculo(${v.id})">×</button>
+        </div>
+      </div>
+      <select onchange="updateVehiculo(${v.id},'tipo',this.value)">
+        <option value="trailer" ${v.tipo==='trailer'?'selected':''}>Tráiler + contenedor 40' (posterior)</option>
+        <option value="camion" ${v.tipo==='camion'?'selected':''}>Camión APT (lateral)</option>
+        <option value="furgon" ${v.tipo==='furgon'?'selected':''}>Furgón (lateral)</option>
+        <option value="carro" ${v.tipo==='carro'?'selected':''}>Carro particular (van/SUV)</option>
+        <option value="otro" ${v.tipo==='otro'?'selected':''}>Otro vehículo</option>
+      </select>
+      ${v.tipo==='carro' ? `<div class="field"><label>Subtipo</label>
+        <select onchange="updateVehiculo(${v.id},'subtipo',this.value)">
+          <option value="suv" ${v.subtipo==='suv'?'selected':''}>SUV</option>
+          <option value="van" ${v.subtipo==='van'?'selected':''}>Van</option>
+        </select></div>` : ''}
+      ${v.tipo==='otro' ? `<div class="field"><label>Nombre</label><input type="text" value="${(v.nombre||'').replace(/"/g,'&quot;')}" oninput="updateVehiculo(${v.id},'nombre',this.value)"></div>
+        <div class="field"><label>Tipo de carga</label>
+        <select onchange="updateVehiculo(${v.id},'carga',this.value)">
+          <option value="ninguna" ${v.carga==='ninguna'?'selected':''}>Sin operación de carga</option>
+          <option value="lateral" ${v.carga==='lateral'?'selected':''}>Lateral / costados</option>
+          <option value="posterior" ${v.carga==='posterior'?'selected':''}>Parte posterior</option>
+        </select></div>` : ''}
+      <div class="field-row">
+        <div class="field"><label>Largo <span class="val" id="vehVal_largo_${v.id}">${v.largo.toFixed(2)} m</span></label><div class="unit"><input type="number" value="${v.largo}" min="0.1" step="0.1" oninput="updateVehiculo(${v.id},'largo',this.value)"><span class="suffix">m</span></div></div>
+        <div class="field"><label>Ancho <span class="val" id="vehVal_ancho_${v.id}">${v.ancho.toFixed(2)} m</span></label><div class="unit"><input type="number" value="${v.ancho}" min="0.1" step="0.1" oninput="updateVehiculo(${v.id},'ancho',this.value)"><span class="suffix">m</span></div></div>
+      </div>
+      <div class="sum-row indent"><span class="k">Carga/descarga</span><span class="v" style="font-size:11px;">${CARGA_LABELS[v.carga||'ninguna']}</span></div>
+      <div class="sum-row indent"><span class="k">Área</span><span class="v" id="vehArea_${v.id}">${fmtArea(v.largo*v.ancho)}</span></div>
+    </div>
+  `).join('');
+}
+
+// ---- ícono simple de montacargas / stocka (vista superior) ----
+function forkliftIcon(cx, cy, angleDeg, sz){
+  return `<g transform="translate(${cx},${cy}) rotate(${angleDeg})">
+    <rect x="${-sz*0.18}" y="${-sz*0.5-sz*0.30}" width="${sz*0.10}" height="${sz*0.30}" fill="var(--ok)"/>
+    <rect x="${sz*0.08}" y="${-sz*0.5-sz*0.30}" width="${sz*0.10}" height="${sz*0.30}" fill="var(--ok)"/>
+    <rect x="${-sz*0.32}" y="${-sz*0.5}" width="${sz*0.64}" height="${sz*0.6}" rx="2" fill="var(--ok)" fill-opacity="0.88" stroke="#F4F6F9" stroke-width="0.8"/>
+    <circle cx="${-sz*0.2}" cy="${sz*0.12}" r="${sz*0.1}" fill="#F4F6F9"/>
+    <circle cx="${sz*0.2}" cy="${sz*0.12}" r="${sz*0.1}" fill="#F4F6F9"/>
+  </g>`;
+}
+
+// ---- silueta de carro particular (van/SUV), con puertas piloto/copiloto marcadas ----
+function carroShape(x0,x1,yRear,yFront,wPx,lPx){
+  const rx = Math.min(wPx,lPx)*0.20;
+  let g = `<rect x="${x0}" y="${yRear}" width="${wPx}" height="${lPx}" rx="${rx}" fill="#5B6472" stroke="#333A44" stroke-width="1"/>`;
+  // parabrisas (indicador hacia el frente del vehículo)
+  const wsY = yFront - lPx*0.30, wsH = lPx*0.11;
+  g += `<rect x="${x0+wPx*0.14}" y="${wsY}" width="${wPx*0.72}" height="${wsH}" rx="3" fill="#3A4454" fill-opacity="0.75"/>`;
+  // luneta trasera (indicador hacia atrás)
+  const rwY = yRear + lPx*0.10, rwH = lPx*0.08;
+  g += `<rect x="${x0+wPx*0.18}" y="${rwY}" width="${wPx*0.64}" height="${rwH}" rx="2" fill="#3A4454" fill-opacity="0.5"/>`;
+  // puertas piloto/copiloto: marca de bisagra + arco punteado de apertura, a ambos costados (resaltadas para visibilidad)
+  const doorY0 = yRear + lPx*0.38, doorY1 = yRear + lPx*0.66;
+  [-1,1].forEach(side=>{
+    const dx = side<0 ? x0 : x1;
+    const arcX = dx + side*Math.min(wPx*0.5, lPx*0.22, 16);
+    g += `<line x1="${dx}" y1="${doorY0}" x2="${dx}" y2="${doorY1}" stroke="var(--caution)" stroke-width="1.6"/>`;
+    g += `<path d="M ${dx} ${doorY0} A ${arcX-dx} ${arcX-dx} 0 0 ${side<0?0:1} ${arcX} ${doorY0}" fill="none" stroke="var(--caution)" stroke-width="1.1" stroke-dasharray="2.5 2.5" transform="rotate(${side<0?-8:8} ${dx} ${(doorY0+doorY1)/2})"/>`;
+  });
+  return g;
+}
+
+// ---- zoom del simulador (rueda del mouse + botones) ----
+let despachoZoom = 0.8;
+function applyDespachoZoom(){
+  const svgEl = document.getElementById('despachoSvg');
+  if(!svgEl) return;
+  svgEl.style.width = (despachoZoom*100)+'%';
+  setText('zoomPct', Math.round(despachoZoom*100)+'%');
+}
+function zoomDespacho(delta){
+  despachoZoom = Math.min(2.5, Math.max(0.3, +(despachoZoom+delta).toFixed(2)));
+  applyDespachoZoom();
+}
+function zoomDespachoReset(){ despachoZoom = 1; applyDespachoZoom(); }
+function initDespachoZoom(){
+  const wrap = document.getElementById('despachoZoomWrap');
+  if(!wrap) return;
+  wrap.addEventListener('wheel', function(e){
+    e.preventDefault();
+    zoomDespacho(e.deltaY>0 ? -0.1 : 0.1);
+  }, {passive:false});
+  applyDespachoZoom();
+}
+
+// ===================== análisis IA — optimización de espacio =====================
+let prevAnalisis = null; // estado anterior, para detectar cambios y generar la recomendación dinámica
+
+function clasificarEspacio(holguraIzq, holguraDer, holguraPost, areaVehiculos, areaManiobra, fitInfo){
+  if(fitInfo && !fitInfo.fits){
+    const excesoW = Math.max(0, fitInfo.totalW-fitInfo.realAncho);
+    const excesoH = Math.max(0, fitInfo.totalH-fitInfo.realLargo);
+    const partes = [];
+    if(excesoW>0.005) partes.push(`${excesoW.toFixed(2)} m de ancho`);
+    if(excesoH>0.005) partes.push(`${excesoH.toFixed(2)} m de largo`);
+    return {estado:'Excede zona real', clase:'alert',
+      motivo:`La configuración simulada (${fitInfo.totalW.toFixed(2)} × ${fitInfo.totalH.toFixed(2)} m) excede la zona real disponible (${fitInfo.realAncho.toFixed(2)} × ${fitInfo.realLargo.toFixed(2)} m) en ${partes.join(' y ')}. Es necesario reducir vehículos u holguras antes de considerar el resto del análisis.`};
+  }
+  const minH = Math.min(holguraIzq, holguraDer, holguraPost);
+  const maxH = Math.max(holguraIzq, holguraDer, holguraPost);
+  const ratio = areaVehiculos>0 ? areaManiobra/areaVehiculos : 0;
+  if(minH < 1.0){
+    return {estado:'Insuficiente', clase:'alert',
+      motivo:`Al menos una holgura configurada (mínimo actual ${minH.toFixed(2)} m) está por debajo del margen mínimo recomendado para maniobrar con seguridad un montacargas o stocka (≈1.20–1.50 m). Existe riesgo operativo.`};
+  }
+  if(maxH > 3.0 || ratio > 3.5){
+    return {estado:'Excesivo', clase:'caution',
+      motivo:`El espacio de maniobra configurado (${areaManiobra.toFixed(2)} m²) es considerablemente mayor al necesario respecto del área ocupada por los vehículos (${areaVehiculos.toFixed(2)} m²). Se están asignando metros cuadrados que podrían reducirse sin afectar la operación.`};
+  }
+  if(minH>=1.8 && maxH<=2.5){
+    return {estado:'Optimizado', clase:'ok',
+      motivo:`Las holguras configuradas (izq ${holguraIzq.toFixed(2)} m · der ${holguraDer.toFixed(2)} m · post ${holguraPost.toFixed(2)} m) están dentro del rango recomendado (1.80–2.50 m) para operar con seguridad, sin destinar espacio adicional innecesario en el frente.`};
+  }
+  return {estado:'Adecuado', clase:'caution',
+    motivo:`Las holguras configuradas permiten una operación funcional, aunque ajustarlas dentro del rango recomendado (1.80–2.50 m) podría optimizar aún más el espacio asignado.`};
+}
+
+function renderAnalisisIA(areaVehiculos, areaManiobra, areaTotalOperativa, holguraIzq, holguraDer, holguraPost, vehs, fitInfo, costoManiobra){
+  const cont = document.getElementById('analisisIA');
+  if(!cont) return;
+
+  if(vehs.length===0){
+    cont.innerHTML = `<div class="ai-head"><span class="ai-title">🧠 Análisis IA — Optimización de espacio</span><span class="ai-badge dim">Sin datos</span></div>
+      <p class="ai-motivo">Agrega al menos un vehículo en "Zona de despacho — simulador" para que el análisis evalúe la configuración.</p>`;
+    prevAnalisis = null;
+    return;
+  }
+
+  const {estado, clase, motivo} = clasificarEspacio(holguraIzq, holguraDer, holguraPost, areaVehiculos, areaManiobra, fitInfo);
+  const areaRedondeada = Math.round(areaTotalOperativa);
+  const nombres = vehs.map(v=>vehLabel(v));
+  const listaNombres = nombres.length>1 ? nombres.slice(0,-1).join(', ')+' y '+nombres[nombres.length-1] : nombres[0];
+  const plural = vehs.length>1;
+
+  const p1 = `El área configurada para la zona de despacho y carga/descarga es de ${areaTotalOperativa.toFixed(2)} m². Considerando el espacio ocupado por ${plural? 'los vehículos ('+listaNombres+')' : listaNombres.toLowerCase()} y el área necesaria para las operaciones de carga y descarga mediante montacargas o stocka, se recomienda considerar aproximadamente ${areaRedondeada} m² como superficie operativa.`;
+  const p2 = `Esta configuración ${estado==='Insuficiente'||estado==='Excede zona real' ? 'implica una operación ajustada, con posible riesgo en las maniobras' : 'permite mantener una operación funcional'}, concentrando la maniobra en los laterales y la parte posterior de ${plural?'las unidades':'la unidad'}, sin asignar espacio adicional innecesario en la parte frontal.`;
+  const p3 = `Desde una perspectiva de optimización para Plásticos Nacionales, los ${areaRedondeada} m² ${estado==='Optimizado' ? 'representan una referencia optimizada' : estado==='Excesivo' ? 'representan una superficie mayor a la estrictamente necesaria' : (estado==='Insuficiente'||estado==='Excede zona real') ? 'representan una superficie ajustada que conviene revisar' : 'representan una referencia adecuada'} para esta configuración actual. El costo estimado de la zona de maniobras es de ${fmtMoney(costoManiobra)}/mes (${areaManiobra.toFixed(2)} m² × $/m²).`;
+  const p4 = fitInfo ? (fitInfo.fits
+    ? `Frente a la zona real disponible (${fitInfo.realAncho.toFixed(2)} × ${fitInfo.realLargo.toFixed(2)} m ≈ ${Math.round(fitInfo.realArea)} m²), la configuración actual cabe con holgura: quedan aproximadamente ${Math.max(0,fitInfo.realArea-areaTotalOperativa).toFixed(2)} m² de margen.`
+    : `La configuración actual NO cabe en la zona real disponible (${fitInfo.realAncho.toFixed(2)} × ${fitInfo.realLargo.toFixed(2)} m ≈ ${Math.round(fitInfo.realArea)} m²); es necesario reducir vehículos, ajustar sus dimensiones u holguras.`) : '';
+
+  // recomendación dinámica: compara contra el estado anterior
+  let deltaHtml = '';
+  if(prevAnalisis && prevAnalisis.vehCount===vehs.length){
+    const changed = Math.abs(holguraIzq-prevAnalisis.izq)>0.001 || Math.abs(holguraDer-prevAnalisis.der)>0.001 || Math.abs(holguraPost-prevAnalisis.post)>0.001;
+    const dArea = areaTotalOperativa - prevAnalisis.area;
+    if(changed && Math.abs(dArea)>0.005){
+      if(dArea<0){
+        deltaHtml = `<p class="ai-delta">Al ajustar las holguras (izq ${prevAnalisis.izq.toFixed(2)}→${holguraIzq.toFixed(2)} m · der ${prevAnalisis.der.toFixed(2)}→${holguraDer.toFixed(2)} m · post ${prevAnalisis.post.toFixed(2)}→${holguraPost.toFixed(2)} m), el área operativa disminuye en ${Math.abs(dArea).toFixed(2)} m², optimizando el uso del espacio sin modificar el área ocupada por los vehículos.</p>`;
+      } else {
+        deltaHtml = `<p class="ai-delta">El incremento de holgura genera ${dArea.toFixed(2)} m² adicionales de espacio operativo para maniobras, pero también aumenta la superficie asignada a despacho.</p>`;
+      }
+    }
+  } else if(prevAnalisis && prevAnalisis.vehCount!==vehs.length){
+    const dArea = areaTotalOperativa - prevAnalisis.area;
+    deltaHtml = `<p class="ai-delta">Al ${vehs.length>prevAnalisis.vehCount?'agregar':'quitar'} un vehículo, el área operativa ${dArea>=0?'aumenta':'disminuye'} en ${Math.abs(dArea).toFixed(2)} m² respecto a la configuración anterior.</p>`;
+  }
+
+  cont.innerHTML = `
+    <div class="ai-head">
+      <span class="ai-title">🧠 Análisis IA — Optimización de espacio</span>
+      <span class="ai-badge ${clase}">${estado}</span>
+    </div>
+    <p class="ai-motivo">${motivo}</p>
+    <div class="ai-narrative">
+      <p>${p1}</p>
+      <p>${p2}</p>
+      <p>${p3}</p>
+      ${p4 ? `<p>${p4}</p>` : ''}
+    </div>
+    ${deltaHtml}
+    <div class="ai-indicator">
+      <div class="ai-indicator-label">Área operativa recomendada</div>
+      <div class="ai-indicator-value">${areaRedondeada} m²</div>
+      <div class="ai-indicator-sub">Valor calculado: ${areaTotalOperativa.toFixed(2)} m²</div>
+      <div class="ai-indicator-sub">Redondeo para planificación: ${areaRedondeada} m²</div>
+    </div>`;
+
+  prevAnalisis = {izq:holguraIzq, der:holguraDer, post:holguraPost, area:areaTotalOperativa, vehCount:vehs.length};
+}
+
+// ===================== despacho (zona externa) rendering =====================
+function renderDespacho(){
+  const holguraIzq = Math.max(0, num('holguraIzq'));
+  const holguraDer = Math.max(0, num('holguraDer'));
+  const holguraPost = Math.max(0, num('holguraPost'));
+  setText('holguraIzqLbl', holguraIzq.toFixed(2)+' m');
+  setText('holguraDerLbl', holguraDer.toFixed(2)+' m');
+  setText('holguraPostLbl', holguraPost.toFixed(2)+' m');
+
+  const realAncho = Math.max(0.1, num('realAncho'));
+  const realLargo = Math.max(0.1, num('realLargo'));
+  const realArea = realAncho*realLargo;
+  setText('realAnchoLbl', realAncho.toFixed(2)+' m');
+  setText('realLargoLbl', realLargo.toFixed(2)+' m');
+  setText('realAreaLbl', Math.round(realArea)+' m² (exacto '+realArea.toFixed(2)+' m²)');
+
+  const costoManiobraM2 = Math.max(0, num('costoManiobraM2'));
+  setText('costoManiobraM2Lbl', fmtMoney(costoManiobraM2));
+
+  const vehs = despachoVehiculos;
+  const areaVehiculos = vehs.reduce((s,v)=>s+v.largo*v.ancho,0);
+  const sumAnchos = vehs.reduce((s,v)=>s+v.ancho,0);
+  const maxLargo = vehs.length ? Math.max(...vehs.map(v=>v.largo)) : 0;
+
+  // Bounding box SIN holgura al frente: solo lateral izq + lateral der + posterior.
+  const totalW = holguraIzq + sumAnchos + holguraDer;
+  const totalH = maxLargo + holguraPost;
+  const areaTotalOperativa = vehs.length ? totalW*totalH : 0;
+  const areaManiobra = vehs.length ? Math.max(0, areaTotalOperativa - areaVehiculos) : 0;
+  const costoManiobra = areaManiobra*costoManiobraM2;
+
+  const fitInfo = {totalW, totalH, realAncho, realLargo, realArea, fits: vehs.length>0 ? (totalW<=realAncho+0.001 && totalH<=realLargo+0.001) : true};
+
+  setText('despachoAreaUnidades', fmtArea(areaVehiculos));
+  setText('despachoAreaManiobra', fmtArea(areaManiobra));
+  setText('despachoAreaTotal', fmtArea(areaTotalOperativa));
+  setText('despachoCostoManiobra', fmtMoney(costoManiobra)+'/mes');
+  setText('sumExterna', fmtArea(areaManiobra));
+  setText('outCostoManiobra', fmtMoney(costoManiobra));
+
+  const resumenEl = document.getElementById('vehiculosResumen');
+  resumenEl.innerHTML = vehs.length===0
+    ? '<div class="sum-row indent"><span class="k">— sin vehículos —</span><span class="v">0.00 m²</span></div>'
+    : vehs.map(v=>`<div class="sum-row indent"><span class="k">${vehLabel(v)}</span><span class="v">${fmtArea(v.largo*v.ancho)}</span></div>`).join('');
+
+  renderAnalisisIA(areaVehiculos, areaManiobra, areaTotalOperativa, holguraIzq, holguraDer, holguraPost, vehs, fitInfo, costoManiobra);
+
+  const svgRoot = document.getElementById('dynamicDespacho');
+  const svgEl = document.getElementById('despachoSvg');
+
+  // ---- geometría: orientación vertical (ancho=horizontal, largo=vertical) ----
+  // Frente = borde inferior (sin holgura). Posterior = franja superior (carga/descarga).
+  // Lateral izquierdo/derecho = franjas a los costados del bloque de vehículos.
+  // La zona real (fija) se dibuja de fondo, en el mismo eje/frente, para comparar visualmente.
+  const X_LEFT=40, W_BUDGET=620, Y_TOP=100, H_BUDGET=460;
+  const boundW = Math.max(totalW, realAncho, 0.1);
+  const boundH = Math.max(totalH, realLargo, 0.1);
+  const scale = Math.min(H_BUDGET/boundH, W_BUDGET/boundW);
+  const centerX = X_LEFT + W_BUDGET/2;
+  const frontY = Y_TOP + boundH*scale;
+
+  svgEl.setAttribute('viewBox','0 0 700 860');
+
+  let s='';
+  s+=`<text x="350" y="22" text-anchor="middle" class="caption" font-size="15" font-weight="700" fill="var(--caution)" letter-spacing="0.02em">ZONA DE DESPACHO / CARGA Y DESCARGA</text>`;
+  s+=`<text x="350" y="40" text-anchor="middle" class="caption" font-size="10" fill="var(--text-dim)">Simulador · ${vehs.length} vehículo${vehs.length!==1?'s':''} · sin holgura al frente · zona real 5.90 × 18.00 m de fondo</text>`;
+
+  if(vehs.length===0){
+    s+=`<text x="350" y="140" text-anchor="middle" class="caption" font-size="12" fill="var(--text-dim)">Sin vehículos — usa "+ Agregar vehículo" para comenzar.</text>`;
+    // aun así se dibuja la zona real de referencia
+    const realDrawW0 = realAncho*scale, realDrawH0 = realLargo*scale;
+    const rX0=centerX-realDrawW0/2, rY0=frontY-realDrawH0, rX1=centerX+realDrawW0/2;
+    s+=`<rect x="${rX0}" y="${rY0}" width="${realDrawW0}" height="${realDrawH0}" rx="3" fill="var(--apt-soft)" stroke="var(--apt)" stroke-width="2"/>`;
+    s+=`<text x="${centerX}" y="${rY0-10}" text-anchor="middle" class="caption" font-size="9.5" font-weight="700" fill="var(--apt)">ZONA REAL — ${realAncho.toFixed(2)} × ${realLargo.toFixed(2)} m (≈${Math.round(realArea)} m²)</text>`;
+    svgRoot.innerHTML = s;
+    applyDespachoZoom();
+    return;
+  }
+
+  // ---- fit banner ----
+  if(!fitInfo.fits){
+    s+=`<rect x="150" y="50" width="400" height="18" rx="4" fill="var(--alert-soft)" stroke="var(--alert)" stroke-width="1"/>`;
+    s+=`<text x="350" y="62.5" text-anchor="middle" class="caption" font-size="9.5" font-weight="700" fill="var(--alert)">⚠ La configuración excede la zona real disponible (${realAncho.toFixed(2)} × ${realLargo.toFixed(2)} m)</text>`;
+  } else {
+    s+=`<text x="350" y="62" text-anchor="middle" class="caption" font-size="9.5" font-weight="600" fill="var(--ok)">✓ La configuración cabe dentro de la zona real (${Math.round(realArea)} m²)</text>`;
+  }
+
+  // ---- zona real (fondo, fija) ----
+  const realDrawW = realAncho*scale, realDrawH = realLargo*scale;
+  const realX0 = centerX-realDrawW/2, realX1 = centerX+realDrawW/2, realY0 = frontY-realDrawH;
+  s+=`<rect x="${realX0}" y="${realY0}" width="${realDrawW}" height="${realDrawH}" rx="3" fill="var(--apt-soft)" stroke="var(--apt)" stroke-width="2"/>`;
+  const realLabelSVG = `<rect x="${realX1-128}" y="${frontY-19}" width="122" height="14" fill="#F4F6F9" fill-opacity="0.82" rx="3"/>
+    <text x="${realX1-6}" y="${frontY-9}" text-anchor="end" class="caption" font-size="8.5" font-weight="700" fill="var(--apt)">ZONA REAL ${realAncho.toFixed(2)}×${realLargo.toFixed(2)} m</text>`;
+
+  // ---- bounding box simulado (maniobra + vehículos) ----
+  const drawW = totalW*scale, drawH = totalH*scale;
+  const outerX0 = centerX-drawW/2, outerX1 = centerX+drawW/2, outerY0 = frontY-drawH, outerY1 = frontY;
+  const holguraIzqPx = holguraIzq*scale, holguraDerPx = holguraDer*scale, holguraPostPx = holguraPost*scale;
+
+  const simBorderColor = fitInfo.fits ? 'var(--caution)' : 'var(--alert)';
+  s+=`<rect x="${outerX0}" y="${outerY0}" width="${drawW}" height="${drawH}" rx="4" fill="var(--caution)" fill-opacity="0.06" stroke="${simBorderColor}" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+
+  // franja posterior (verde) — cubre todo el ancho, arriba del bloque
+  if(holguraPostPx>0.5){
+    s+=`<rect x="${outerX0}" y="${outerY0}" width="${drawW}" height="${holguraPostPx}" fill="var(--ok)" fill-opacity="0.16" stroke="var(--ok)" stroke-width="1.4" stroke-dasharray="5 4"/>`;
+    if(holguraPostPx>24){
+      const plabel='CARGA / DESCARGA — POSTERIOR';
+      const plx=(outerX0+outerX1)/2, ply=outerY0+13, plw=Math.min(drawW-8, plabel.length*5.6+16);
+      s+=`<rect x="${plx-plw/2}" y="${ply-9}" width="${plw}" height="15" fill="#F4F6F9" fill-opacity="0.72" rx="3"/>`;
+      s+=`<text x="${plx}" y="${ply+2}" text-anchor="middle" class="caption" font-size="8.8" font-weight="700" fill="var(--ok)">${plabel}</text>`;
+    }
+  }
+
+  // franjas laterales izq/der
+  if(holguraIzqPx>0.5){
+    s+=`<rect x="${outerX0}" y="${outerY0}" width="${holguraIzqPx}" height="${drawH}" fill="var(--caution)" fill-opacity="0.05" stroke="var(--caution)" stroke-width="1" stroke-dasharray="4 3"/>`;
+    if(drawH>40){
+      const lx=outerX0+holguraIzqPx/2, ly=(outerY0+outerY1)/2;
+      s+=`<text x="${lx}" y="${ly}" transform="rotate(-90 ${lx} ${ly})" text-anchor="middle" class="caption" font-size="8.5" font-weight="600" fill="var(--caution)">LATERAL IZQUIERDO</text>`;
+    }
+  }
+  if(holguraDerPx>0.5){
+    s+=`<rect x="${outerX1-holguraDerPx}" y="${outerY0}" width="${holguraDerPx}" height="${drawH}" fill="var(--caution)" fill-opacity="0.05" stroke="var(--caution)" stroke-width="1" stroke-dasharray="4 3"/>`;
+    if(drawH>40){
+      const lx=outerX1-holguraDerPx/2, ly=(outerY0+outerY1)/2;
+      s+=`<text x="${lx}" y="${ly}" transform="rotate(-90 ${lx} ${ly})" text-anchor="middle" class="caption" font-size="8.5" font-weight="600" fill="var(--caution)">LATERAL DERECHO</text>`;
+    }
+  }
+
+  // línea de frente — sin holgura, alineada al límite del área
+  s+=`<line x1="${outerX0-12}" y1="${outerY1}" x2="${outerX1+12}" y2="${outerY1}" stroke="var(--alert)" stroke-width="2"/>`;
+  s+=`<text x="${outerX0}" y="${outerY1+34}" text-anchor="start" class="caption" font-size="9" font-weight="700" fill="var(--alert)">SIN HOLGURA AL FRENTE — alineado al límite del área</text>`;
+
+  // cotas de holguras laterales (debajo del frente) y posterior (a la derecha, fuera del bloque)
+  if(holguraIzqPx>2) s+=dimH(outerX0, outerX0+holguraIzqPx, outerY1+16, 'Izq. '+holguraIzq.toFixed(2)+' m');
+  if(holguraDerPx>2) s+=dimH(outerX1-holguraDerPx, outerX1, outerY1+16, 'Der. '+holguraDer.toFixed(2)+' m');
+  if(holguraPostPx>2) s+=dimV(outerY0, outerY0+holguraPostPx, outerX1+16, 'Post. '+holguraPost.toFixed(2)+' m', 'right');
+
+  // flujo: ALMACÉN → maniobra posterior
+  s+=`<text x="${(outerX0+outerX1)/2}" y="${outerY0-14}" text-anchor="middle" class="caption" font-size="9" fill="var(--ok)" font-weight="600">ALMACÉN</text>`;
+  s+=`<line x1="${(outerX0+outerX1)/2}" y1="${outerY0-10}" x2="${(outerX0+outerX1)/2}" y2="${outerY0+4}" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#arrowFlow2)"/>`;
+
+  // ---- vehículos en fila, alineados al frente (borde inferior) ----
+  let cx = outerX0+holguraIzqPx;
+  const vehPositions = [];
+  vehs.forEach(v=>{
+    const wPx=v.ancho*scale, lPx=v.largo*scale;
+    vehPositions.push({v, x0:cx, x1:cx+wPx, yFront:outerY1, yRear:outerY1-lPx, wPx, lPx});
+    cx += wPx;
+  });
+
+  vehPositions.forEach(({v,x0,x1,yFront,yRear,wPx,lPx}, idx)=>{
+    if(v.tipo==='carro'){
+      s += carroShape(x0,x1,yRear,yFront,wPx,lPx);
+    } else {
+      const cabFrac = v.tipo==='camion' ? 0.30 : v.tipo==='furgon' ? 0.27 : 0.22;
+      const cabH = Math.min(lPx*cabFrac, lPx*0.4);
+      s+=`<rect x="${x0}" y="${yRear}" width="${wPx}" height="${Math.max(0,lPx-cabH)}" rx="2" fill="#5B6472" stroke="#333A44" stroke-width="1"/>`;
+      s+=`<rect x="${x0}" y="${yFront-cabH}" width="${wPx}" height="${cabH}" rx="6" fill="#4A5568" stroke="#333A44" stroke-width="1"/>`;
+      const axleY1 = yFront-cabH*0.5, axleY2 = yRear+(lPx-cabH)*0.25;
+      [axleY1,axleY2].forEach(ay=>{
+        s+=`<rect x="${x0-5}" y="${ay-7}" width="5" height="14" fill="#DFE4EC"/>`;
+        s+=`<rect x="${x1}" y="${ay-7}" width="5" height="14" fill="#DFE4EC"/>`;
+      });
+    }
+
+    // cotas internas: ancho (arriba, cerca del extremo posterior) y largo (a la izquierda, dentro del vehículo)
+    s+=dimH(x0, x1, yRear+16, v.ancho.toFixed(2)+' m');
+    s+=dimV(yRear, yFront, x0+14, v.largo.toFixed(2)+' m', 'right');
+
+    // insignia numerada (identifica el vehículo; nombre y área completos están en la tarjeta lateral y el resumen)
+    const bcx=(x0+x1)/2, bcy=yRear+34, br=Math.min(11, wPx*0.28);
+    s+=`<circle cx="${bcx}" cy="${bcy}" r="${br}" fill="#F4F6F9" fill-opacity="0.85" stroke="#1D1D1F" stroke-width="1"/>`;
+    s+=`<text x="${bcx}" y="${bcy+3.5}" text-anchor="middle" class="caption mono" font-size="${(br*0.95).toFixed(1)}" font-weight="700" fill="#1D1D1F">${idx+1}</text>`;
+
+    // flujo de carga/descarga, según el tipo de unidad
+    if(v.carga==='posterior' && holguraPostPx>8){
+      s+=`<line x1="${(x0+x1)/2}" y1="${outerY0+4}" x2="${(x0+x1)/2}" y2="${yRear-3}" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#arrowFlow2)"/>`;
+    }
+    if(v.carga==='lateral'){
+      const midY = yRear + lPx*0.5;
+      if(idx===0 && holguraIzqPx>10){
+        s+=`<line x1="${outerX0+4}" y1="${midY}" x2="${x0-3}" y2="${midY}" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#arrowFlow2)"/>`;
+      }
+      if(idx===vehPositions.length-1 && holguraDerPx>10){
+        s+=`<line x1="${outerX1-4}" y1="${midY}" x2="${x1+3}" y2="${midY}" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#arrowFlow2)"/>`;
+      }
+    }
+  });
+
+  // ---- montacargas de referencia: acceso posterior + circulación lateral ----
+  if(holguraPostPx>16 && vehPositions.length){
+    const first = vehPositions[0];
+    s+=forkliftIcon((first.x0+first.x1)/2, outerY0+holguraPostPx*0.78, 180, Math.min(holguraPostPx*0.62,22));
+  }
+  if(holguraIzqPx>16){
+    s+=forkliftIcon(outerX0+holguraIzqPx/2, outerY0+drawH*0.4, 90, Math.min(holguraIzqPx*0.75,24));
+  }
+
+  // ---- etiqueta de zona real, pintada al final para que quede sobre los vehículos ----
+  s += realLabelSVG;
+
+  // ---- cuadro resumen ----
+  const boxW=460, boxX=(700-boxW)/2, boxY=outerY1+58, boxH=190;
+  s+=`<rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="6" fill="#FFFFFF" stroke="var(--border)" stroke-width="1.2"/>`;
+  s+=`<text x="${boxX+16}" y="${boxY+20}" class="caption" font-size="10.5" font-weight="700" fill="var(--caution)" letter-spacing="0.04em">ZONA DE DESPACHO Y MANIOBRAS</text>`;
+  s+=`<line x1="${boxX+16}" y1="${boxY+28}" x2="${boxX+boxW-16}" y2="${boxY+28}" stroke="var(--border)" stroke-width="1"/>`;
+  s+=`<text x="${boxX+16}" y="${boxY+43}" class="caption" font-size="9" fill="var(--text-dim)">Holguras — izq ${holguraIzq.toFixed(2)} m · der ${holguraDer.toFixed(2)} m · post ${holguraPost.toFixed(2)} m</text>`;
+  const sumLine=(y,k,v,color)=>`<text x="${boxX+16}" y="${y}" class="caption" font-size="10" fill="var(--text-muted)">${k}</text><text x="${boxX+boxW-16}" y="${y}" text-anchor="end" class="caption mono" font-size="11" font-weight="700" fill="${color}">${v}</text>`;
+  s+=sumLine(boxY+62, `Vehículos (${vehs.length})`, fmtArea(areaVehiculos), '#1D1D1F');
+  s+=sumLine(boxY+82, 'Área de maniobra', fmtArea(areaManiobra), 'var(--caution)');
+  s+=sumLine(boxY+102, 'Área total operativa', fmtArea(areaTotalOperativa), 'var(--ok)');
+  s+=sumLine(boxY+122, `Zona real (${realAncho.toFixed(2)}×${realLargo.toFixed(2)} m)`, Math.round(realArea)+' m²', 'var(--apt)');
+  s+=sumLine(boxY+142, 'Ajuste vs. zona real', fitInfo.fits ? `Cabe (+${Math.max(0,realArea-areaTotalOperativa).toFixed(2)} m²)` : `Excede ${Math.max(0,areaTotalOperativa-realArea).toFixed(2)} m²`, fitInfo.fits?'var(--ok)':'var(--alert)');
+  s+=sumLine(boxY+162, 'Costo maniobra (mensual)', fmtMoney(costoManiobra), 'var(--apt)');
+
+  svgRoot.innerHTML = s;
+  applyDespachoZoom();
+}
+
+function renderAll(){ renderPlano(); renderVehiculoCards(); renderDespacho(); }
+
+// ===================== control de espacios =====================
+let controlLog = [];
+const TIPOS = ['APT','Materia Prima','Excedente MP','Circulación','Maniobras'];
+const TIPO_COLOR = {'APT':'#1B4E8E','Materia Prima':'#2FA84F','Excedente MP':'#B0271E','Circulación':'#1B4E8E','Maniobras':'#1F8A46'};
+
+function updateCtrlPreview(){
+  const largo = num('ctrlLargo'), ancho = num('ctrlAncho'), costoM2 = num('ctrlCostoM2');
+  const area = largo*ancho;
+  document.getElementById('ctrlAreaPreview').textContent = fmtArea(area);
+  document.getElementById('ctrlCostoM2Lbl').textContent = fmtMoney(costoM2);
+  document.getElementById('ctrlCostoTotalPreview').textContent = fmtMoney(area*costoM2);
+}
+
+function addControlEntry(){
+  const fecha = val('ctrlFecha') || todayISO();
+  const tipo = val('ctrlTipo');
+  const largo = num('ctrlLargo'), ancho = num('ctrlAncho');
+  const area = largo*ancho;
+  if(area<=0){ return; }
+  const costoM2 = num('ctrlCostoM2');
+  const costoTotal = area*costoM2;
+  const obs = val('ctrlObs');
+  controlLog.push({id:Date.now(), fecha, tipo, largo, ancho, area, costoM2, costoTotal, obs});
+  document.getElementById('ctrlLargo').value='';
+  document.getElementById('ctrlAncho').value='';
+  document.getElementById('ctrlCostoM2').value='';
+  document.getElementById('ctrlObs').value='';
+  updateCtrlPreview();
+  refreshControl();
+}
+function deleteControlEntry(id){ controlLog = controlLog.filter(e=>e.id!==id); refreshControl(); }
+
+function exportControlCSV(){
+  const rows=[['fecha','tipo','largo','ancho','area','costoM2','costoTotal','observaciones']];
+  controlLog.forEach(e=>rows.push([e.fecha,e.tipo,e.largo,e.ancho,e.area.toFixed(2),e.costoM2,e.costoTotal.toFixed(2), '"'+(e.obs||'').replace(/"/g,'""')+'"']));
+  const csv = rows.map(r=>r.join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='control_espacios_los_olivos.csv';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function importControlCSV(event){
+  const file = event.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    const lines = String(e.target.result).split('\n').map(l=>l.trim()).filter(Boolean);
+    for(let i=1;i<lines.length;i++){
+      const m = lines[i].match(/(?:^|,)("(?:[^"]|"")*"|[^,]*)/g);
+      if(!m) continue;
+      const parts = m.map(p=>p.replace(/^,/,'').replace(/^"|"$/g,'').replace(/""/g,'"'));
+      const [fecha,tipo,largo,ancho,area,costoM2,costoTotal,obs] = parts;
+      if(!fecha || !tipo) continue;
+      controlLog.push({id:Date.now()+i, fecha, tipo, largo:parseFloat(largo)||0, ancho:parseFloat(ancho)||0, area:parseFloat(area)||0, costoM2:parseFloat(costoM2)||0, costoTotal:parseFloat(costoTotal)||0, obs:obs||''});
+    }
+    refreshControl();
+  };
+  reader.readAsText(file);
+  event.target.value='';
+}
+
+function renderControlTable(){
+  const tbl = document.getElementById('tblControl');
+  tbl.innerHTML='';
+  const sorted = [...controlLog].sort((a,b)=> a.fecha.localeCompare(b.fecha));
+  sorted.forEach(e=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${e.fecha}</td><td style="color:${TIPO_COLOR[e.tipo]||'#1D1D1F'}">${e.tipo}</td>
+      <td class="num">${e.largo.toFixed(2)}</td><td class="num">${e.ancho.toFixed(2)}</td>
+      <td class="num">${e.area.toFixed(2)}</td><td class="num">${fmtMoney(e.costoM2)}</td><td class="num">${fmtMoney(e.costoTotal)}</td>
+      <td class="obs">${e.obs||''}</td><td><button class="btn-del" onclick="deleteControlEntry(${e.id})">×</button></td>`;
+    tbl.appendChild(tr);
+  });
+  document.getElementById('controlEmpty').style.display = sorted.length? 'none':'block';
+}
+
+function latestFecha(){
+  if(controlLog.length===0) return null;
+  return controlLog.reduce((mx,e)=> e.fecha>mx?e.fecha:mx, controlLog[0].fecha);
+}
+
+function refreshControl(){
+  renderControlTable();
+  const ld = latestFecha();
+  const latest = ld? controlLog.filter(e=>e.fecha===ld) : [];
+  const areaUtil = latest.filter(e=>e.tipo==='APT'||e.tipo==='Materia Prima').reduce((s,e)=>s+e.area,0);
+  const areaExc = latest.filter(e=>e.tipo==='Excedente MP'||e.tipo==='APT').reduce((s,e)=>s+e.area,0);
+  const costoTotal = latest.reduce((s,e)=>s+e.costoTotal,0);
+  setText('kpiFecha', ld || '—');
+  setText('kpiAreaUtil', ld? fmtArea(areaUtil) : '—');
+  setText('kpiAreaExc', ld? fmtArea(areaExc) : '—');
+  setText('kpiCostoTotal', ld? fmtMoney(costoTotal) : '—');
+
+  renderControlCharts();
+}
+
+// ---- lightweight self-contained charts (sin dependencias externas) ----
+function renderLineChart(svgId, labels, series){
+  const svg = document.getElementById(svgId);
+  const W=560,H=220,PADL=34,PADB=26,PADT=10,PADR=12;
+  const allVals = series.flatMap(s=>s.values.filter(v=>v!=null));
+  const maxV = Math.max(...(allVals.length?allVals:[1]),1)*1.15;
+  const n = labels.length;
+  const xStep = n>1 ? (W-PADL-PADR)/(n-1) : 0;
+  const xAt = i => PADL+i*xStep;
+  const yAt = v => H-PADB-(v/maxV)*(H-PADB-PADT);
+  let s='';
+  for(let g=0; g<=4; g++){
+    const gy = PADT+g*(H-PADB-PADT)/4;
+    const gval = maxV-g*(maxV/4);
+    s+=`<line x1="${PADL}" y1="${gy}" x2="${W-PADR}" y2="${gy}" stroke="#ECEFF4" stroke-width="1"/>`;
+    s+=`<text x="2" y="${gy+3}" font-size="8" fill="#6B7280" font-family="'IBM Plex Mono',monospace">${gval.toFixed(0)}</text>`;
+  }
+  labels.forEach((l,i)=>{ s+=`<text x="${xAt(i)}" y="${H-8}" font-size="8" fill="#6B7280" text-anchor="middle" font-family="'IBM Plex Mono',monospace">${l.slice(5)}</text>`; });
+  series.forEach(sr=>{
+    let pts='';
+    sr.values.forEach((v,i)=>{ if(v!=null){ pts += (pts===''?'M':'L') + xAt(i)+','+yAt(v)+' '; } });
+    if(pts) s+=`<path d="${pts}" fill="none" stroke="${sr.color}" stroke-width="${sr.bold?3:2}"/>`;
+    sr.values.forEach((v,i)=>{ if(v!=null){ s+=`<circle cx="${xAt(i)}" cy="${yAt(v)}" r="${sr.bold?3.2:2.6}" fill="${sr.color}"/>`; } });
+  });
+  svg.innerHTML = s;
+}
+function renderBarChart(svgId, labels, series){
+  const svg = document.getElementById(svgId);
+  const W = Math.max(560, labels.length*90), H=220, PADL=34,PADB=26,PADT=10,PADR=12;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const allVals = series.flatMap(s=>s.values);
+  const maxV = Math.max(...(allVals.length?allVals:[1]),1)*1.15;
+  const n = labels.length;
+  const groupW = (W-PADL-PADR)/Math.max(n,1);
+  const barW = Math.min(28, groupW/(series.length+1));
+  let s='';
+  for(let g=0; g<=4; g++){
+    const gy = PADT+g*(H-PADB-PADT)/4;
+    const gval = maxV-g*(maxV/4);
+    s+=`<line x1="${PADL}" y1="${gy}" x2="${W-PADR}" y2="${gy}" stroke="#ECEFF4" stroke-width="1"/>`;
+    s+=`<text x="2" y="${gy+3}" font-size="8" fill="#6B7280" font-family="'IBM Plex Mono',monospace">${gval.toFixed(0)}</text>`;
+  }
+  labels.forEach((l,gi)=>{
+    const gx = PADL+gi*groupW;
+    series.forEach((sr,si)=>{
+      const v = sr.values[gi]||0;
+      const bh = (v/maxV)*(H-PADB-PADT);
+      const bx = gx + (groupW-series.length*barW)/2 + si*barW;
+      s+=`<rect x="${bx}" y="${H-PADB-bh}" width="${barW-3}" height="${bh}" fill="${sr.color}"/>`;
+    });
+    s+=`<text x="${gx+groupW/2}" y="${H-8}" font-size="8" fill="#6B7280" text-anchor="middle" font-family="'IBM Plex Mono',monospace">${l.slice(5)}</text>`;
+  });
+  svg.innerHTML = s;
+}
+function chartLegendHTML(series){
+  return series.map(sr=>`<div class="item"><span class="sw" style="background:${sr.color}"></span>${sr.name}</div>`).join('');
+}
+
+function renderControlCharts(){
+  const hasData = controlLog.length>0;
+  document.getElementById('chartAreaEmpty').style.display = hasData?'none':'block';
+  document.getElementById('chartCostoEmpty').style.display = hasData?'none':'block';
+  document.getElementById('chartComparacionEmpty').style.display = hasData?'none':'block';
+  document.getElementById('chartArea').style.display = hasData?'':'none';
+  document.getElementById('chartCosto').style.display = hasData?'':'none';
+  document.getElementById('chartComparacion').style.display = hasData?'':'none';
+  if(!hasData){
+    document.getElementById('chartAreaLegend').innerHTML='';
+    document.getElementById('chartComparacionLegend').innerHTML='';
+    return;
+  }
+  const fechas = [...new Set(controlLog.map(e=>e.fecha))].sort();
+
+  const seriesArea = TIPOS.map(t=>({
+    name:t, color:TIPO_COLOR[t],
+    values: fechas.map(f=>{ const e=controlLog.find(x=>x.fecha===f && x.tipo===t); return e? e.area : null; })
+  })).filter(sr=>sr.values.some(v=>v!=null));
+  const totalOcupado = {name:'Total ocupado', color:'#1D1D1F', bold:true,
+    values: fechas.map(f=> controlLog.filter(e=>e.fecha===f).reduce((s,e)=>s+e.area,0))};
+  renderLineChart('chartArea', fechas, [totalOcupado, ...seriesArea]);
+  document.getElementById('chartAreaLegend').innerHTML = chartLegendHTML([totalOcupado, ...seriesArea]);
+
+  const costoPorFecha = fechas.map(f=> controlLog.filter(e=>e.fecha===f).reduce((s,e)=>s+e.costoTotal,0));
+  renderLineChart('chartCosto', fechas, [{name:'Costo mensual USD', color:'#1B4E8E', bold:true, values:costoPorFecha}]);
+
+  const aptTotal = fechas.map(f=> controlLog.filter(e=>e.fecha===f && e.tipo==='APT').reduce((s,e)=>s+e.area,0));
+  const mpTotal = fechas.map(f=> controlLog.filter(e=>e.fecha===f && (e.tipo==='Materia Prima'||e.tipo==='Excedente MP')).reduce((s,e)=>s+e.area,0));
+  const seriesComp = [{name:'APT (total)',color:'#1B4E8E',values:aptTotal},{name:'Materia Prima (total)',color:'#2FA84F',values:mpTotal}];
+  renderBarChart('chartComparacion', fechas, seriesComp);
+  document.getElementById('chartComparacionLegend').innerHTML = chartLegendHTML(seriesComp);
+}
+
+// ===================== init =====================
+document.getElementById('ctrlFecha').value = todayISO();
+renderAll();
+initDespachoZoom();
+updateCtrlPreview();
+refreshControl();
+</script>
+
+</body>
+</html>

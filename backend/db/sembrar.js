@@ -27,7 +27,7 @@ const slugArea = area => sinTildes(area).toLowerCase().replace(/[^a-z0-9]+/g, '-
  *     node backend/db/sembrar.js --forzar   borra y recarga
  */
 
-export const VERSION_DATOS = '2026.1';
+export const VERSION_DATOS = '2026.2';
 
 export function sembrar({ forzar = false, silencioso = false } = {}) {
   const decir = (...a) => { if (!silencioso) console.log(...a); };
@@ -42,6 +42,22 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   if (yaHay) {
     decir('La base ya tiene datos (' + personal.total() + ' personas, '
       + solicitudes.total() + ' servicios). Nada que sembrar.');
+
+    // El padrón se refresca aparte del resto: si RR.HH. entrega un headcount
+    // nuevo (altas, bajas, cambios de área), basta con reemplazar
+    // data/padron.js y subir VERSION_DATOS -no hace falta --forzar, que
+    // también borraría solicitudes e histórico-. Antes esto solo estaba
+    // prometido en un comentario de data/padron.js sin código que lo
+    // hiciera de verdad; ahora si la versión guardada no coincide, se
+    // vuelve a cargar solo el padrón (cargarPadronOficial ya es un
+    // reemplazo completo de los registros con origen 'padron', no un
+    // agregado -ver backend/db/repos/personal.js-).
+    const versionGuardada = ajustes.leer('version_datos', '');
+    if (versionGuardada !== VERSION_DATOS) {
+      const personas = personal.cargarPadronOficial(padronInicial());
+      ajustes.escribir('version_datos', VERSION_DATOS);
+      decir('Padrón actualizado a la versión ' + VERSION_DATOS + ': ' + personas + ' personas.');
+    }
   } else {
     const personas = personal.cargarPadronOficial(padronInicial());
     decir('Padrón cargado: ' + personas + ' personas.');

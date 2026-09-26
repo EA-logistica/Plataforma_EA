@@ -3,8 +3,8 @@ import { hoyISO } from './utils/format.js';
 import { toast } from './utils/toast.js';
 import { pedirAutorizacion as apiPedirAutorizacion, ingresarLogistica, salirLogistica,
          cambiarMiClave, buscarEnPadron, cargar, cargarMiArea, limpiarDatosPrivados,
-         ingresarPorArea, salirArea, cambiarMiClaveArea } from './api/estado.js';
-import { setSesion, sesion } from './state/sessionState.js';
+         ingresarPorArea, salirArea, cambiarMiClaveArea, confirmarSesionLogistica } from './api/estado.js';
+import { setSesion, sesion, leerSesionGuardada } from './state/sessionState.js';
 import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tabUser, tabAdmin, aplicarPermisosAdmin } from './views/tabs.js';
 import { toggleOrigen, refrescarHoras, resetAccion, limpiarParadas } from './views/requestForm.js';
@@ -235,6 +235,38 @@ export async function guardarCambioClave() {
   toast('Clave actualizada', 'Úsala la próxima vez que ingreses.');
 }
 
+/**
+ * Recupera la sesión guardada en sessionStorage, si hay una, y valida contra
+ * el servidor que el token siga vivo antes de mostrar la vista privilegiada.
+ *
+ * Antes, un simple F5 mandaba de vuelta al login aunque el token siguiera
+ * vigente 12 horas más -sesion era solo una variable en memoria, se perdía
+ * con cualquier recarga-. Ahora se llama una vez al arrancar (ver main.js).
+ * Si el token ya no vale (venció, se reinició el servidor, se cambió la
+ * clave desde otra pestaña), se cae en silencio al login normal: no hay
+ * forma de "arreglar" un token ajeno, así que no tiene sentido mostrar error.
+ */
+export async function restaurarSesion() {
+  const guardada = leerSesionGuardada();
+  if (!guardada) return false;
+  setSesion(guardada);
+  try {
+    if (guardada.tipo === 'user') {
+      await cargarMiArea();
+    } else {
+      // /estado con sesión opcional no distingue "token vencido" de "sin
+      // pendientes": hace falta una ruta que exija sesión de verdad.
+      await confirmarSesionLogistica();
+      await cargar();
+    }
+  } catch (e) {
+    setSesion(null);
+    return false;
+  }
+  abrirVista(guardada.tipo);
+  return true;
+}
+
 const ROL_ETIQUETA = { admin: 'Logística · administrador', seguimiento: 'Logística · seguimiento' };
 
 function abrirVista(tipo) {
@@ -268,7 +300,10 @@ function abrirVista(tipo) {
     $('viewAdmin').classList.add('on');
     $('viewUser').classList.remove('on');
     aplicarPermisosAdmin();
-    tabAdmin('bandeja');
+    // Al entrar, lo primero que ve admin son sus indicadores -no la bandeja
+    // vacía-: es el panorama completo antes de ponerse a trabajar un ticket
+    // puntual.
+    tabAdmin('kpi');
     renderTodo();
   }
 }

@@ -11,3 +11,8 @@ uploads/*
 Thumbs.db
 *.log
 .vscode/
+
+# Módulo de Almacén (ALMACEN-LOS-OLIVOS, integrado): caché de teselas del mapa
+# y de revisiones -se regeneran solos, no son código ni datos de origen-.
+backend/almacen/storage/cache/
+backend/almacen/storage/revisiones.json

@@ -20,7 +20,7 @@ import { sesion } from '../state/sessionState.js';
 /**
  * Copia local del estado. La leen las vistas; nadie la escribe a mano.
  *
- * El padrón NO está aquí, a propósito: son datos personales de 212 personas y
+ * El padrón NO está aquí, a propósito: son datos personales de 114 personas y
  * la pantalla nunca necesita más de una ficha a la vez. Se piden al servidor
  * cuando hacen falta (`buscarPersonal`, `buscarEnPadron`) y de él solo se
  * guarda el total, que es lo único que se muestra.
@@ -67,6 +67,16 @@ export async function cargarMiArea() {
   DB.adjuntos = r.adjuntos;
   return DB;
 }
+
+/**
+ * Confirma que el token de una sesión de logística (admin o seguimiento)
+ * todavía vale. `GET /estado` no sirve para esto: con sesión opcional,
+ * responde 200 igual aunque el token ya no exista (solo que vacío), la
+ * misma forma que sin sesión. Se usa para restaurar la sesión tras un F5
+ * -ver restaurarSesion() en auth.js- sin dar por buena una copia local de
+ * un token que el servidor ya olvidó.
+ */
+export const confirmarSesionLogistica = () => obtener('/solicitudes');
 
 /** Al salir, o si el DNI no correspondía a nada: no dejar en pantalla datos de quien ya se fue. */
 export function limpiarDatosPrivados() {
@@ -222,3 +232,25 @@ export const cambiarEstadoCredencialArea = (area, activo) => modificar('/credenc
 export const pedirHistoricoArea = () => crear('/pedidos-historico');
 export const listarPedidosHistorico = () => obtener('/pedidos-historico');
 export const resolverPedidoHistorico = (id, estado) => modificar('/pedidos-historico/' + id, { estado });
+
+// ------------------------------------------------- compras y logística
+// Exportaciones (muestras al exterior), requerimientos de compra y
+// servicios que gestiona el coordinador de logística. Todo admin-only.
+export const listarExportaciones = () => obtener('/exportaciones');
+export const crearExportacion = datos => crear('/exportaciones', datos);
+export const actualizarExportacion = (id, datos) => modificar('/exportaciones/' + id, datos);
+export const borrarExportacion = id => borrar('/exportaciones/' + id);
+
+export const listarRequerimientos = () => obtener('/requerimientos-compra');
+export const crearRequerimiento = datos => crear('/requerimientos-compra', datos);
+export const actualizarRequerimiento = (id, datos) => modificar('/requerimientos-compra/' + id, datos);
+export const borrarRequerimiento = id => borrar('/requerimientos-compra/' + id);
+
+export const listarServiciosLogistica = () => obtener('/servicios-logistica');
+export const crearServicioLogistica = datos => crear('/servicios-logistica', datos);
+export const actualizarServicioLogistica = (id, datos) => modificar('/servicios-logistica/' + id, datos);
+export const borrarServicioLogistica = id => borrar('/servicios-logistica/' + id);
+
+// Ticket de un solo uso para entrar al módulo de Almacén (otro repositorio,
+// embebido en un iframe propio; ver backend/almacen/acceso.js).
+export const emitirTicketAlmacen = () => crear('/almacen/ticket');

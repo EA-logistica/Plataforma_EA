@@ -1,0 +1,8 @@
+{
+  "_descripcion": "Huellas SHA-256 de los archivos originales tomadas antes de integrar el mapa. `npm run verificar` confirma que siguen idénticos byte a byte.",
+  "registradoEn": "2026-09-22",
+  "archivos": {
+    "frontend/modules/radar-naranjal/radar_naranjal.html": "20ddb8ab829cb8d5962f46b949dbea939b95d982eb995975a3aba52046efb598",
+    "frontend/modules/almacen-los-olivos/layout almacen los olivos.html": "9ef1607239b66a261c9f3c2e231b10973c80e299c771712a0fde3d2e5915d25a"
+  }
+}

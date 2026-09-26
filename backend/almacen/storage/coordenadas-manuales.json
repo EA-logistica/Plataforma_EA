@@ -1,0 +1,5 @@
+{
+  "_instrucciones": "Coordenadas exactas verificadas (tienen prioridad sobre la data existente y la geocodificación). No modifican las direcciones originales. Formato: \"origen\": {\"lat\": -11.9, \"lon\": -77.0, \"nota\": \"verificado en sitio\"} y \"almacenes\": {\"<clave del almacén>\": {\"lat\": ..., \"lon\": ..., \"nota\": \"...\"}}. La clave es la misma que usa DATA.warehouses en radar_naranjal.html (p. ej. smp_general).",
+  "origen": null,
+  "almacenes": {}
+}

@@ -24,11 +24,14 @@ process.env.PLANSA_UPLOADS = path.join(temporal, 'uploads');
 let fallos = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLA') + ' ' + msg); if (!cond) fallos++; };
 
-// El correlativo del primer ticket nuevo sale del propio histórico, para que
-// actualizar la planilla no obligue a retocar la prueba.
+// El correlativo del primer ticket nuevo sale del propio histórico, y el
+// total del padrón de su propia fuente: al actualizar la planilla o el
+// headcount, la prueba sigue valiendo sin tocar un número a mano.
 const { RESUMEN } = await mod('data/historico.js');
 const NUM = RESUMEN.servicios + 1;
 const TICKET = 'REQ-' + String(NUM).padStart(3, '0');
+const { PERSONAL } = await mod('data/padron.js');
+const TOTAL_PADRON = PERSONAL.length;
 
 const { iniciar } = await import('../backend/servidor.js');
 const servidor = iniciar({ puerto: 0, silencioso: true });
@@ -45,9 +48,62 @@ const CLAVE_AREA_PRUEBA = 'ClaveDeArea1';
 credencialesArea.cambiarClave('Logistica', hashClave(CLAVE_AREA_PRUEBA), { debeCambiar: false });
 
 // --- fetch del navegador, apuntado al servidor de prueba ---
+// Con cookie jar propia: el fetch de Node (a diferencia del de un navegador
+// real) no guarda ni reenvía cookies solo, y el módulo de Almacén depende
+// justo de eso (ver frontend/js/views/almacen.js: canjea el ticket con un
+// fetch y confía en que la cookie httpOnly quede puesta para el siguiente).
 const fetchReal = globalThis.fetch;
-globalThis.fetch = (ruta, init) =>
-  fetchReal(String(ruta).startsWith('http') ? ruta : BASE + ruta, init);
+// Clave por Path además de por nombre: dos cookies con el mismo nombre pero
+// distinto Path (como pasa justo al canjear el ticket de Almacén, que limpia
+// una cookie vieja de /almacen mientras pone la nueva en /) son cosas
+// DISTINTAS para un navegador real, no una pisa a la otra.
+const cookieJar = new Map(); // `${path}\u0000${nombre}` -> {nombre, valor, ruta}
+function guardarCookies(res) {
+  const crudas = typeof res.headers.getSetCookie === 'function'
+    ? res.headers.getSetCookie()
+    : (res.headers.get('set-cookie') ? [res.headers.get('set-cookie')] : []);
+  for (const cruda of crudas) {
+    const partes = cruda.split(';').map(p => p.trim());
+    const [nombre, valor] = partes[0].split('=');
+    const pathAttr = partes.find(p => /^path=/i.test(p));
+    const ruta = pathAttr ? pathAttr.slice(5) : '/';
+    const maxAgeAttr = partes.find(p => /^max-age=/i.test(p));
+    const clave = ruta + '\u0000' + nombre;
+    if (maxAgeAttr && Number(maxAgeAttr.slice(8)) <= 0) { cookieJar.delete(clave); continue; }
+    cookieJar.set(clave, { nombre, valor, ruta });
+  }
+}
+function cookiesParaRuta(rutaPedida) {
+  return [...cookieJar.values()]
+    .filter(c => c.ruta === '/' || rutaPedida === c.ruta || rutaPedida.startsWith(c.ruta.replace(/\/$/, '') + '/'))
+    .sort((a, b) => b.ruta.length - a.ruta.length) // más específico primero, como en un navegador real
+    .map(c => `${c.nombre}=${c.valor}`).join('; ');
+}
+// Node sigue los redirects él solo, pero al hacerlo no aplica el Set-Cookie
+// del salto intermedio -a diferencia de un navegador de verdad-, y el canje
+// del ticket de Almacén es justo un 302 con Set-Cookie. Se sigue el redirect
+// a mano acá para que la cookie quede guardada en cada salto, como pasaría
+// en un navegador real.
+async function fetchConCookies(url, init) {
+  let destino = url;
+  let opciones = init;
+  for (let saltos = 0; saltos < 5; saltos++) {
+    const cabeceras = { ...(opciones && opciones.headers) };
+    const pathname = new URL(destino).pathname;
+    const cookies = cookiesParaRuta(pathname);
+    if (cookies && !cabeceras.Cookie && !cabeceras.cookie) cabeceras.Cookie = cookies;
+    const res = await fetchReal(destino, { ...opciones, headers: cabeceras, redirect: 'manual' });
+    guardarCookies(res);
+    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+      destino = new URL(res.headers.get('location'), destino).href;
+      opciones = { method: 'GET' };
+      continue;
+    }
+    return res;
+  }
+  throw new Error('Demasiados redirects siguiendo ' + url);
+}
+globalThis.fetch = (ruta, init) => fetchConCookies(String(ruta).startsWith('http') ? ruta : BASE + ruta, init);
 
 // ----------------------------------------------------------- DOM simulado
 const html = fs.readFileSync(path.join(RAIZ, 'frontend/index.html'), 'utf8');
@@ -89,6 +145,14 @@ globalThis.localStorage = {
   setItem: (k, v) => almacen.set(k, String(v)),
   removeItem: k => almacen.delete(k)
 };
+// Aparte de localStorage: la sesión se guarda en sessionStorage (sobrevive un
+// F5, no un cierre de pestaña ni de navegador -ver state/sessionState.js-).
+const almacenSesion = new Map();
+globalThis.sessionStorage = {
+  getItem: k => (almacenSesion.has(k) ? almacenSesion.get(k) : null),
+  setItem: (k, v) => almacenSesion.set(k, String(v)),
+  removeItem: k => almacenSesion.delete(k)
+};
 const intervalos = [];
 globalThis.setInterval = (fn, ms) => { intervalos.push(ms); return intervalos.length; };
 
@@ -113,7 +177,7 @@ try {
   ok(intervalos.includes(2500) && intervalos.includes(60000), 'quedan armados los dos relojes de la app');
 
   const bd = await mod('frontend/js/api/estado.js');
-  ok(bd.DB.totalPersonal === 212, `del padrón llega el conteo, no las fichas (${bd.DB.totalPersonal})`);
+  ok(bd.DB.totalPersonal === TOTAL_PADRON, `del padrón llega el conteo, no las fichas (${bd.DB.totalPersonal})`);
   ok(!('personal' in bd.DB), 'el padrón completo no viaja al navegador');
   ok(Array.isArray(bd.DB.solicitudes) && bd.DB.solicitudes.length === 0,
      'sin sesión de logística, el historial NO viaja: llega vacío hasta que alguien se identifique');
@@ -184,6 +248,30 @@ try {
   ok(Number($('cntBandeja').textContent) === 1, 'la bandeja muestra el ticket recién registrado');
   globalThis.cerrarModal();   // el aviso de "clave temporal" que abre solo el primer ingreso
 
+  console.log('\n-- sesión que sobrevive un F5 --');
+  const authMod = await mod('frontend/js/auth.js');
+  const sessionMod = await mod('frontend/js/state/sessionState.js');
+  ok(sessionMod.leerSesionGuardada()?.tipo === 'admin', 'entrar como admin ya la dejó guardada en sessionStorage');
+
+  // Un F5 de verdad recarga todo el JS, pero sessionStorage sigue ahí -eso es
+  // justo lo que hay que probar-: se llama restaurarSesion() otra vez, como
+  // haría main.js al arrancar de nuevo, sin haber pasado por el login.
+  $('viewAdmin').classList.remove('on');
+  const restaurada = await authMod.restaurarSesion();
+  ok(restaurada === true && $('viewAdmin').classList.contains('on'),
+     'restaurarSesion() la recupera y abre la vista de logística sin pasar por el login');
+
+  const guardadaOriginal = sessionMod.leerSesionGuardada();
+  sessionStorage.setItem('pn_mensajeria_sesion', JSON.stringify({ ...guardadaOriginal, token: 'no-existe-en-el-servidor' }));
+  $('viewAdmin').classList.remove('on');
+  const conTokenVencido = await authMod.restaurarSesion();
+  ok(conTokenVencido === false && !$('viewAdmin').classList.contains('on'),
+     'pero un token que el servidor ya no reconoce -vencido, o el servidor se reinició- cae en silencio al login, no rompe la pantalla');
+
+  // Se deja la sesión real (no la del token inventado) para lo que sigue.
+  sessionStorage.setItem('pn_mensajeria_sesion', JSON.stringify(guardadaOriginal));
+  await authMod.restaurarSesion();
+
   console.log('\n-- usuarios de logística --');
   ok($('tabUsuarios').style.display !== 'none', 'admin sí ve la pestaña de usuarios');
   globalThis.tabAdmin('usuarios');
@@ -201,13 +289,34 @@ try {
   ok(enRuta.estado === 'En tránsito' && enRuta.vehiculo === 'Motorizado',
      'asignar transporte y avanzar quedó guardado en la base');
 
+  console.log('\n-- bandeja: concluidos/cancelados solo se ven el mismo día --');
+  ok(!$('fBandeja').innerHTML.includes('Todos'), 'sin pestaña "Todos": ya se repite en Histórico');
+  await globalThis.avanzar(TICKET); // En tránsito -> Concluido
+  globalThis.tabAdmin('bandeja');
+  globalThis.setFiltroBandeja('Concluido');
+  ok($('tBandeja').innerHTML.includes(TICKET), 'recién concluido hoy, todavía aparece en la Bandeja');
+  const concluidosConHoy = ($('fBandeja').innerHTML.match(/Concluidos \((\d+)\)/) || [])[1];
+
+  // Se lo "concluye ayer" directo en la base -sin pasar por avanzar(), que
+  // pondría la hora de ahora- para probar la regla sin esperar un día real.
+  const { db } = await import('../backend/db/conexion.js');
+  const ayer = new Date(Date.now() - 86400000).toISOString();
+  db().prepare("UPDATE solicitudes SET ts_concluido = ? WHERE id = ?").run(ayer, TICKET);
+  await bd.cargar();
+  globalThis.renderBandeja();
+  ok(!$('tBandeja').innerHTML.includes(TICKET),
+     'concluido AYER ya no aparece en la Bandeja -vive en el Histórico-');
+  const concluidosSinAyer = ($('fBandeja').innerHTML.match(/Concluidos \((\d+)\)/) || [])[1];
+  ok(Number(concluidosSinAyer) === Number(concluidosConHoy) - 1,
+     'y ya no cuenta en "Concluidos" tampoco');
+
   $('qPadron').value = 'avalos';
   await globalThis.renderPadron();
   ok($('tbPadron').innerHTML.includes('AVALOS VALDIVIA'), 'el padrón se busca por apellido, contra el servidor');
   $('qPadron').value = '';
   await globalThis.renderPadron();
   ok(!$('tbPadron').innerHTML.includes('AVALOS'), 'y sin búsqueda no lista a nadie');
-  ok(Number($('cntPadron').textContent) === 212, `el conteo del padrón sale del servidor (${$('cntPadron').textContent})`);
+  ok(Number($('cntPadron').textContent) === TOTAL_PADRON, `el conteo del padrón sale del servidor (${$('cntPadron').textContent})`);
 
   // -------------------------------------------------------------- histórico
   console.log('\n-- histórico --');
@@ -280,6 +389,73 @@ try {
   ok(/Escenario recomendado/.test(pb) && /Simulador de una salida/.test(pb),
      'con el escenario recomendado y el simulador');
   ok(!/undefined|NaN|\[object/.test(pb), 'sin valores rotos');
+
+  // Regresión: setAsignacionPayback existía pero nunca se expuso en window ni
+  // tenía control en el HTML -el campo quedaba imposible de tocar-.
+  ok(pb.includes('id="pbAsignacion"') && pb.includes('setAsignacionPayback'),
+     'el campo de asignación familiar está en pantalla y conectado');
+  ok(typeof globalThis.setAsignacionPayback === 'function',
+     'y setAsignacionPayback sí llegó al puente de window (antes faltaba)');
+  globalThis.setAsignacionPayback('150');
+  ok($('pbCuerpo').innerHTML.includes('id="pbAsignacion" type="number" min="0" step="0.5" value="150"'),
+     'cambiar el valor se refleja en el propio campo tras repintar');
+
+  // ---------------------------------------------- compras y logística (sidebar)
+  console.log('\n-- compras y logística (nueva sección del sidebar) --');
+  ok($('navCompras').style.display !== 'none', 'admin sí ve el grupo "Compras y Logística" del menú');
+  globalThis.alternarMenu();
+  ok($('adminNav').classList.contains('abierto') && $('navScrim').classList.contains('on') && $('adminNav').inert === false,
+     'el botón de arriba a la izquierda abre el menú desplegable');
+  globalThis.tabAdmin('bandeja');
+  ok(!$('adminNav').classList.contains('abierto') && $('adminNav').inert === true,
+     'elegir una sección lo cierra solo, y cerrado no recibe foco (inert)');
+  const auth = { Authorization: 'Bearer ' + ss.sesion.token, 'Content-Type': 'application/json' };
+
+  await fetch('/api/exportaciones', { method: 'POST', headers: auth, body: JSON.stringify({
+    fechaEnvio: '2026-09-20', oc: 'OC-9001', descripcion: 'Muestra de resina PP', paisDestino: 'China', costoEnvio: 350
+  }) });
+  globalThis.tabAdmin('exportaciones');
+  ok($('aExportaciones').classList.contains('on'), 'la pestaña de exportaciones abre');
+  await globalThis.renderExportaciones();
+  ok($('tExportaciones').innerHTML.includes('China') && $('tExportaciones').innerHTML.includes('OC-9001'),
+     'y pinta el envío recién creado, con país destino y OC');
+  ok(/Envíos registrados/.test($('expMetrics').innerHTML), 'con sus indicadores arriba');
+
+  await fetch('/api/requerimientos-compra', { method: 'POST', headers: auth, body: JSON.stringify({
+    fechaSolicitud: '2026-09-20', areaSolicitante: 'Producción', descripcion: 'Resina PE para soplado',
+    categoria: 'Materia prima importada', cantidad: 20000, unidadMedida: 'kg'
+  }) });
+  globalThis.tabAdmin('requerimientos');
+  ok($('aRequerimientos').classList.contains('on'), 'la pestaña de requerimientos de compra abre');
+  await globalThis.renderRequerimientos();
+  ok($('tRequerimientos').innerHTML.includes('Resina PE para soplado'),
+     'y pinta el requerimiento recién creado');
+  ok(/Requerimientos totales/.test($('reqMetrics').innerHTML), 'con sus indicadores arriba');
+
+  await fetch('/api/servicios-logistica', { method: 'POST', headers: auth, body: JSON.stringify({
+    fechaSolicitud: '2026-09-20', tipoServicio: 'Agenciamiento de aduana', proveedor: 'Agencia XYZ',
+    descripcion: 'Desaduanaje de contenedor de resina PP', costo: 1200, moneda: 'USD'
+  }) });
+  globalThis.tabAdmin('servicios');
+  ok($('aServiciosLogistica').classList.contains('on'), 'la pestaña de servicios abre');
+  await globalThis.renderServiciosLogistica();
+  ok($('tServiciosLogistica').innerHTML.includes('Agencia XYZ'), 'y pinta el servicio recién creado');
+
+  console.log('\n-- Control de Almacenes (mapa/radar/plano, pestañas nativas) --');
+  const almacenVista = await mod('frontend/js/views/almacen.js');
+  ok((await fetch(BASE + '/almacen/api/almacenes')).status === 401,
+     'antes de abrir la pestaña, la sesión de Almacén todavía no existe');
+  globalThis.tabAdmin('almacen');
+  ok($('aAlmacen').classList.contains('on'), 'la pestaña "Control de Almacenes" abre');
+  await almacenVista.abrirAlmacen();
+  ok((await fetch(BASE + '/almacen/api/almacenes')).status === 200,
+     'al abrirla, se canjea un ticket por su cuenta -sin mostrar ningún shell aparte- y la cookie queda puesta');
+  ok($('almacenFrames').children.length === 1, 'crea el iframe del primer sub-módulo (mapa) dentro de la propia pestaña');
+
+  await globalThis.verModuloAlmacen('radar');
+  ok($('almacenFrames').children.length === 2, 'cambiar a "Radar Naranjal" crea su iframe, sin recrear el del mapa');
+  await globalThis.verModuloAlmacen('mapa');
+  ok($('almacenFrames').children.length === 2, 'y volver al mapa reutiliza el que ya existía, no crea uno nuevo');
 
 } finally {
   servidor.close();

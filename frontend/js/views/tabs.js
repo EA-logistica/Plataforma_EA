@@ -7,6 +7,11 @@ import { renderPadron } from './roster.js';
 import { renderPayback } from './payback/vista.js';
 import { renderUsuarios } from './usuarios.js';
 import { renderCredencialesArea } from './credencialesArea.js';
+import { renderExportaciones } from './exportaciones.js';
+import { renderRequerimientos } from './requerimientosCompra.js';
+import { renderServiciosLogistica } from './serviciosLogistica.js';
+import { abrirAlmacen } from './almacen.js';
+import { cerrarMenu } from '../ui/sidebar.js';
 
 /** Pestañas de la vista de solicitante: nueva solicitud / seguimiento / mis servicios. */
 export function tabUser(k) {
@@ -18,8 +23,11 @@ export function tabUser(k) {
   if (k === 'seguimiento' && $('qTicket').value) consultarTicket();
 }
 
-/** Pestañas reservadas a rol admin: indicadores, payback, padrón y usuarios. */
-const TABS_SOLO_ADMIN = ['kpi', 'payback', 'padron', 'usuarios'];
+/** Pestañas reservadas a rol admin: indicadores, payback, padrón, usuarios y el grupo de compras/logística. */
+const TABS_SOLO_ADMIN = [
+  'kpi', 'payback', 'padron', 'usuarios',
+  'almacen', 'exportaciones', 'requerimientos', 'servicios'
+];
 
 /**
  * Oculta del todo, no solo deshabilita, las pestañas que el rol de la sesión
@@ -30,11 +38,16 @@ const TABS_SOLO_ADMIN = ['kpi', 'payback', 'padron', 'usuarios'];
 export function aplicarPermisosAdmin() {
   const esAdmin = !sesion || sesion.rol === 'admin';
   $('tabUsuarios').style.display = esAdmin ? '' : 'none';
+  $('navCompras').style.display = esAdmin ? '' : 'none';
   document.querySelectorAll('[data-atab="kpi"], [data-atab="payback"], [data-atab="padron"]')
     .forEach(b => { b.style.display = esAdmin ? '' : 'none'; });
 }
 
-/** Vistas de logística: bandeja / histórico / indicadores / padrón / payback / usuarios. */
+/**
+ * Vistas de logística: bandeja / histórico / indicadores / padrón / payback /
+ * usuarios, más el grupo "Compras y Logística" (almacén, exportaciones,
+ * requerimientos de compra, servicios) que solo ve admin.
+ */
 export function tabAdmin(k) {
   // Seguimiento no tiene estas pestañas ni en pantalla; si igual se invoca
   // (por ejemplo, un enlace viejo), se cae a la bandeja en vez de abrir algo
@@ -48,6 +61,10 @@ export function tabAdmin(k) {
   $('aPadron').classList.toggle('on', k === 'padron');
   $('aUsuarios').classList.toggle('on', k === 'usuarios');
   $('aPayback').classList.toggle('on', k === 'payback');
+  $('aAlmacen').classList.toggle('on', k === 'almacen');
+  $('aExportaciones').classList.toggle('on', k === 'exportaciones');
+  $('aRequerimientos').classList.toggle('on', k === 'requerimientos');
+  $('aServiciosLogistica').classList.toggle('on', k === 'servicios');
   // El botón de payback vive fuera de la fila de pestañas, así que se marca aparte.
   $('btnPayback').classList.toggle('on', k === 'payback');
   if (k === 'kpi') renderKpi();
@@ -55,4 +72,9 @@ export function tabAdmin(k) {
   if (k === 'padron') renderPadron();
   if (k === 'usuarios') { renderUsuarios(); renderCredencialesArea(); }
   if (k === 'payback') renderPayback();
+  if (k === 'almacen') abrirAlmacen();
+  if (k === 'exportaciones') renderExportaciones();
+  if (k === 'requerimientos') renderRequerimientos();
+  if (k === 'servicios') renderServiciosLogistica();
+  cerrarMenu();
 }

@@ -1,0 +1,33 @@
+/* Contenedor de la plataforma: barra superior + módulos en iframes persistentes. */
+body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+
+.shell-bar { flex: none; height: 50px; display: flex; align-items: center; gap: 18px; padding: 0 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); flex: none; }
+/* La misma barrita azul/verde que la marca de PLANSA en su propia topbar
+   (frontend/css/styles.css .brand::before), en vez de una "P" suelta que no
+   tenía relación con el resto de la plataforma. */
+.brand-mark { width: 9px; height: 26px; border-radius: 4px; background: linear-gradient(135deg, #1F5AA0, #153E73); box-shadow: 0 0 0 3px rgba(27, 78, 142, .12); flex: none; }
+:root[data-theme="dark"] .brand-mark, :root[data-theme="black"] .brand-mark { background: linear-gradient(135deg, #63B0EE, #3C7FBE); box-shadow: 0 0 0 3px rgba(99, 176, 238, .16); }
+.brand-txt b { display: block; font: 800 14px/1.12 var(--font-display); letter-spacing: -.3px; color: var(--blue); }
+.brand-txt b em { font-style: normal; color: var(--plant); }
+:root[data-theme="dark"] .brand-txt b, :root[data-theme="black"] .brand-txt b { color: var(--text); }
+.brand-txt span { display: block; font: 500 10.5px/1.2 var(--font-body); color: var(--text-dim); letter-spacing: .02em; }
+
+.modules { display: flex; gap: 2px; height: 100%; overflow-x: auto; scrollbar-width: none; }
+.modules a { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 100%; color: var(--text-muted); text-decoration: none; font: 600 13px var(--font-display); border-bottom: 2px solid transparent; white-space: nowrap; }
+.modules a:hover { color: var(--text); }
+.modules a.active { color: var(--text); border-bottom-color: var(--accent); }
+.modules a small { font: 500 9.5px var(--font-mono); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.modules a.active small { color: var(--accent); }
+
+.open-tab { margin-left: auto; flex: none; color: var(--text-dim); font-size: 12px; text-decoration: none; }
+.open-tab:hover { color: var(--text); }
+
+.shell-main { flex: 1; position: relative; min-height: 0; }
+.shell-main iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+.shell-main iframe[hidden] { display: none; }
+
+@media (max-width: 760px) {
+  .brand-txt, .open-tab, .modules a small { display: none; }
+  .shell-bar { gap: 8px; }
+}

@@ -4,7 +4,7 @@
  * Vive en `shared/` y no junto al padrón a propósito: el navegador necesita
  * validar y normalizar un DNI en cada ingreso, pero no tiene por qué recibir
  * la lista de personal para hacerlo. Mientras estas dos funciones estuvieron
- * en `data/padron.js`, importarlas arrastraba al navegador los 212 nombres y
+ * en `data/padron.js`, importarlas arrastraba al navegador los 114 nombres y
  * documentos del padrón completo.
  */
 

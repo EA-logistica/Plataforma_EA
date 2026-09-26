@@ -17,7 +17,7 @@ npm start       # http://localhost:3000
 ```
 
 La primera vez se crea `plansa.sqlite` y se siembra con el padrón de RR.HH.
-(212 personas) y el histórico real de 2026: **1 600 servicios del 15 de enero al
+(114 personas) y el histórico real de 2026: **1 600 servicios del 15 de enero al
 15 de septiembre, S/ 35 234,60**.
 
 ```bash
@@ -118,7 +118,7 @@ shared/                      ← CÁLCULO PURO. Lo usan el servidor Y el navegad
     escenarios.js  payback.js
 
 data/                        ← DATOS DE REFERENCIA (código versionado)
-  padron.js                   Las 212 personas de RR.HH.     ← NO se publica
+  padron.js                   Las 114 personas de RR.HH.     ← NO se publica
   historico.js                Los 1 600 servicios de 2026    ← NO se publica
   destinos.js                 Destinos frecuentes + tarifa de referencia
   payback/                    Supuestos del análisis: jornada, ley, motos, zonas
@@ -368,7 +368,7 @@ crear las cuentas de verdad antes de repartir el enlace de la red.
 
 ## Datos y producción
 
-- **El padrón** (`data/padron.js`) son las 212 personas de RR.HH. Para
+- **El padrón** (`data/padron.js`) son las 114 personas de RR.HH. Para
   actualizarlo se reemplaza esa lista y se corre `npm run db:reiniciar`. Las
   altas manuales de logística (`origen: 'manual'`) sobreviven a la recarga.
 - **Documento de identidad.** Se guarda siempre en forma canónica: los DNI de
@@ -380,7 +380,7 @@ crear las cuentas de verdad antes de repartir el enlace de la red.
   búsqueda la resuelve el servidor, ficha por ficha. `GET /api/estado` manda el
   conteo, no la lista, y `/data/padron.js` no se publica. Antes el navegador
   recibía el padrón completo para filtrarlo en local: la tabla no lo mostraba,
-  pero bastaba abrir la consola para leer los 212 documentos.
+  pero bastaba abrir la consola para leer los 114 documentos.
 - **Nada de datos inventados.** La base arranca con el histórico real de 2026,
   cargado como concluido. Lo que la planilla no registraba —vehículo, contacto,
   teléfono— se deja vacío en vez de rellenarse. Cada servicio lleva `fuente`
@@ -423,7 +423,7 @@ Lo que ya está resuelto para eso:
 - **Los tokens de sesión son un valor fijo por 12 horas, en memoria.** Sirven
   para esta prueba, en una red de confianza; no son cookies con flags de
   seguridad ni tienen renovación. **No expongas esto con Tailscale Funnel ni
-  con un port forwarding**: la base tiene 212 documentos de identidad reales.
+  con un port forwarding**: la base tiene 114 documentos de identidad reales.
 - **El padrón sigue sin clave, a propósito.** Cualquiera con un DNI del
   padrón registra solicitudes a su nombre; no hay forma de que finjan ser
   logística (eso sí pide usuario y clave), pero tampoco hay forma de que

@@ -1,0 +1,717 @@
+<title>Radar Naranjal</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  :root{
+    --ink:#12181f;
+    --sub:#4b5768;
+    --muted:#7c8798;
+    --paper:#eef1f5;
+    --panel:#ffffff;
+    --panel-edge:#dbe1e9;
+    --accent:#e85d2b;
+    --accent-ink:#ffffff;
+    --route-default:#93a2b8;
+    --ideal:#1a8f5a;
+    --ideal-soft:#e3f5ec;
+    --moderado:#c07a12;
+    --moderado-soft:#faf0dd;
+    --maximo:#c8501f;
+    --maximo-soft:#fbe9df;
+    --fuera:#6b7484;
+    --fuera-soft:#e9ebef;
+    --pend:#8a6d00;
+    --pend-soft:#faf1cf;
+    --done:#166b3f;
+    --done-soft:#dcf3e6;
+    --shadow: 0 1px 2px rgba(18,24,31,.06), 0 8px 24px -12px rgba(18,24,31,.18);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#e9edf3; --sub:#aeb9c8; --muted:#8a94a6;
+      --paper:#0b0e13; --panel:#131822; --panel-edge:#232b38;
+      --accent:#ff7a44; --accent-ink:#161005;
+      --route-default:#3c4658;
+      --ideal:#3fcf8e; --ideal-soft:#0f2a20;
+      --moderado:#eab04a; --moderado-soft:#302408;
+      --maximo:#f0805a; --maximo-soft:#33190d;
+      --fuera:#8892a2; --fuera-soft:#1c212b;
+      --pend:#e0bf3f; --pend-soft:#332b06;
+      --done:#4fd992; --done-soft:#0f2a1e;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 28px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#e9edf3; --sub:#aeb9c8; --muted:#8a94a6;
+    --paper:#0b0e13; --panel:#131822; --panel-edge:#232b38;
+    --accent:#ff7a44; --accent-ink:#161005;
+    --route-default:#3c4658;
+    --ideal:#3fcf8e; --ideal-soft:#0f2a20;
+    --moderado:#eab04a; --moderado-soft:#302408;
+    --maximo:#f0805a; --maximo-soft:#33190d;
+    --fuera:#8892a2; --fuera-soft:#1c212b;
+    --pend:#e0bf3f; --pend-soft:#332b06;
+    --done:#4fd992; --done-soft:#0f2a1e;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 28px -14px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+    padding-inline:16px; padding-block:20px 48px;
+  }
+  .wrap{max-width:1180px; margin:0 auto;}
+  h1,h2,h3{font-family:"Big Shoulders Display",system-ui,sans-serif; letter-spacing:.01em; margin:0; text-wrap:balance;}
+
+  header.top{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px;}
+  header.top .titles h1{font-size:clamp(28px,4vw,42px); font-weight:800; line-height:.96;}
+  header.top .titles .eyebrow{font:600 12px/1 "IBM Plex Mono",monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:6px; display:block;}
+  header.top .titles p{margin:8px 0 0; color:var(--sub); font-size:14px; max-width:60ch;}
+  .plant-chip{display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--panel-edge); border-radius:14px; padding:10px 14px; box-shadow:var(--shadow); white-space:nowrap;}
+  .plant-chip .dot{width:12px;height:12px;border-radius:3px;background:var(--accent); flex:none;}
+  .plant-chip .txt{display:flex; flex-direction:column; line-height:1.25;}
+  .plant-chip .txt b{font-size:13px;}
+  .plant-chip .txt span{font-size:11.5px; color:var(--muted);}
+
+  .legend-strip{display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; background:var(--panel); border:1px solid var(--panel-edge); border-radius:14px; padding:12px 16px; margin-bottom:12px; box-shadow:var(--shadow); font-size:12.5px; color:var(--sub);}
+  .legend-strip .item{display:flex; align-items:center; gap:7px;}
+  .legend-strip .sw{width:11px;height:11px;border-radius:50%;flex:none;}
+  .shape-sw{width:11px;height:11px;flex:none;display:inline-block;}
+  .shape-circle{border-radius:50%;background:var(--muted);}
+  .shape-ring{border-radius:50%;border:2px solid var(--muted);box-sizing:border-box;}
+  .shape-diamond{background:var(--muted);transform:rotate(45deg);}
+  .legend-strip .note{color:var(--muted); font-size:11.5px; margin-left:auto;}
+
+  .infobar{display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; background:var(--panel); border:1px solid var(--panel-edge); border-radius:14px; padding:11px 16px; margin-bottom:18px; box-shadow:var(--shadow); font-size:12.5px; color:var(--sub);}
+  .infobar b{color:var(--ink);}
+  .progress-chip{display:flex; align-items:center; gap:8px; margin-left:auto; font:600 12.5px/1 "IBM Plex Mono",monospace; color:var(--ink);}
+  .progress-track{width:88px; height:7px; border-radius:5px; background:var(--fuera-soft); overflow:hidden;}
+  .progress-fill{height:100%; background:var(--done); border-radius:5px; transition:width .3s;}
+
+  .resumen-card{padding:16px 18px; margin-bottom:18px;}
+  .resumen-card .resumen-head{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:12px;}
+  .resumen-card h2{font-size:18px; font-weight:700;}
+  .resumen-card .resumen-sub{font-size:12px; color:var(--muted); max-width:52ch;}
+  .resumen-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:10px; margin-bottom:14px;}
+  .resumen-stats .stat{background:var(--paper); border-radius:12px; padding:9px 12px;}
+  .resumen-stats .stat b{display:block; font:700 20px/1.1 "IBM Plex Mono",monospace;}
+  .resumen-stats .stat span{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;}
+  .resumen-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px;}
+  .resumen-item{display:flex; align-items:center; gap:9px; text-align:left; background:var(--paper); border:1px solid var(--panel-edge); border-radius:11px; padding:9px 11px; cursor:pointer; font:inherit; color:inherit;}
+  .resumen-item:hover{border-color:var(--accent);}
+  .resumen-item .name{flex:1; min-width:0;}
+  .resumen-item .name b{display:block; font-size:12.3px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .resumen-item .name span{display:block; font-size:10.8px; color:var(--muted);}
+  .cat-chip{flex:none; font:600 10px/1 "IBM Plex Mono",monospace; text-transform:uppercase; letter-spacing:.04em; padding:4px 6px; border-radius:6px;}
+  .cat-chip.alquiler{background:var(--ideal-soft); color:var(--ideal);}
+  .cat-chip.venta{background:var(--fuera-soft); color:var(--fuera);}
+  .cat-chip.referencia{background:var(--paper); color:var(--muted); border:1px solid var(--panel-edge);}
+  .layout{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(300px,.95fr); gap:20px; align-items:start;}
+  @media (max-width:820px){ .layout{grid-template-columns:1fr;} }
+
+  .card{background:var(--panel); border:1px solid var(--panel-edge); border-radius:18px; box-shadow:var(--shadow);}
+
+  .map-card{padding:14px; position:relative;}
+  .map-card .map-head{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:2px 4px 10px;}
+  .map-card .map-head h2{font-size:19px; font-weight:700;}
+  .map-card .map-head .hint{font-size:11.5px; color:var(--muted); text-align:right;}
+  .map-scroll{max-height:74vh; overflow-y:auto; overflow-x:hidden; border-radius:12px; border:1px solid var(--panel-edge); scroll-behavior:smooth; position:relative; background:var(--paper);}
+  .map-scroll svg{display:block; width:100%; height:auto;}
+  .map-fade-top,.map-fade-bottom{position:sticky; left:0; right:0; height:18px; pointer-events:none; z-index:2;}
+  .map-fade-top{top:0; background:linear-gradient(var(--paper),transparent);}
+  .map-fade-bottom{bottom:0; background:linear-gradient(transparent,var(--paper)); margin-top:-18px;}
+
+  .marker{cursor:pointer;}
+  .marker .halo{fill:none; stroke-width:6; opacity:0; transition:opacity .15s;}
+  .marker:hover .halo, .marker.active .halo{opacity:.28;}
+  .marker circle.pin{stroke:var(--panel); stroke-width:2.5;}
+  .marker.active circle.pin{stroke:var(--ink); stroke-width:3;}
+  .marker.plant .pin{stroke:var(--panel); stroke-width:3;}
+  .marker .check{opacity:0;}
+  .marker.done .check{opacity:1;}
+  .route-path{fill:none; stroke-width:5; stroke-linecap:round; stroke-linejoin:round; transition:opacity .2s;}
+
+  .gmaps-note{display:flex; gap:8px; align-items:flex-start; background:var(--paper); border:1px dashed var(--panel-edge); border-radius:12px; padding:10px 12px; margin:0 4px 8px; font-size:11.5px; color:var(--muted); line-height:1.45;}
+
+  .side{display:flex; flex-direction:column; gap:16px;}
+  .panel-pad{padding:16px 18px;}
+  .side h2{font-size:17px; font-weight:700; margin-bottom:10px;}
+
+  .list-card ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; max-height:320px; overflow:auto;}
+  .list-row{display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:transparent; border:1px solid transparent; border-radius:10px; padding:8px 9px; cursor:pointer; font:inherit; color:inherit;}
+  .list-row:hover{background:var(--paper);}
+  .list-row.active{background:var(--paper); border-color:var(--panel-edge);}
+  .list-row .sw{width:9px;height:9px;border-radius:50%;flex:none;}
+  .list-row .name{flex:1; min-width:0;}
+  .list-row .name b{display:block; font-size:12.8px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .list-row .name span{display:block; font-size:11px; color:var(--muted);}
+  .list-row .time{font:600 12px/1 "IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; flex:none; padding:3px 7px; border-radius:7px;}
+  .list-row .status-pill{flex:none; width:8px; height:8px; border-radius:50%;}
+  .list-row .status-pill.pendiente{background:var(--pend);}
+  .list-row .status-pill.revisado{background:var(--done);}
+
+  .note-preview{display:block; font-size:10px; color:var(--muted); font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;}
+  .comment-toggle{flex:none; background:transparent; border:none; font-size:13px; line-height:1; padding:3px 5px; border-radius:6px; cursor:pointer; opacity:.5;}
+  .comment-toggle:hover{opacity:1; background:var(--panel-edge);}
+  .comment-toggle.has-comment{opacity:1;}
+  .comment-inline{display:none; padding:9px 9px 10px; margin:-2px 0 2px; background:var(--paper); border:1px solid var(--panel-edge); border-radius:10px;}
+  .comment-inline.open{display:block;}
+  .comment-inline textarea{width:100%; min-height:56px; resize:vertical; border:1px solid var(--panel-edge); background:var(--panel); color:var(--ink); border-radius:8px; padding:7px 8px; font:12px/1.4 "IBM Plex Sans",sans-serif; margin-bottom:8px; box-sizing:border-box;}
+  .comment-inline textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .comment-inline-row{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .seg-mini{font:600 10.5px/1 "IBM Plex Sans",sans-serif; padding:6px 8px; border-radius:7px; border:1px solid var(--panel-edge); background:var(--panel); color:var(--sub); cursor:pointer;}
+  .seg-mini.pendiente.on{background:var(--pend-soft); color:var(--pend); border-color:transparent;}
+  .seg-mini.revisado.on{background:var(--done-soft); color:var(--done); border-color:transparent;}
+  .btn-save-mini{font:600 11px/1 "IBM Plex Sans",sans-serif; padding:7px 11px; border-radius:7px; background:var(--ink); color:var(--panel); border:none; cursor:pointer; margin-left:auto;}
+  .btn-save-mini:disabled{opacity:.5; cursor:default;}
+  .comment-inline .save-status{font-size:11px; color:var(--muted);}
+
+  .detail-card{min-height:1px;}
+  .detail-card .band-badge{display:inline-flex; align-items:center; gap:6px; font:600 11px/1 "IBM Plex Mono",monospace; text-transform:uppercase; letter-spacing:.06em; padding:5px 9px; border-radius:20px; margin:0 6px 10px 0;}
+  .detail-card h3{font-size:20px; font-weight:700; line-height:1.15; margin-bottom:4px;}
+  .detail-card .addr{font-size:13px; color:var(--sub); margin-bottom:14px;}
+  .stat-row{display:flex; gap:10px; margin-bottom:14px;}
+  .stat{flex:1; background:var(--paper); border-radius:12px; padding:10px 12px;}
+  .stat b{display:block; font:700 22px/1.1 "IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;}
+  .stat span{font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em;}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font-size:13px; margin-bottom:14px;}
+  .kv dt{color:var(--muted);}
+  .kv dd{margin:0; color:var(--ink);}
+  .detail-card .traffic-note{font-size:11.5px; color:var(--muted); margin-bottom:14px; line-height:1.4;}
+  .link-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;}
+  .btn-link{display:inline-flex; align-items:center; gap:6px; text-decoration:none; font:600 12.5px/1 "IBM Plex Sans",sans-serif; padding:9px 13px; border-radius:10px;}
+  .btn-link.primary{background:var(--accent); color:var(--accent-ink);}
+  .btn-link.ghost{background:var(--paper); color:var(--ink); border:1px solid var(--panel-edge);}
+  .btn-link:hover{filter:brightness(1.06);}
+  .no-link{font-size:12.5px; color:var(--muted); display:block; margin-bottom:16px;}
+
+  .admin-box{border-top:1px solid var(--panel-edge); margin-top:4px; padding-top:14px;}
+  .admin-box .admin-label{font:600 11px/1 "IBM Plex Mono",monospace; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:10px; display:block;}
+  .seg{display:flex; gap:6px; margin-bottom:10px;}
+  .seg button{flex:1; border:1px solid var(--panel-edge); background:var(--paper); color:var(--sub); font:600 12px/1 "IBM Plex Sans",sans-serif; padding:8px 6px; border-radius:9px; cursor:pointer;}
+  .seg button.on.pendiente{background:var(--pend-soft); color:var(--pend); border-color:transparent;}
+  .seg button.on.revisado{background:var(--done-soft); color:var(--done); border-color:transparent;}
+  textarea#commentInput{width:100%; min-height:72px; resize:vertical; border:1px solid var(--panel-edge); background:var(--paper); color:var(--ink); border-radius:10px; padding:9px 10px; font:13px/1.4 "IBM Plex Sans",sans-serif; margin-bottom:10px;}
+  textarea#commentInput:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .save-row{display:flex; align-items:center; gap:10px;}
+  .btn-save{background:var(--ink); color:var(--panel); border:none; font:600 13px/1 "IBM Plex Sans",sans-serif; padding:10px 16px; border-radius:10px; cursor:pointer;}
+  .btn-save:disabled{opacity:.5; cursor:default;}
+  .save-status{font-size:11.5px; color:var(--muted);}
+  .db-note{font-size:11px; color:var(--muted); margin-top:8px;}
+
+  footer.foot{margin-top:22px; font-size:11.5px; color:var(--muted); line-height:1.5;}
+  a{color:inherit;}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="titles">
+      <span class="eyebrow">Planta &rarr; almacenes candidatos</span>
+      <h1>Radar Naranjal</h1>
+      <p>Tiempos de viaje estimados desde la planta hacia cada almacén evaluado en Lima Norte, con seguimiento de revisión por opción.</p>
+    </div>
+    <div class="plant-chip">
+      <span class="dot"></span>
+      <span class="txt">
+        <b>Plásticos Nacionales</b>
+        <span>Av. Los Talleres 4898, Urb. Ind. El Naranjal &mdash; Independencia</span>
+      </span>
+    </div>
+  </header>
+
+  <div class="legend-strip">
+    <span class="item"><span class="sw" style="background:var(--ideal)"></span>Ideal &middot; hasta 10 min</span>
+    <span class="item"><span class="sw" style="background:var(--moderado)"></span>Moderado &middot; 10&ndash;20 min</span>
+    <span class="item"><span class="sw" style="background:var(--maximo)"></span>M&aacute;ximo &middot; 20&ndash;30 min</span>
+    <span class="item"><span class="sw" style="background:var(--fuera)"></span>Fuera de rango &middot; +30 min</span>
+    <span class="item"><span class="shape-sw shape-circle"></span>Alquiler</span>
+    <span class="item"><span class="shape-sw shape-ring"></span>Venta (referencial)</span>
+    <span class="item"><span class="shape-sw shape-diamond"></span>Referencia</span>
+    <span class="note">Tiempo con tr&aacute;fico moderado estimado</span>
+  </div>
+
+  <div class="infobar">
+    <span><b>Sin imágenes satelitales incrustadas:</b> la plataforma no permite cargar mapas de terceros dentro de esta página. Cada punto abre la ruta real con calles, tráfico y vista satelital directo en Google Maps.</span>
+    <span class="progress-chip" id="progressChip">
+      <span class="progress-track"><span class="progress-fill" id="progressFill" style="width:0%"></span></span>
+      <span id="progressText">0/11 revisados</span>
+    </span>
+  </div>
+
+  <div class="card resumen-card" id="resumenCard">
+    <div class="resumen-head">
+      <h2>Resumen &middot; zona planta (Independencia / Los Olivos / SMP)</h2>
+      <span class="resumen-sub">Almac&eacute;n candidatos encontrados dentro y alrededor de la zona industrial El Naranjal, a 11 minutos o menos de la planta.</span>
+    </div>
+    <div class="resumen-stats" id="resumenStats"></div>
+    <div class="resumen-grid" id="resumenGrid"></div>
+  </div>
+
+  <div class="layout">
+    <div class="card map-card">
+      <div class="map-head">
+        <h2>Mapa de trayectos</h2>
+        <div class="hint">Mapa esquem&aacute;tico a escala real &middot; norte arriba<br>clic en un punto para ver la ruta</div>
+      </div>
+      <div class="map-scroll" id="mapScroll">
+        <div class="map-fade-top"></div>
+        <svg id="mapSvg" viewBox="0 0 1000 2703.1" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa esquemático de Lima Norte con la planta y los almacenes evaluados">
+        </svg>
+        <div class="map-fade-bottom"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card list-card panel-pad">
+        <h2>Puntos, ordenados por tiempo</h2>
+        <ul id="listUl"></ul>
+      </div>
+      <div class="card detail-card panel-pad" id="detailCard"></div>
+    </div>
+  </div>
+
+  <footer class="foot">
+    Rutas calculadas sobre la red vial real (OSRM / OpenStreetMap) desde cada punto hasta la planta; el tiempo mostrado aplica un factor de tr&aacute;fico moderado (&times;1.4) sobre el tiempo en v&iacute;a libre, por lo que es referencial y puede variar seg&uacute;n la hora del d&iacute;a. Almacén CO Logistic se incluye como punto de referencia indicado por el usuario, no como parte de la b&uacute;squeda de alquiler. Coordenadas aproximadas a la zona indicada en cada anuncio cuando no se public&oacute; direcci&oacute;n exacta — el punto "San Martín de Porres (búsqueda general)" usa el centro del distrito porque el anuncio no da dirección específica. Los marcadores con anillo hueco (○) son inmuebles en <b>venta</b>, agregados para seguimiento aunque no son el objetivo de alquiler. Dos anuncios de Los Olivos comparten el mismo enlace con áreas y contactos distintos según la fuente (Santa Luisa: 18,869 o 3,200 m²; Trapiche/Los Olivos: 800 o 1,000 m²) y se muestran con esa aclaración hasta poder verificarlos directamente. El estado y comentario de revisión se guardan en esta página y son visibles para quien la abra.
+  </footer>
+</div>
+
+<script>
+const DATA = {"plant": {"name": "Plásticos Nacionales", "addr": "Av. Los Talleres 4898, Urb. Industrial El Naranjal, Independencia", "lat": -11.978531, "lon": -77.0626798, "x": 838.9, "y": 2182.3}, "viewW": 1000, "viewH": 2703.1, "warehouses": {"co_logistic": {"name": "Almacén CO Logistic", "addr": "Av. Alfredo Mendiola 5210, Los Olivos", "x": 814.0, "y": 2145.1, "distance_km": 2.2, "duration_min": 4.0, "path": "M 811.5,2145.5 L 811.1,2142.8 L 811.0,2141.8 L 810.7,2139.7 L 810.0,2135.2 L 809.3,2130.0 L 808.8,2126.8 L 808.1,2121.9 L 808.0,2121.1 L 807.5,2118.1 L 807.3,2116.4 L 807.2,2116.2 L 807.1,2115.1 L 808.1,2115.0 L 811.5,2114.4 L 812.8,2114.2 L 818.3,2113.3 L 826.9,2112.0 L 833.9,2110.9 L 835.4,2110.6 L 840.8,2109.8 L 845.7,2109.0 L 846.0,2110.3 L 847.8,2118.7 L 849.1,2124.6 L 849.3,2125.5 L 851.2,2134.4 L 852.1,2138.5 L 853.4,2144.4 L 853.5,2145.0 L 854.0,2147.2 L 854.5,2149.2 L 856.1,2156.6 L 857.2,2162.0 L 857.9,2165.6 L 858.0,2166.0 L 856.7,2166.2 L 848.9,2167.3 L 848.5,2167.4 L 844.4,2168.0 L 838.6,2169.0 L 838.7,2169.6 L 836.4,2170.0 L 836.5,2170.9 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "n_path_pts": 50, "tipo": "referencia", "distrito": "Los Olivos", "m2": null, "precio": null, "url": null, "fuente": "Referencia proporcionada por el usuario", "duration_adj_min": 6, "band": "ideal", "lat": -11.9739447, "lon": -77.0658169, "categoria": "Referencia", "contacto": null}, "los_olivos_infantas": {"name": "Nave industrial Urb. Infantas (912/1844/898 m²)", "addr": "Calle Los Hornos, Urb. Industrial Infantas, Los Olivos", "x": 839.5, "y": 2111.3, "distance_km": 1.4, "duration_min": 2.3, "path": "M 839.3,2110.0 L 840.8,2109.8 L 845.7,2109.0 L 846.0,2110.3 L 847.8,2118.7 L 849.1,2124.6 L 849.3,2125.5 L 851.2,2134.4 L 852.1,2138.5 L 853.4,2144.4 L 853.5,2145.0 L 854.0,2147.2 L 854.5,2149.2 L 856.1,2156.6 L 857.2,2162.0 L 857.9,2165.6 L 858.0,2166.0 L 856.7,2166.2 L 848.9,2167.3 L 848.5,2167.4 L 844.4,2168.0 L 838.6,2169.0 L 838.7,2169.6 L 836.4,2170.0 L 836.5,2170.9 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "n_path_pts": 31, "tipo": "almacen", "distrito": "Los Olivos", "m2": "898 / 912 / 1,844 (naves divisibles)", "precio": "Consultar con agente", "url": "https://www.infocasas.com.pe/local-industrial-alquiler-calle-los-hornos-urb-lotizacion-industrial-infantas-los-olivos/185682031", "fuente": "InfoCasas.com.pe", "duration_adj_min": 3, "band": "ideal", "lat": -11.9697654, "lon": -77.0625963, "categoria": "Alquiler", "contacto": null}, "independencia_pacifico": {"name": "Local industrial Av. El Pacífico (~2,331-2,852 m²)", "addr": "Av. El Pacífico, Independencia", "x": 864.5, "y": 2319.7, "distance_km": 2.9, "duration_min": 3.6, "path": "M 864.5,2319.8 L 864.4,2319.8 L 864.1,2319.9 L 862.8,2320.3 L 861.9,2320.4 L 861.4,2320.5 L 860.9,2320.5 L 860.3,2320.6 L 859.2,2320.5 L 858.6,2320.5 L 858.3,2320.5 L 858.0,2320.6 L 857.1,2320.9 L 856.7,2321.0 L 852.8,2322.2 L 850.6,2323.0 L 843.4,2325.3 L 842.8,2325.4 L 841.1,2326.0 L 839.7,2326.5 L 837.1,2327.3 L 836.6,2324.5 L 836.4,2323.0 L 835.9,2321.4 L 835.7,2320.5 L 835.5,2319.7 L 835.2,2318.9 L 834.9,2317.8 L 834.4,2316.7 L 833.1,2307.6 L 832.4,2303.8 L 831.6,2299.5 L 830.3,2294.3 L 829.6,2291.2 L 829.1,2288.2 L 828.7,2286.0 L 828.2,2282.0 L 826.6,2269.2 L 825.8,2261.5 L 825.4,2257.7 L 825.0,2254.7 L 823.2,2242.9 L 821.1,2228.9 L 820.6,2226.2 L 817.9,2208.5 L 817.9,2204.2 L 817.9,2201.3 L 817.9,2198.5 L 817.8,2197.0 L 817.7,2195.5 L 817.5,2194.2 L 817.4,2192.8 L 817.2,2191.4 L 817.0,2190.0 L 816.8,2189.0 L 816.2,2185.8 L 816.1,2184.8 L 816.0,2184.2 L 816.0,2183.6 L 816.0,2183.0 L 816.0,2182.4 L 816.1,2181.9 L 816.2,2181.2 L 816.3,2180.8 L 816.4,2180.4 L 816.8,2178.9 L 817.8,2177.7 L 818.3,2176.7 L 818.6,2175.6 L 819.3,2174.7 L 820.1,2174.0 L 821.0,2173.6 L 822.1,2173.3 L 825.0,2172.7 L 825.7,2172.6 L 831.2,2171.7 L 835.8,2171.0 L 836.5,2170.9 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "n_path_pts": 84, "tipo": "almacen", "distrito": "Independencia", "m2": "~2,331 a 2,852 (sobre el rango buscado)", "precio": "Consultar precio", "url": "https://urbania.pe/inmueble/clasificado/alclniin-alquiler-de-local-industrial-en-independencia-lima-142800042", "fuente": "Urbania.pe / Adondevivir.com", "duration_adj_min": 5, "band": "ideal", "lat": -11.9954825, "lon": -77.0594507, "categoria": "Alquiler", "contacto": "984298787"}, "smp_tomas_valle": {"name": "Local industrial Av. Tomás Valle (3,200 m², modular)", "addr": "Av. Tomás Valle, San Martín de Porres", "x": 767.5, "y": 2447.6, "distance_km": 5.6, "duration_min": 7.8, "path": "M 767.5,2447.4 L 767.5,2447.4 L 761.2,2448.6 L 757.4,2449.3 L 750.2,2449.5 L 750.1,2448.1 L 750.2,2446.5 L 750.5,2444.6 L 750.8,2442.9 L 751.4,2439.6 L 751.8,2437.3 L 752.9,2431.7 L 753.2,2429.8 L 753.7,2426.9 L 755.3,2425.1 L 759.4,2424.4 L 758.0,2415.6 L 757.4,2411.4 L 757.1,2409.4 L 756.7,2407.4 L 757.0,2407.0 L 757.1,2406.6 L 767.2,2405.1 L 768.6,2404.9 L 772.9,2404.2 L 778.2,2403.4 L 783.9,2402.5 L 785.0,2402.3 L 795.9,2400.7 L 800.1,2400.0 L 809.7,2398.5 L 829.3,2395.6 L 830.0,2395.5 L 835.9,2394.6 L 837.9,2394.4 L 838.6,2394.2 L 840.4,2393.9 L 841.6,2393.7 L 842.7,2393.7 L 843.1,2394.0 L 843.4,2394.2 L 843.9,2394.4 L 844.2,2394.5 L 844.8,2394.5 L 845.1,2394.5 L 845.7,2394.3 L 846.3,2394.0 L 846.5,2393.9 L 847.0,2393.4 L 847.1,2393.2 L 847.4,2392.6 L 847.6,2391.9 L 847.6,2391.6 L 847.5,2390.9 L 847.4,2390.6 L 847.1,2390.0 L 846.7,2389.6 L 846.5,2389.4 L 846.0,2384.7 L 845.8,2383.2 L 844.9,2377.0 L 843.9,2371.8 L 842.1,2361.6 L 839.1,2347.3 L 838.3,2342.6 L 834.4,2316.7 L 833.1,2307.6 L 831.6,2299.5 L 829.6,2291.2 L 829.1,2288.2 L 828.2,2282.0 L 826.6,2269.2 L 825.4,2257.7 L 823.2,2242.9 L 821.1,2228.9 L 817.9,2208.5 L 817.9,2204.2 L 817.9,2198.5 L 817.7,2195.5 L 817.5,2194.2 L 817.2,2191.4 L 817.0,2190.0 L 816.2,2185.8 L 816.1,2184.8 L 816.0,2183.6 L 816.0,2182.4 L 816.1,2181.9 L 816.3,2180.8 L 816.4,2180.4 L 817.8,2177.7 L 818.6,2175.6 L 819.3,2174.7 L 821.0,2173.6 L 822.1,2173.3 L 825.7,2172.6 L 835.8,2171.0 L 836.5,2170.9 L 836.9,2173.9 L 837.1,2175.4 L 837.9,2180.9 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "San Martín de Porres", "m2": "3,200 techados (modular hasta 10,500)", "precio": "USD 7.00/m² + IGV", "url": "https://urbania.pe/inmueble/clasificado/alclniin-alquiler-de-local-industrial-en-san-martin-de-porres-lima-150087345", "fuente": "Urbania.pe / Adondevivir.com", "duration_adj_min": 11, "band": "moderado", "lat": -12.0112616, "lon": -77.0716749, "categoria": "Alquiler", "contacto": null}, "smp_panamericana": {"name": "Local industrial cerca Panamericana Norte (1,337 m²)", "addr": "Av. Alfredo Mendiola / Genaro Unger, San Martín de Porres", "x": 866.1, "y": 2516.7, "distance_km": 5.2, "duration_min": 6.5, "path": "M 865.9,2516.7 L 865.5,2514.2 L 865.2,2512.4 L 864.3,2506.7 L 864.3,2506.2 L 863.6,2501.4 L 863.6,2500.5 L 863.9,2499.6 L 864.2,2499.1 L 864.3,2498.7 L 864.6,2497.9 L 864.9,2495.8 L 864.6,2493.5 L 863.4,2483.5 L 863.3,2482.5 L 863.1,2481.5 L 863.1,2481.1 L 863.0,2480.7 L 862.0,2474.4 L 861.9,2473.4 L 861.3,2469.7 L 859.9,2461.0 L 859.7,2459.9 L 859.2,2460.0 L 858.7,2460.1 L 858.1,2459.8 L 857.8,2459.4 L 857.5,2458.9 L 856.7,2457.1 L 856.2,2455.7 L 855.5,2449.1 L 854.9,2445.4 L 853.3,2436.1 L 852.7,2433.0 L 852.0,2430.7 L 850.1,2424.4 L 849.6,2422.8 L 849.4,2421.1 L 849.1,2419.1 L 848.8,2416.8 L 846.3,2400.1 L 845.8,2396.4 L 845.0,2385.5 L 844.8,2383.4 L 844.3,2380.1 L 841.5,2361.5 L 841.0,2359.4 L 839.1,2347.3 L 838.3,2342.6 L 837.5,2337.4 L 833.1,2307.6 L 832.4,2303.8 L 831.6,2299.5 L 830.3,2294.3 L 829.6,2291.2 L 829.1,2288.2 L 828.7,2286.0 L 828.2,2282.0 L 826.6,2269.2 L 825.8,2261.5 L 825.0,2254.7 L 823.2,2242.9 L 821.1,2228.9 L 820.6,2226.2 L 817.9,2208.5 L 817.9,2204.2 L 817.9,2201.3 L 817.9,2198.5 L 817.8,2197.0 L 817.7,2195.5 L 817.5,2194.2 L 817.2,2191.4 L 817.0,2190.0 L 816.8,2189.0 L 816.2,2185.8 L 816.1,2184.8 L 816.0,2184.2 L 816.0,2183.6 L 816.0,2183.0 L 816.0,2182.4 L 816.1,2181.9 L 816.3,2180.8 L 816.4,2180.4 L 816.8,2178.9 L 817.8,2177.7 L 818.3,2176.7 L 818.6,2175.6 L 819.3,2174.7 L 820.1,2174.0 L 821.0,2173.6 L 822.1,2173.3 L 825.7,2172.6 L 831.2,2171.7 L 835.8,2171.0 L 836.5,2170.9 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "San Martín de Porres", "m2": "1,337", "precio": "Consultar / negociable", "url": "https://www.infocasas.com.pe/local-industrial-cerca-a-la-panamericana-norte/191160101", "fuente": "InfoCasas.com.pe", "duration_adj_min": 9, "band": "ideal", "lat": -12.0197932, "lon": -77.0592441, "categoria": "Alquiler", "contacto": null}, "comas_trapiche": {"name": "Local Industrial I-3 Av. Trapiche (1,500 m²)", "addr": "Av. Trapiche, Comas", "x": 931.0, "y": 1562.8, "distance_km": 10.0, "duration_min": 12.1, "path": "M 930.8,1562.7 L 928.2,1564.9 L 923.9,1569.1 L 917.6,1580.6 L 911.7,1591.3 L 904.7,1604.0 L 902.9,1607.3 L 899.8,1613.1 L 898.2,1615.9 L 891.5,1628.2 L 889.5,1631.9 L 879.7,1649.8 L 875.0,1658.3 L 871.7,1664.3 L 866.0,1674.7 L 861.7,1682.6 L 859.9,1685.8 L 855.0,1694.7 L 854.1,1696.4 L 848.1,1707.4 L 844.6,1713.7 L 843.5,1715.8 L 841.8,1718.8 L 833.6,1733.6 L 829.5,1741.0 L 827.9,1744.0 L 826.9,1745.9 L 824.6,1750.1 L 821.9,1755.2 L 818.8,1760.9 L 813.7,1769.2 L 812.0,1771.3 L 808.4,1775.2 L 806.3,1777.3 L 800.9,1781.6 L 797.8,1783.6 L 795.3,1785.1 L 791.1,1787.3 L 784.6,1789.6 L 782.2,1790.2 L 776.8,1791.3 L 769.1,1792.2 L 762.6,1792.8 L 761.0,1792.9 L 763.0,1811.3 L 766.3,1849.3 L 766.4,1850.2 L 766.6,1852.2 L 768.1,1868.5 L 769.4,1883.8 L 771.9,1910.2 L 772.8,1918.0 L 773.3,1922.1 L 776.8,1945.4 L 779.8,1964.3 L 780.5,1969.0 L 783.0,1984.9 L 783.9,1990.9 L 786.1,2005.9 L 787.9,2017.3 L 788.7,2021.9 L 790.3,2033.1 L 792.1,2048.0 L 793.1,2055.8 L 794.4,2064.4 L 797.9,2083.8 L 800.9,2102.9 L 803.2,2117.8 L 804.2,2124.5 L 806.2,2137.9 L 806.1,2139.9 L 806.2,2142.2 L 806.3,2144.3 L 806.4,2147.3 L 806.6,2150.7 L 807.2,2156.3 L 808.0,2160.6 L 808.6,2163.9 L 808.7,2166.0 L 808.3,2168.2 L 807.7,2169.7 L 806.9,2170.7 L 806.6,2171.3 L 805.9,2173.4 L 806.2,2176.2 L 807.2,2178.2 L 808.4,2179.4 L 809.6,2180.1 L 812.1,2180.7 L 814.2,2180.5 L 815.8,2179.7 L 816.8,2178.9 L 818.3,2176.7 L 819.3,2174.7 L 821.0,2173.6 L 825.0,2172.7 L 831.2,2171.7 L 836.5,2170.9 L 836.9,2173.9 L 837.8,2179.6 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "Comas", "m2": "1,500 terreno", "precio": "S/ 18,500/mes", "url": "https://www.infocasas.com.pe/alquiler-local-industrial-i3-971085220/189339305", "fuente": "InfoCasas.com.pe", "duration_adj_min": 17, "band": "moderado", "lat": -11.9020888, "lon": -77.0510589, "categoria": "Alquiler", "contacto": null}, "puente_piedra_la_grama": {"name": "Local industrial La Grama (1,328 m²)", "addr": "Calle Santa Rosa 120, La Grama, Puente Piedra", "x": 676.3, "y": 1288.0, "distance_km": 15.2, "duration_min": 18.3, "path": "M 676.5,1288.5 L 674.2,1289.1 L 672.0,1289.3 L 670.5,1289.4 L 668.0,1290.3 L 667.4,1290.2 L 666.9,1289.8 L 667.3,1282.9 L 667.5,1280.2 L 667.4,1279.6 L 666.3,1278.6 L 669.0,1278.3 L 672.6,1272.6 L 675.1,1267.4 L 680.4,1257.2 L 682.7,1253.6 L 686.4,1248.4 L 695.7,1242.9 L 704.4,1253.6 L 721.6,1272.0 L 724.7,1275.0 L 734.4,1284.6 L 743.4,1286.9 L 751.1,1294.4 L 754.3,1297.5 L 760.4,1303.6 L 767.7,1310.6 L 769.9,1312.1 L 778.4,1320.2 L 783.3,1325.4 L 784.8,1327.1 L 785.9,1327.9 L 786.8,1337.6 L 789.2,1381.8 L 790.0,1395.1 L 792.1,1433.3 L 793.7,1462.5 L 795.6,1499.8 L 796.3,1511.6 L 797.6,1536.2 L 799.1,1561.3 L 798.7,1568.7 L 796.4,1576.1 L 784.6,1601.8 L 781.1,1607.7 L 777.8,1612.3 L 773.7,1618.3 L 771.9,1620.7 L 767.2,1628.7 L 762.7,1635.7 L 755.4,1645.8 L 752.3,1651.4 L 751.4,1653.2 L 750.4,1656.4 L 749.5,1662.7 L 749.9,1672.1 L 751.4,1686.1 L 754.3,1718.5 L 755.7,1732.8 L 757.2,1748.9 L 759.4,1773.2 L 761.0,1792.9 L 763.1,1812.8 L 766.4,1850.2 L 767.4,1860.6 L 769.4,1883.8 L 772.0,1911.6 L 772.9,1919.4 L 776.8,1945.4 L 780.3,1967.7 L 783.0,1984.9 L 784.7,1996.0 L 787.9,2017.3 L 789.1,2025.1 L 792.1,2048.0 L 793.1,2055.8 L 797.9,2083.8 L 802.4,2113.0 L 804.2,2124.5 L 806.2,2138.9 L 806.2,2142.2 L 806.3,2145.6 L 806.6,2150.7 L 807.2,2156.3 L 808.5,2162.7 L 808.7,2166.0 L 808.0,2169.5 L 806.9,2170.7 L 806.2,2172.1 L 806.2,2176.2 L 807.7,2178.8 L 809.6,2180.1 L 812.1,2180.7 L 815.1,2180.1 L 816.8,2178.9 L 818.6,2175.6 L 821.0,2173.6 L 825.7,2172.6 L 836.5,2170.9 L 837.1,2175.4 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "Puente Piedra", "m2": "1,328", "precio": "S/ 10,000/mes", "url": "https://urbania.pe/inmueble/clasificado/alclnipa-alquiler-de-local-industrial-en-la-grama-puente-piedra-5-a-mas-dormitorios-150501618", "fuente": "Urbania.pe / Adondevivir.com", "duration_adj_min": 26, "band": "maximo", "lat": -11.8681742, "lon": -77.0831766, "categoria": "Alquiler", "contacto": null}, "puente_piedra_km35": {"name": "Local industrial Panamericana Norte Km 35 (1,850 m²)", "addr": "Av. Panamericana Norte 36, Puente Piedra", "x": 495.4, "y": 1063.6, "distance_km": 18.0, "duration_min": 20.2, "path": "M 494.1,1065.3 L 496.6,1065.7 L 505.4,1064.6 L 510.6,1068.8 L 515.1,1072.5 L 526.0,1081.6 L 534.2,1088.2 L 538.6,1091.8 L 549.1,1100.4 L 584.5,1129.3 L 587.8,1132.0 L 630.9,1167.3 L 654.7,1186.8 L 666.5,1196.4 L 728.2,1247.0 L 742.3,1258.7 L 744.3,1260.6 L 746.7,1263.4 L 749.7,1267.3 L 776.2,1308.0 L 781.3,1315.7 L 783.6,1320.2 L 784.5,1322.3 L 785.7,1327.2 L 786.1,1328.8 L 787.4,1347.5 L 789.6,1388.3 L 790.0,1395.1 L 792.1,1433.3 L 793.7,1462.5 L 795.6,1499.8 L 796.2,1510.6 L 796.7,1522.4 L 799.0,1558.3 L 798.9,1566.1 L 798.3,1570.9 L 785.4,1600.0 L 783.0,1604.4 L 779.9,1609.3 L 777.8,1612.3 L 773.7,1618.3 L 771.9,1620.7 L 767.2,1628.7 L 763.7,1634.2 L 758.0,1642.2 L 752.9,1650.2 L 751.8,1652.4 L 751.4,1653.2 L 750.4,1656.4 L 749.5,1662.7 L 749.6,1668.0 L 751.2,1684.2 L 753.6,1711.8 L 755.3,1728.7 L 756.8,1744.6 L 757.2,1749.6 L 760.9,1791.5 L 761.2,1794.9 L 763.1,1812.8 L 766.4,1850.2 L 767.4,1860.6 L 769.4,1883.8 L 771.9,1910.2 L 772.8,1918.0 L 773.5,1923.6 L 779.8,1964.3 L 780.5,1969.0 L 783.4,1987.8 L 786.1,2005.9 L 788.5,2021.1 L 789.1,2025.1 L 792.1,2048.0 L 793.1,2055.8 L 796.0,2072.8 L 798.1,2085.1 L 803.2,2117.8 L 805.6,2133.4 L 806.2,2138.9 L 806.2,2142.2 L 806.3,2145.6 L 806.6,2150.7 L 806.9,2154.1 L 808.0,2160.6 L 808.7,2164.9 L 808.3,2168.2 L 807.7,2169.7 L 806.7,2171.1 L 805.9,2173.4 L 806.7,2177.5 L 807.7,2178.8 L 809.6,2180.1 L 812.1,2180.7 L 815.1,2180.1 L 816.2,2179.4 L 818.3,2176.7 L 820.1,2174.0 L 825.0,2172.7 L 831.2,2171.7 L 836.6,2171.7 L 837.8,2179.6 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "Puente Piedra", "m2": "1,850", "precio": "S/ 16,000/mes", "url": "https://urbania.pe/inmueble/clasificado/alclniin-alquiler-de-local-industrial-en-puente-piedra-lima-148943752", "fuente": "Urbania.pe / Adondevivir.com", "duration_adj_min": 28, "band": "maximo", "lat": -11.8404806, "lon": -77.1059963, "categoria": "Alquiler", "contacto": null}, "carabayllo_villa_rica": {"name": "Local Villa Rica (1,000 m²)", "addr": "Villa Rica, Carabayllo", "x": 899.7, "y": 963.4, "distance_km": 19.4, "duration_min": 25.4, "path": "M 899.5,961.8 L 898.6,978.3 L 890.7,980.1 L 880.8,987.1 L 882.8,990.7 L 894.8,998.6 L 901.9,1001.6 L 903.4,1007.8 L 903.7,1014.6 L 907.7,1024.6 L 911.9,1033.0 L 906.0,1039.5 L 894.6,1042.0 L 891.5,1041.8 L 888.5,1040.3 L 886.4,1040.9 L 883.8,1044.5 L 878.7,1051.1 L 873.1,1058.2 L 865.7,1068.4 L 859.0,1077.1 L 851.7,1087.2 L 847.8,1094.1 L 844.2,1103.6 L 820.3,1128.4 L 811.1,1137.3 L 803.2,1145.4 L 795.0,1153.7 L 789.7,1160.7 L 803.6,1172.9 L 810.2,1178.3 L 810.8,1181.7 L 804.5,1190.2 L 795.0,1200.8 L 782.1,1216.3 L 771.0,1230.0 L 769.5,1231.7 L 752.1,1253.1 L 749.7,1255.7 L 742.4,1259.8 L 746.8,1264.9 L 758.9,1282.8 L 765.2,1292.8 L 772.1,1303.7 L 781.5,1318.4 L 783.5,1322.2 L 785.1,1327.5 L 786.3,1330.6 L 789.2,1381.8 L 790.8,1409.5 L 792.7,1443.9 L 794.8,1484.9 L 796.3,1511.6 L 798.4,1547.9 L 798.9,1566.1 L 796.4,1576.1 L 783.0,1604.4 L 778.9,1610.8 L 773.7,1618.3 L 770.1,1624.4 L 763.7,1634.2 L 755.6,1645.4 L 752.3,1651.4 L 751.4,1653.2 L 750.1,1657.8 L 749.6,1668.0 L 751.4,1686.1 L 755.3,1728.4 L 757.1,1748.1 L 759.4,1773.2 L 761.2,1794.9 L 766.4,1849.6 L 767.4,1860.6 L 769.6,1885.3 L 772.8,1918.0 L 773.5,1923.6 L 780.3,1967.7 L 783.4,1987.8 L 786.1,2005.9 L 789.1,2025.1 L 792.5,2051.3 L 794.4,2064.4 L 800.9,2102.9 L 804.2,2124.5 L 806.1,2139.9 L 806.3,2144.3 L 806.6,2150.7 L 807.6,2158.5 L 808.6,2163.9 L 808.3,2168.2 L 806.9,2170.7 L 805.9,2173.4 L 807.2,2178.2 L 809.6,2180.1 L 813.2,2180.7 L 816.2,2179.4 L 818.6,2175.6 L 822.1,2173.3 L 835.8,2171.0 L 837.1,2175.4 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "Carabayllo", "m2": "1,000", "precio": "S/ 2,000/mes (verificar)", "url": "https://www.infocasas.com.pe/atencion-se-alquila-local-de-mt-en-carabayllo/190795876", "fuente": "InfoCasas.com.pe", "duration_adj_min": 36, "band": "fuera", "lat": -11.8281186, "lon": -77.0550072, "categoria": "Alquiler", "contacto": null}, "ancon_valvulas": {"name": "Local Industrial I3 Calle Las Válvulas (1,500 m²)", "addr": "Calle Las Válvulas, Ancón", "x": 201.9, "y": 315.1, "distance_km": 35.6, "duration_min": 37.9, "path": "M 196.4,310.2 L 239.2,261.1 L 299.7,189.9 L 298.3,187.6 L 297.2,186.4 L 290.2,192.5 L 290.0,194.0 L 290.2,196.6 L 280.0,208.5 L 272.7,217.2 L 267.4,217.9 L 259.7,218.6 L 255.3,226.6 L 234.3,265.3 L 189.0,317.4 L 146.3,366.7 L 99.3,421.3 L 89.8,432.9 L 80.8,451.0 L 76.7,472.4 L 72.1,515.7 L 69.8,557.4 L 77.4,577.8 L 86.4,589.7 L 96.3,599.6 L 106.0,609.3 L 110.4,613.6 L 140.5,643.8 L 187.3,691.0 L 219.1,722.8 L 241.9,745.7 L 251.2,755.8 L 278.1,795.5 L 287.9,810.3 L 300.1,828.5 L 310.7,844.4 L 317.2,855.2 L 339.9,910.6 L 353.0,928.1 L 358.2,934.1 L 373.4,951.6 L 393.9,973.5 L 435.3,1007.3 L 459.4,1027.0 L 500.5,1060.8 L 510.6,1068.8 L 526.0,1081.6 L 535.2,1089.0 L 573.0,1120.1 L 588.1,1132.3 L 654.7,1186.8 L 713.2,1234.6 L 743.3,1259.7 L 747.7,1264.6 L 776.2,1308.0 L 783.6,1320.2 L 784.9,1323.7 L 786.3,1330.6 L 789.6,1388.3 L 792.1,1433.3 L 794.8,1484.9 L 796.5,1519.3 L 799.0,1558.3 L 798.3,1570.9 L 784.6,1601.8 L 778.9,1610.8 L 772.9,1619.4 L 767.5,1628.3 L 759.7,1639.8 L 752.6,1650.8 L 750.9,1654.7 L 749.5,1662.7 L 751.2,1684.2 L 754.3,1718.5 L 757.1,1748.1 L 760.9,1791.5 L 763.1,1812.8 L 766.6,1852.2 L 769.4,1883.8 L 772.8,1918.0 L 778.5,1956.7 L 783.0,1984.9 L 786.1,2005.9 L 790.3,2033.1 L 792.9,2054.4 L 797.9,2083.8 L 804.0,2123.2 L 806.1,2139.9 L 806.3,2145.6 L 806.7,2152.4 L 808.5,2162.7 L 808.3,2168.2 L 806.7,2171.1 L 806.2,2176.2 L 809.2,2179.9 L 812.1,2180.7 L 816.2,2179.4 L 819.3,2174.7 L 825.7,2172.6 L 836.9,2173.9 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "Ancón", "m2": "1,500", "precio": "S/ 11,250/mes", "url": "https://urbania.pe/inmueble/clasificado/alclniin-alquiler-de-local-industrial-en-ancon-lima-149106386", "fuente": "Urbania.pe / LaEncontre.com.pe", "duration_adj_min": 53, "band": "fuera", "lat": -11.7481189, "lon": -77.1429957, "categoria": "Alquiler", "contacto": null}, "ancon_inmomark": {"name": "Ciudad Industrial de Ancón - Inmomark (lotes 1,273 y 1,400 m²)", "addr": "Panamericana Norte Km 47.2, Ciudad Industrial de Ancón", "x": 194.0, "y": 326.3, "distance_km": 30.9, "duration_min": 32.3, "path": "M 187.4,320.7 L 185.7,321.2 L 123.5,393.1 L 95.0,426.1 L 88.0,435.6 L 80.8,451.0 L 77.2,468.3 L 72.4,512.9 L 69.0,547.0 L 71.8,565.5 L 78.5,579.6 L 87.3,590.7 L 96.3,599.6 L 106.0,609.3 L 110.1,613.3 L 126.3,629.5 L 145.0,648.3 L 194.3,698.1 L 225.8,729.6 L 243.3,747.1 L 251.2,755.8 L 273.2,788.2 L 281.7,800.9 L 295.9,822.2 L 304.0,834.4 L 311.0,844.9 L 317.4,855.7 L 339.9,910.6 L 348.3,922.8 L 357.9,933.7 L 366.3,943.5 L 388.3,968.7 L 399.2,978.0 L 435.9,1007.8 L 459.4,1027.0 L 489.5,1051.7 L 510.1,1068.4 L 521.0,1077.4 L 534.2,1088.2 L 540.4,1093.4 L 584.5,1129.3 L 588.1,1132.3 L 654.7,1186.8 L 708.6,1230.8 L 742.3,1258.7 L 745.9,1262.4 L 749.7,1267.3 L 780.3,1314.2 L 783.6,1320.2 L 784.9,1323.7 L 786.1,1328.8 L 789.2,1381.8 L 790.8,1409.5 L 793.2,1453.4 L 795.6,1499.8 L 796.5,1519.3 L 799.0,1558.3 L 798.3,1570.9 L 784.9,1601.2 L 781.1,1607.7 L 775.8,1615.2 L 772.5,1619.9 L 767.2,1628.7 L 758.0,1642.2 L 752.6,1650.8 L 751.4,1653.2 L 750.1,1657.8 L 749.6,1668.0 L 751.4,1686.1 L 755.3,1728.7 L 757.2,1748.9 L 760.9,1791.5 L 763.0,1811.3 L 766.4,1850.2 L 768.1,1868.5 L 772.0,1911.6 L 773.3,1922.1 L 779.8,1964.3 L 783.0,1984.9 L 786.1,2005.9 L 788.7,2021.9 L 792.1,2048.0 L 794.4,2064.4 L 800.9,2102.9 L 804.2,2124.5 L 806.1,2139.9 L 806.3,2144.3 L 806.6,2150.7 L 808.0,2160.6 L 808.7,2166.0 L 807.7,2169.7 L 806.6,2171.3 L 806.2,2176.2 L 808.4,2179.4 L 812.1,2180.7 L 815.8,2179.7 L 818.3,2176.7 L 821.0,2173.6 L 831.2,2171.7 L 836.9,2173.9 L 838.2,2182.4", "n_path_pts": 101, "tipo": "almacen", "distrito": "Ancón", "m2": "2,673 total (lotes de 1,273 y 1,400)", "precio": "S/ 15,000/mes (conjunto)", "url": "https://inmomark.pe/property/local-industrial-en-ancon-en-alquiler-panamericana-norte/", "fuente": "Inmomark.pe / Urbania.pe", "duration_adj_min": 45, "band": "fuera", "lat": -11.7495, "lon": -77.144, "categoria": "Alquiler", "contacto": null}, "santa_luisa": {"name": "Local industrial Santa Luisa (venta)", "addr": "Puente Santa Luisa, Los Olivos", "x": 782.3, "y": 1978.3, "lat": -11.9533514, "lon": -77.0698151, "distance_km": 3.4, "duration_min": 3.8, "duration_adj_min": 5, "band": "ideal", "path": "M 782.0,1978.3 L 783.0,1984.9 L 783.4,1987.8 L 783.9,1990.9 L 784.7,1996.0 L 786.1,2005.9 L 786.1,2005.9 L 787.9,2017.3 L 788.5,2021.1 L 788.7,2021.9 L 789.1,2025.1 L 790.3,2033.1 L 790.9,2039.9 L 792.1,2048.0 L 792.5,2051.3 L 792.9,2054.4 L 793.1,2055.8 L 793.2,2056.5 L 794.4,2064.4 L 796.0,2072.8 L 797.9,2083.8 L 798.1,2085.1 L 800.9,2102.9 L 802.4,2113.0 L 803.2,2117.8 L 804.0,2123.2 L 804.2,2124.5 L 805.6,2133.4 L 806.2,2137.9 L 806.2,2138.9 L 806.1,2139.9 L 806.1,2140.9 L 806.2,2142.2 L 806.2,2143.1 L 806.3,2144.3 L 806.3,2145.6 L 806.4,2147.3 L 806.5,2149.0 L 806.6,2150.7 L 806.7,2152.4 L 806.9,2154.1 L 807.2,2156.3 L 807.6,2158.5 L 808.0,2160.6 L 808.5,2162.7 L 808.6,2163.9 L 808.7,2164.9 L 808.7,2166.0 L 808.5,2167.2 L 808.3,2168.2 L 808.0,2169.5 L 807.7,2169.7 L 807.3,2170.2 L 806.9,2170.7 L 806.7,2171.1 L 806.6,2171.3 L 806.2,2172.1 L 805.9,2173.4 L 805.9,2174.8 L 806.2,2176.2 L 806.7,2177.5 L 807.2,2178.2 L 807.7,2178.8 L 808.4,2179.4 L 809.2,2179.9 L 809.6,2180.1 L 810.1,2180.3 L 811.1,2180.6 L 812.1,2180.7 L 813.2,2180.7 L 814.2,2180.5 L 815.1,2180.1 L 815.8,2179.7 L 816.2,2179.4 L 816.8,2178.9 L 817.8,2177.7 L 818.3,2176.7 L 818.6,2175.6 L 819.3,2174.7 L 820.1,2174.0 L 821.0,2173.6 L 822.1,2173.3 L 825.0,2172.7 L 825.7,2172.6 L 831.2,2171.7 L 835.8,2171.0 L 836.5,2170.9 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "tipo": "venta", "categoria": "Venta", "distrito": "Los Olivos", "m2": "18,869 (o 3,200, según el registro — verificar) — terreno industrial en venta, Santa Luisa", "precio": null, "contacto": "924492183 / 908863114 (dos contactos distintos para el mismo anuncio)", "url": "https://urbania.pe/inmueble/clasificado/veclniin-venta-de-local-industrial-en-santa-luisa-los-olivos-145429181", "fuente": "Urbania.pe"}, "pro_industrial": {"name": "Almacenes Urb. Pro Industrial (alquiler, 800-3,000 m² modular)", "addr": "Urb. Pro Industrial, cerca Panamericana Norte / Mercado Unicachi, Los Olivos", "x": 774.6, "y": 1858.8, "lat": -11.9386046, "lon": -77.0707847, "distance_km": 5.3, "duration_min": 6.1, "duration_adj_min": 9, "band": "ideal", "path": "M 771.3,1859.0 L 770.7,1852.1 L 770.7,1851.8 L 770.6,1850.9 L 768.3,1850.3 L 767.4,1850.2 L 766.5,1851.5 L 766.6,1852.2 L 767.4,1860.6 L 768.1,1868.5 L 769.4,1883.7 L 769.6,1885.3 L 771.9,1910.2 L 772.0,1911.6 L 772.1,1912.5 L 772.8,1918.0 L 773.3,1922.1 L 773.5,1923.6 L 776.8,1945.4 L 778.5,1956.7 L 779.8,1964.3 L 780.3,1967.7 L 781.7,1976.7 L 783.0,1984.9 L 783.4,1987.8 L 783.9,1990.9 L 784.7,1996.0 L 786.1,2005.9 L 787.9,2017.3 L 788.5,2021.1 L 788.7,2021.9 L 789.1,2025.1 L 790.9,2039.9 L 792.1,2048.0 L 792.5,2051.3 L 792.9,2054.4 L 793.1,2055.8 L 794.4,2064.4 L 796.0,2072.8 L 797.9,2083.8 L 798.1,2085.1 L 800.9,2102.9 L 802.4,2113.0 L 804.0,2123.2 L 804.2,2124.5 L 805.6,2133.4 L 806.2,2137.9 L 806.2,2138.9 L 806.1,2140.9 L 806.2,2142.2 L 806.2,2143.1 L 806.3,2144.3 L 806.3,2145.6 L 806.5,2149.0 L 806.6,2150.7 L 806.7,2152.4 L 806.9,2154.1 L 807.2,2156.3 L 808.0,2160.6 L 808.5,2162.7 L 808.6,2163.9 L 808.7,2164.9 L 808.7,2166.0 L 808.5,2167.2 L 808.0,2169.5 L 807.7,2169.7 L 807.3,2170.2 L 806.9,2170.7 L 806.7,2171.1 L 806.2,2172.1 L 805.9,2173.4 L 805.9,2174.8 L 806.2,2176.2 L 806.7,2177.5 L 807.7,2178.8 L 808.4,2179.4 L 809.2,2179.9 L 809.6,2180.1 L 810.1,2180.3 L 812.1,2180.7 L 813.2,2180.7 L 814.2,2180.5 L 815.1,2180.1 L 815.8,2179.7 L 816.2,2179.4 L 817.8,2177.7 L 818.3,2176.7 L 818.6,2175.6 L 819.3,2174.7 L 820.1,2174.0 L 822.1,2173.3 L 825.0,2172.7 L 825.7,2172.6 L 831.2,2171.7 L 835.8,2171.0 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "tipo": "almacen", "categoria": "Alquiler", "distrito": "Los Olivos", "m2": "1,000 (el anuncio ofrece módulos de 800 a 3,000 m²)", "precio": null, "contacto": "959964266", "url": "https://bienesonline.ai/es/peru/los-olivos/propiedad/122704-los-olivos-alquilo-almacenes-dsde-1000m2-2000m2-3000m2-techos-altos-cerca-panamericana-norte", "fuente": "bienesonline.ai"}, "cylcorp_pro_industrial": {"name": "Local industrial 1,710 m² Urb. Pro Industrial", "addr": "Urb. Pro Industrial, cerca Panamericana Norte / Mercado Unicachi, Los Olivos", "x": 780.8, "y": 1862.0, "lat": -11.939, "lon": -77.07, "distance_km": 5.5, "duration_min": 6.3, "duration_adj_min": 9, "band": "ideal", "path": "M 774.2,1867.5 L 774.2,1867.5 L 772.0,1866.7 L 771.0,1866.8 L 769.1,1867.0 L 767.7,1852.5 L 767.6,1852.1 L 767.5,1851.4 L 767.4,1850.2 L 766.5,1851.5 L 766.6,1852.2 L 767.4,1860.6 L 768.1,1868.5 L 769.4,1883.7 L 769.6,1885.3 L 771.9,1910.2 L 772.0,1911.6 L 772.1,1912.5 L 772.9,1919.4 L 773.3,1922.1 L 773.5,1923.6 L 776.8,1945.4 L 779.8,1964.3 L 780.3,1967.7 L 780.5,1969.0 L 781.7,1976.7 L 783.0,1984.9 L 783.9,1990.9 L 784.7,1996.0 L 786.1,2005.9 L 786.1,2005.9 L 788.5,2021.1 L 788.7,2021.9 L 789.1,2025.1 L 790.3,2033.1 L 792.1,2048.0 L 792.5,2051.3 L 792.9,2054.4 L 793.1,2055.8 L 793.2,2056.5 L 796.0,2072.8 L 797.9,2083.8 L 798.1,2085.1 L 800.9,2102.9 L 803.2,2117.8 L 804.0,2123.2 L 804.2,2124.5 L 805.6,2133.4 L 806.2,2138.9 L 806.1,2139.9 L 806.1,2140.9 L 806.2,2142.2 L 806.2,2143.1 L 806.3,2145.6 L 806.4,2147.3 L 806.5,2149.0 L 806.6,2150.7 L 806.9,2154.1 L 807.2,2156.3 L 807.6,2158.5 L 808.0,2160.6 L 808.6,2163.9 L 808.7,2164.9 L 808.7,2166.0 L 808.5,2167.2 L 808.3,2168.2 L 807.7,2169.7 L 807.3,2170.2 L 806.9,2170.7 L 806.7,2171.1 L 806.2,2172.1 L 805.9,2173.4 L 805.9,2174.8 L 806.2,2176.2 L 807.2,2178.2 L 807.7,2178.8 L 808.4,2179.4 L 809.2,2179.9 L 809.6,2180.1 L 811.1,2180.6 L 812.1,2180.7 L 813.2,2180.7 L 814.2,2180.5 L 815.8,2179.7 L 816.2,2179.4 L 816.8,2178.9 L 817.8,2177.7 L 818.6,2175.6 L 819.3,2174.7 L 820.1,2174.0 L 821.0,2173.6 L 822.1,2173.3 L 825.7,2172.6 L 831.2,2171.7 L 835.8,2171.0 L 836.5,2170.9 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "tipo": "almacen", "categoria": "Alquiler", "distrito": "Los Olivos", "m2": "1,700 (1,710 según el anuncio)", "precio": null, "contacto": "995235534", "url": "https://cylcorp.pe/properties/local-industrial-1710m2-urb-pro-industrial-los-olivos-cerca-panamericana-norte-cerca-mercado-unicachi-nave-industrial-1500m2-porton-ingresa-camiones-zonificacion-i-2-industria-liviana/", "fuente": "cylcorp.pe"}, "molitalia": {"name": "Local industrial Molitalia (venta)", "addr": "Zona industrial Molitalia, Av. Universitaria, Los Olivos", "x": 804.8, "y": 2039.0, "lat": -11.9608462, "lon": -77.0669718, "distance_km": 4.0, "duration_min": 6.4, "duration_adj_min": 9, "band": "ideal", "path": "M 804.7,2039.2 L 795.5,2032.4 L 794.7,2031.5 L 794.2,2030.9 L 793.9,2030.2 L 793.8,2029.7 L 793.2,2026.4 L 789.9,2008.5 L 789.5,2007.7 L 788.9,2006.9 L 788.8,2006.5 L 788.8,2006.2 L 789.5,2005.5 L 789.9,2005.2 L 790.4,2005.0 L 798.7,2003.7 L 807.0,2002.5 L 818.6,2000.3 L 824.5,1999.2 L 827.7,1998.5 L 828.9,1998.1 L 829.6,2000.2 L 830.5,2004.2 L 833.8,2021.0 L 835.0,2027.1 L 836.6,2035.4 L 837.0,2037.6 L 837.2,2038.6 L 837.3,2039.4 L 837.4,2040.0 L 837.5,2040.6 L 837.4,2041.3 L 837.3,2041.8 L 837.1,2042.1 L 836.5,2042.9 L 836.2,2043.4 L 836.0,2043.9 L 835.9,2044.8 L 836.0,2045.7 L 836.4,2046.5 L 837.0,2047.2 L 837.4,2047.5 L 837.9,2047.8 L 838.5,2048.5 L 838.8,2049.1 L 839.2,2049.7 L 839.6,2050.7 L 841.6,2059.5 L 842.5,2063.0 L 843.9,2068.9 L 844.2,2070.0 L 844.3,2070.3 L 844.4,2070.8 L 844.6,2072.1 L 844.8,2072.7 L 846.8,2082.3 L 847.0,2083.4 L 850.2,2098.1 L 852.0,2106.9 L 852.7,2110.1 L 852.8,2110.4 L 859.4,2142.5 L 860.2,2146.0 L 860.7,2147.7 L 860.8,2148.0 L 861.3,2150.8 L 861.5,2152.5 L 861.6,2153.0 L 861.6,2153.4 L 861.6,2153.8 L 861.7,2155.9 L 861.8,2158.4 L 861.8,2160.9 L 861.9,2162.1 L 861.9,2162.7 L 861.8,2163.8 L 861.7,2164.1 L 861.7,2164.5 L 860.8,2166.0 L 859.4,2166.2 L 858.4,2166.1 L 858.0,2166.0 L 856.7,2166.2 L 848.9,2167.3 L 848.5,2167.4 L 844.4,2168.0 L 838.6,2169.0 L 838.7,2169.6 L 836.4,2170.0 L 836.5,2170.9 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "tipo": "venta", "categoria": "Venta", "distrito": "Los Olivos", "m2": "20,220", "precio": null, "contacto": "988235745", "url": "https://urbania.pe/inmueble/clasificado/veclniin-venta-de-local-industrial-en-industrial-molitalia-los-olivos-62260266", "fuente": "Urbania.pe"}, "smp_general": {"name": "Almacén en alquiler San Martín de Porres (5,600 m², enlace de búsqueda general)", "addr": "San Martín de Porres (ubicación aproximada del distrito, el anuncio no da dirección específica)", "x": 566.9, "y": 2205.9, "lat": -11.9814397, "lon": -77.0969718, "distance_km": 4.4, "duration_min": 6.2, "duration_adj_min": 9, "band": "ideal", "path": "M 567.0,2205.9 L 566.2,2206.7 L 568.5,2207.3 L 569.5,2206.3 L 580.2,2196.3 L 585.0,2192.1 L 599.5,2178.9 L 600.2,2178.3 L 600.7,2177.8 L 601.1,2177.4 L 601.8,2176.8 L 612.8,2167.2 L 632.3,2151.1 L 632.5,2150.9 L 634.2,2149.6 L 635.2,2149.0 L 635.3,2149.0 L 635.8,2148.7 L 639.0,2147.4 L 639.7,2147.4 L 642.8,2149.3 L 643.4,2149.7 L 649.5,2155.2 L 652.2,2157.8 L 655.3,2160.3 L 658.0,2161.9 L 658.8,2162.3 L 660.5,2163.1 L 661.3,2163.4 L 662.4,2163.8 L 666.1,2164.9 L 669.3,2165.6 L 670.8,2165.9 L 672.3,2166.3 L 674.5,2166.8 L 674.6,2166.8 L 675.9,2167.1 L 676.6,2167.3 L 677.3,2167.4 L 683.2,2168.9 L 691.9,2171.0 L 701.2,2173.2 L 707.8,2174.7 L 715.8,2176.5 L 716.4,2176.7 L 718.4,2177.1 L 718.5,2177.2 L 718.9,2177.3 L 726.9,2179.1 L 728.2,2179.4 L 742.8,2182.7 L 745.5,2183.2 L 749.2,2183.7 L 753.1,2183.7 L 755.1,2183.6 L 756.9,2183.3 L 760.7,2182.7 L 761.7,2182.5 L 763.1,2182.4 L 763.7,2182.3 L 775.1,2180.5 L 784.3,2179.1 L 786.9,2178.7 L 790.7,2178.1 L 792.0,2177.9 L 796.3,2177.2 L 801.1,2176.5 L 802.8,2176.2 L 803.4,2176.1 L 803.8,2176.1 L 804.5,2176.2 L 806.1,2176.8 L 806.7,2177.5 L 807.2,2178.2 L 807.7,2178.8 L 808.4,2179.4 L 809.2,2179.9 L 810.1,2180.3 L 811.1,2180.6 L 812.1,2180.7 L 813.2,2180.7 L 814.2,2180.5 L 815.1,2180.1 L 816.2,2179.4 L 816.8,2178.9 L 817.8,2177.7 L 818.3,2176.7 L 818.6,2175.6 L 819.3,2174.7 L 821.0,2173.6 L 822.1,2173.3 L 825.0,2172.7 L 825.7,2172.6 L 831.2,2171.7 L 835.8,2171.0 L 836.6,2171.7 L 836.9,2173.9 L 837.1,2175.4 L 837.8,2179.6 L 837.9,2180.9 L 838.2,2182.4", "tipo": "almacen", "categoria": "Alquiler", "distrito": "San Martín de Porres", "m2": "5,600 (enlace de búsqueda general, sin dirección específica)", "precio": null, "contacto": "975570806", "url": "https://urbania.pe/buscar/locales-industriales-en-los-olivos--lima--lima", "fuente": "Urbania.pe"}}, "pixelsPerKm": 72.796, "trafficFactor": 1.4, "rings_km": [5, 10, 15, 20, 25, 30, 35]};
+
+const BAND_LABEL = {ideal:"Ideal", moderado:"Moderado", maximo:"Máximo", fuera:"Fuera de rango"};
+const BAND_VARS = {
+  ideal:{fg:"var(--ideal)", bg:"var(--ideal-soft)"},
+  moderado:{fg:"var(--moderado)", bg:"var(--moderado-soft)"},
+  maximo:{fg:"var(--maximo)", bg:"var(--maximo-soft)"},
+  fuera:{fg:"var(--fuera)", bg:"var(--fuera-soft)"}
+};
+
+const entries = Object.keys(DATA.warehouses).map(key => ({key, ...DATA.warehouses[key]}))
+  .sort((a,b) => a.duration_adj_min - b.duration_adj_min);
+
+// --- resumen: warehouses in/around the plant's own zone (Independencia / Los Olivos / SMP) ---
+const NEAR_ZONE_KEYS = ["los_olivos_infantas","independencia_pacifico","smp_tomas_valle","smp_panamericana","santa_luisa","pro_industrial","cylcorp_pro_industrial","molitalia","smp_general"];
+(function renderResumen(){
+  const near = NEAR_ZONE_KEYS.map(k => ({key:k, ...DATA.warehouses[k]})).sort((a,b)=>a.duration_adj_min-b.duration_adj_min);
+  const nAlquiler = near.filter(w=>w.categoria==="Alquiler").length;
+  const nVenta = near.filter(w=>w.categoria==="Venta").length;
+  const times = near.map(w=>w.duration_adj_min);
+  const statsEl = document.getElementById("resumenStats");
+  statsEl.innerHTML =
+    '<div class="stat"><b>'+near.length+'</b><span>Total encontrados</span></div>'+
+    '<div class="stat"><b>'+nAlquiler+'</b><span>En alquiler</span></div>'+
+    '<div class="stat"><b>'+nVenta+'</b><span>En venta</span></div>'+
+    '<div class="stat"><b>'+Math.min(...times)+'&ndash;'+Math.max(...times)+' min</b><span>Rango a la planta</span></div>';
+  const gridEl = document.getElementById("resumenGrid");
+  gridEl.innerHTML = "";
+  near.forEach(en => {
+    const catCls = en.categoria === "Venta" ? "venta" : "alquiler";
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "resumen-item";
+    item.innerHTML =
+      '<span class="sw" style="background:'+BAND_VARS[en.band].fg+'"></span>'+
+      '<span class="name"><b>'+en.name+'</b><span>'+en.distrito+' &middot; '+en.m2+' m² &middot; '+en.duration_adj_min+' min</span></span>'+
+      '<span class="cat-chip '+catCls+'">'+en.categoria+'</span>';
+    item.addEventListener("click", () => selectEntry(en.key));
+    gridEl.appendChild(item);
+  });
+})();
+
+// ---- review state (backed by db capability, falls back to local-only) ----
+const reviewState = {}; // key -> {status, comment, updatedAt}
+entries.forEach(en => reviewState[en.key] = {status:"pendiente", comment:""});
+let dbCol = null;
+let dbReady = false;
+
+function gmapsDirUrl(en){
+  return "https://www.google.com/maps/dir/?api=1&origin="+DATA.plant.lat+","+DATA.plant.lon+"&destination="+en.lat+","+en.lon+"&travelmode=driving";
+}
+function gmapsPinUrl(en){
+  return "https://www.google.com/maps/search/?api=1&query="+en.lat+","+en.lon;
+}
+
+const svg = document.getElementById("mapSvg");
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs){
+  const e = document.createElementNS(NS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// --- route paths ---
+const pathsGroup = el("g", {id:"paths"});
+svg.appendChild(pathsGroup);
+entries.forEach(en => {
+  const p = el("path", {d: en.path, class:"route-path", id:"path-"+en.key, style:"stroke:"+BAND_VARS[en.band].fg+";opacity:0;"});
+  pathsGroup.appendChild(p);
+});
+
+// --- scale bar ---
+const scaleKm = 5;
+const scalePx = DATA.pixelsPerKm * scaleKm;
+const scaleG = el("g", {transform:"translate(28,"+(DATA.viewH-46)+")"});
+scaleG.appendChild(el("line",{x1:0,y1:0,x2:scalePx,y2:0,stroke:"var(--muted)","stroke-width":2}));
+[0,scalePx].forEach(x=>scaleG.appendChild(el("line",{x1:x,y1:-6,x2:x,y2:6,stroke:"var(--muted)","stroke-width":2})));
+const scaleTxt = el("text",{x:scalePx/2,y:-10,"text-anchor":"middle","font-size":13,"font-family":"IBM Plex Mono, monospace",fill:"var(--muted)"});
+scaleTxt.textContent = scaleKm+" km";
+scaleG.appendChild(scaleTxt);
+svg.appendChild(scaleG);
+
+// --- north arrow ---
+const arrowG = el("g", {transform:"translate("+(DATA.viewW-40)+",40)"});
+arrowG.appendChild(el("line",{x1:0,y1:16,x2:0,y2:-16,stroke:"var(--sub)","stroke-width":2.5}));
+arrowG.appendChild(el("path",{d:"M -7,-8 L 0,-18 L 7,-8 Z",fill:"var(--sub)"}));
+const nTxt = el("text",{x:0,y:32,"text-anchor":"middle","font-size":13,"font-family":"IBM Plex Mono, monospace",fill:"var(--sub)"});
+nTxt.textContent="N";
+arrowG.appendChild(nTxt);
+svg.appendChild(arrowG);
+
+// --- markers ---
+const markersGroup = el("g", {id:"markers"});
+svg.appendChild(markersGroup);
+
+const plant = DATA.plant;
+const plantG = el("g", {class:"marker plant", transform:"translate("+plant.x+","+plant.y+")"});
+plantG.appendChild(el("circle",{class:"halo", r:22, stroke:"var(--accent)"}));
+plantG.appendChild(el("rect",{class:"pin", x:-11,y:-11,width:22,height:22,rx:6, fill:"var(--accent)"}));
+plantG.appendChild(el("path",{d:"M -5,4 L -5,-3 L 0,-7 L 5,-3 L 5,4 Z", fill:"var(--accent-ink)", opacity:.92}));
+markersGroup.appendChild(plantG);
+plantG.addEventListener("click", () => selectPlant());
+
+entries.forEach(en => {
+  const g = el("g", {class:"marker", "data-key":en.key, transform:"translate("+en.x+","+en.y+")"});
+  const fg = BAND_VARS[en.band].fg;
+  g.appendChild(el("circle",{class:"halo", r:16, stroke:fg}));
+  if(en.tipo === "referencia"){
+    g.appendChild(el("path",{class:"pin", d:"M 0,-9 L 9,0 L 0,9 L -9,0 Z", fill:fg}));
+  } else if(en.tipo === "venta"){
+    g.appendChild(el("circle",{class:"pin", r:7.5, fill:"none", stroke:fg, "stroke-width":2.5}));
+    g.appendChild(el("circle",{r:2.4, fill:fg}));
+  } else {
+    g.appendChild(el("circle",{class:"pin", r:7.5, fill:fg}));
+  }
+  const check = el("path",{class:"check", d:"M -3.2,0 L -1,2.4 L 3.4,-2.6", stroke:"#fff","stroke-width":1.6,fill:"none","stroke-linecap":"round","stroke-linejoin":"round"});
+  g.appendChild(check);
+  g.addEventListener("click", () => selectEntry(en.key));
+  const title = el("title", {});
+  title.textContent = en.name + " — " + en.duration_adj_min + " min / " + en.distance_km + " km";
+  g.appendChild(title);
+  markersGroup.appendChild(g);
+});
+
+// --- side list (with inline per-item comment/status editor) ---
+const listUl = document.getElementById("listUl");
+const miniEditors = {}; // key -> {paint, syncValue}
+entries.forEach(en => {
+  const li = document.createElement("li");
+  const btn = document.createElement("button");
+  btn.className = "list-row";
+  btn.id = "row-"+en.key;
+  const catCls = en.categoria === "Venta" ? "venta" : (en.categoria === "Referencia" ? "referencia" : "alquiler");
+  btn.innerHTML = '<span class="status-pill pendiente" id="pill-'+en.key+'"></span>'+
+    '<span class="sw" style="background:'+BAND_VARS[en.band].fg+'"></span>'+
+    '<span class="name"><b>'+en.name+'</b><span>'+en.distrito+'</span><span class="note-preview" id="note-'+en.key+'"></span></span>'+
+    '<span class="cat-chip '+catCls+'">'+en.categoria+'</span>'+
+    '<span class="time" style="background:'+BAND_VARS[en.band].bg+';color:'+BAND_VARS[en.band].fg+'">'+en.duration_adj_min+' min</span>';
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "comment-toggle";
+  toggle.id = "ctoggle-"+en.key;
+  toggle.title = "Agregar / ver comentario";
+  toggle.setAttribute("aria-label", "Comentario");
+  toggle.textContent = "💬";
+  btn.appendChild(toggle);
+
+  btn.addEventListener("click", (ev) => {
+    if(toggle.contains(ev.target)) return;
+    selectEntry(en.key);
+  });
+
+  const inline = document.createElement("div");
+  inline.className = "comment-inline";
+  const textarea = document.createElement("textarea");
+  textarea.placeholder = "Comentario rápido — ¿cumple con lo requerido?";
+  const row = document.createElement("div");
+  row.className = "comment-inline-row";
+  const segP = document.createElement("button");
+  segP.type = "button"; segP.className = "seg-mini pendiente"; segP.textContent = "Pendiente";
+  const segR = document.createElement("button");
+  segR.type = "button"; segR.className = "seg-mini revisado"; segR.textContent = "Revisado";
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button"; saveBtn.className = "btn-save-mini"; saveBtn.textContent = "Guardar";
+  const status = document.createElement("span");
+  status.className = "save-status";
+  row.append(segP, segR, saveBtn, status);
+  inline.append(textarea, row);
+
+  let miniStatus = reviewState[en.key].status;
+  function paint(){
+    segP.classList.toggle("on", miniStatus === "pendiente");
+    segR.classList.toggle("on", miniStatus === "revisado");
+  }
+  paint();
+  segP.addEventListener("click", () => { miniStatus = "pendiente"; paint(); });
+  segR.addEventListener("click", () => { miniStatus = "revisado"; paint(); });
+  toggle.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    inline.classList.toggle("open");
+    if(inline.classList.contains("open")){
+      textarea.value = reviewState[en.key].comment || "";
+      miniStatus = reviewState[en.key].status;
+      paint();
+      textarea.focus();
+    }
+  });
+  saveBtn.addEventListener("click", () => {
+    saveReview(en.key, miniStatus, textarea.value, {btn: saveBtn, label: status});
+  });
+
+  li.appendChild(btn);
+  li.appendChild(inline);
+  listUl.appendChild(li);
+
+  miniEditors[en.key] = {
+    paint: () => { miniStatus = reviewState[en.key].status; paint(); },
+    syncValue: () => { if(document.activeElement !== textarea) textarea.value = reviewState[en.key].comment || ""; },
+    setToggleState: () => { toggle.classList.toggle("has-comment", !!reviewState[en.key].comment); }
+  };
+});
+
+const detailCard = document.getElementById("detailCard");
+let currentKey = null;
+
+function renderDetail(en){
+  const fg = BAND_VARS[en.band].fg, bg = BAND_VARS[en.band].bg;
+  const rs = reviewState[en.key];
+  let html = '<span class="band-badge" style="background:'+bg+';color:'+fg+'">'+BAND_LABEL[en.band]+'</span>';
+  html += '<h3>'+en.name+'</h3>';
+  html += '<div class="addr">'+en.distrito+' &middot; '+en.addr+'</div>';
+  html += '<div class="stat-row">'+
+    '<div class="stat"><b>'+en.duration_adj_min+' min</b><span>desde la planta</span></div>'+
+    '<div class="stat"><b>'+en.distance_km+' km</b><span>distancia vial</span></div>'+
+  '</div>';
+  html += '<dl class="kv">';
+  if(en.categoria) html += '<dt>Categoría</dt><dd>'+en.categoria+'</dd>';
+  if(en.m2) html += '<dt>Área</dt><dd>'+en.m2+' m²</dd>';
+  if(en.precio) html += '<dt>Precio</dt><dd>'+en.precio+'</dd>';
+  if(en.contacto) html += '<dt>Contacto</dt><dd>'+en.contacto+'</dd>';
+  html += '<dt>Tipo</dt><dd>'+(en.tipo==="referencia" ? "Punto de referencia" : "Almacén candidato")+'</dd>';
+  html += '<dt>Fuente</dt><dd>'+en.fuente+'</dd>';
+  html += '</dl>';
+  html += '<div class="traffic-note">Tiempo en vía libre (OSRM): '+en.duration_min+' min. Ajustado ×1.4 por tráfico moderado para la cifra principal.</div>';
+  html += '<div class="link-row">';
+  html += '<a class="btn-link primary" href="'+gmapsDirUrl(en)+'" target="_blank" rel="noopener">Cómo llegar ↗</a>';
+  html += '<a class="btn-link ghost" href="'+gmapsPinUrl(en)+'" target="_blank" rel="noopener">Ver en Google Maps ↗</a>';
+  const phone = extractPhone(en.contacto);
+  if(phone) html += '<a class="btn-link ghost" href="https://wa.me/51'+phone+'" target="_blank" rel="noopener">WhatsApp ↗</a>';
+  html += '</div>';
+  if(!en.url){
+    html += '<span class="no-link">Sin enlace de anuncio público — contactar por el portal de origen.</span>';
+  } else {
+    html += '<div class="link-row"><a class="btn-link ghost" href="'+en.url+'" target="_blank" rel="noopener">Ver anuncio original ↗</a></div>';
+  }
+
+  html += '<div class="admin-box">'+
+    '<span class="admin-label">Revisión (administrador)</span>'+
+    '<div class="seg">'+
+      '<button type="button" id="segPendiente" class="'+(rs.status==="pendiente"?"on pendiente":"")+'">Pendiente de revisión</button>'+
+      '<button type="button" id="segRevisado" class="'+(rs.status==="revisado"?"on revisado":"")+'">Revisado</button>'+
+    '</div>'+
+    '<textarea id="commentInput" placeholder="¿Cumple con lo requerido? Notas de la visita, contacto, etc.">'+escapeHtml(rs.comment||"")+'</textarea>'+
+    '<div class="save-row"><button type="button" class="btn-save" id="saveBtn">Guardar</button><span class="save-status" id="saveStatus"></span></div>'+
+    '<div class="db-note" id="dbNote"></div>'+
+  '</div>';
+
+  detailCard.innerHTML = html;
+  wireAdminControls(en.key);
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+
+function extractPhone(s){
+  if(!s) return null;
+  const m = String(s).match(/9\d{8}/);
+  return m ? m[0] : null;
+}
+
+async function saveReview(key, status, comment, ui){
+  if(ui){ ui.btn.disabled = true; ui.label.textContent = "Guardando…"; }
+  const payload = {status: status, comment: comment, updatedAt: new Date().toISOString()};
+  try{
+    if(dbCol){
+      await dbCol.doc(key).set(payload);
+    }
+    reviewState[key] = payload;
+    applyReviewState(key);
+    if(ui) ui.label.textContent = "Guardado";
+  }catch(err){
+    if(ui) ui.label.textContent = "No se pudo guardar (" + (err && err.code ? err.code : "error") + ")";
+  }
+  if(ui){
+    ui.btn.disabled = false;
+    setTimeout(()=>{ if(ui.label) ui.label.textContent=""; }, 2500);
+  }
+}
+
+function wireAdminControls(key){
+  const segP = document.getElementById("segPendiente");
+  const segR = document.getElementById("segRevisado");
+  const saveBtn = document.getElementById("saveBtn");
+  const saveStatus = document.getElementById("saveStatus");
+  const dbNote = document.getElementById("dbNote");
+  let localStatus = reviewState[key].status;
+
+  function paintSeg(){
+    segP.className = localStatus === "pendiente" ? "on pendiente" : "";
+    segR.className = localStatus === "revisado" ? "on revisado" : "";
+  }
+  segP.addEventListener("click", () => { localStatus = "pendiente"; paintSeg(); });
+  segR.addEventListener("click", () => { localStatus = "revisado"; paintSeg(); });
+
+  if(!dbReady){
+    saveBtn.disabled = true;
+    dbNote.textContent = "Conectando almacenamiento…";
+  }
+
+  saveBtn.addEventListener("click", () => {
+    const comment = document.getElementById("commentInput").value;
+    saveReview(key, localStatus, comment, {btn: saveBtn, label: saveStatus});
+  });
+}
+
+function renderPlantDetail(){
+  detailCard.innerHTML =
+    '<span class="band-badge" style="background:var(--paper);color:var(--accent)">Planta</span>'+
+    '<h3>Plásticos Nacionales</h3>'+
+    '<div class="addr">Independencia &middot; Av. Los Talleres 4898, Urb. Industrial El Naranjal</div>'+
+    '<div class="link-row"><a class="btn-link ghost" href="https://www.google.com/maps/search/?api=1&query='+plant.lat+','+plant.lon+'" target="_blank" rel="noopener">Ver en Google Maps ↗</a></div>'+
+    '<div style="font-size:13px;color:var(--sub);">Punto de partida de todos los trayectos calculados. Selecciona un almacén en la lista o en el mapa para ver su ruta, tiempo estimado y su estado de revisión.</div>';
+}
+
+function clearRoutes(){
+  entries.forEach(en => { document.getElementById("path-"+en.key).style.opacity = 0; });
+}
+
+function drawRoute(key){
+  const path = document.getElementById("path-"+key);
+  const len = path.getTotalLength();
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  path.style.opacity = 1;
+  if(reduceMotion){
+    path.style.strokeDasharray = "none";
+    path.style.strokeDashoffset = 0;
+    return;
+  }
+  path.style.strokeDasharray = len;
+  path.style.strokeDashoffset = len;
+  path.getBoundingClientRect();
+  path.style.transition = "stroke-dashoffset 1s ease-out";
+  path.style.strokeDashoffset = 0;
+}
+
+function scrollToMarker(x, y){
+  const mapScroll = document.getElementById("mapScroll");
+  const rect = svg.getBoundingClientRect();
+  const scale = rect.width / DATA.viewW;
+  const targetTop = y*scale - mapScroll.clientHeight/2;
+  mapScroll.scrollTo({top: Math.max(0,targetTop), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+}
+
+function setActiveVisuals(key){
+  document.querySelectorAll(".marker").forEach(m => m.classList.remove("active"));
+  document.querySelectorAll(".list-row").forEach(r => r.classList.remove("active"));
+  if(key){
+    const m = document.querySelector('.marker[data-key="'+key+'"]');
+    if(m) m.classList.add("active");
+    const r = document.getElementById("row-"+key);
+    if(r) r.classList.add("active");
+  }
+}
+
+function selectEntry(key){
+  currentKey = key;
+  const en = {key, ...DATA.warehouses[key]};
+  clearRoutes();
+  drawRoute(key);
+  setActiveVisuals(key);
+  renderDetail(en);
+  scrollToMarker(en.x, en.y);
+}
+
+function selectPlant(){
+  currentKey = null;
+  clearRoutes();
+  setActiveVisuals(null);
+  renderPlantDetail();
+  scrollToMarker(plant.x, plant.y);
+}
+
+function applyReviewState(key){
+  const rs = reviewState[key];
+  const pill = document.getElementById("pill-"+key);
+  if(pill) pill.className = "status-pill " + rs.status;
+  const marker = document.querySelector('.marker[data-key="'+key+'"]');
+  if(marker) marker.classList.toggle("done", rs.status === "revisado");
+  const note = document.getElementById("note-"+key);
+  if(note) note.textContent = rs.comment ? rs.comment : "";
+  const me = miniEditors[key];
+  if(me){ me.paint(); me.syncValue(); me.setToggleState(); }
+  updateProgress();
+}
+
+function updateProgress(){
+  const total = entries.length;
+  const done = entries.filter(en => reviewState[en.key].status === "revisado").length;
+  document.getElementById("progressText").textContent = done+"/"+total+" revisados";
+  document.getElementById("progressFill").style.width = Math.round(done/total*100)+"%";
+}
+
+// initial render before db resolves
+selectEntry("los_olivos_infantas");
+updateProgress();
+
+// ---- connect db capability (persists status/comment across visits) ----
+(async () => {
+  try{
+    const db = window.claude ? await window.claude.use("db") : null;
+    if(!db){
+      const note = document.getElementById("dbNote");
+      if(note) note.textContent = "Guardado no disponible en esta vista — los cambios no se conservarán al recargar.";
+      return;
+    }
+    dbCol = db.collection("reviews");
+    dbCol.onSnapshot((snap) => {
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if(!data) return;
+        reviewState[doc.id] = {status: data.status || "pendiente", comment: data.comment || ""};
+        applyReviewState(doc.id);
+        if(doc.id === currentKey){
+          const seg = document.getElementById("segPendiente");
+          if(seg){
+            document.getElementById("segPendiente").className = reviewState[doc.id].status==="pendiente" ? "on pendiente" : "";
+            document.getElementById("segRevisado").className = reviewState[doc.id].status==="revisado" ? "on revisado" : "";
+            const ci = document.getElementById("commentInput");
+            if(ci && document.activeElement !== ci) ci.value = reviewState[doc.id].comment || "";
+          }
+        }
+      });
+      dbReady = true;
+      const btn = document.getElementById("saveBtn");
+      const note = document.getElementById("dbNote");
+      if(btn) btn.disabled = false;
+      if(note) note.textContent = "";
+    }, (err) => {
+      const note = document.getElementById("dbNote");
+      if(note) note.textContent = "Almacenamiento no disponible (" + err.code + ") — los cambios no se conservarán.";
+    });
+  }catch(e){
+    // window.claude not present at all (e.g. saved file opened directly): stay in local-only mode
+  }
+})();
+</script>

@@ -15,7 +15,7 @@ import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
  *
  * La búsqueda la resuelve el servidor, no esta pantalla. Antes el navegador
  * tenía una copia del padrón completo y filtraba sobre ella, lo que dejaba los
- * 212 nombres con su DNI a la vista de cualquiera que abriera la consola: la
+ * 114 nombres con su DNI a la vista de cualquiera que abriera la consola: la
  * tabla no los listaba, pero los datos igual habían viajado. Ahora solo llega
  * lo que se busca, y el conteo total viene como número.
  */

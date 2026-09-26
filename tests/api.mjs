@@ -23,10 +23,13 @@ process.env.PLANSA_PUERTO = '0';                 // puerto libre que elija el si
 const { iniciar } = await import('../backend/servidor.js');
 const { nombreUnico, marcaDeTiempo } = await import('../backend/middleware/subida.js');
 const { olvidarIntentos, olvidarPeticiones } = await import('../backend/middleware/limites.js');
-// Las cifras del histórico se leen de la propia fuente: al actualizar la
-// planilla las pruebas siguen valiendo sin tocar un número a mano.
+// Las cifras del histórico y del padrón se leen de la propia fuente: al
+// actualizar la planilla o el headcount, las pruebas siguen valiendo sin
+// tocar un número a mano.
 const { RESUMEN } = await import('#data/historico.js');
 const SEMBRADOS = RESUMEN.servicios;
+const { PERSONAL } = await import('#data/padron.js');
+const TOTAL_PADRON = PERSONAL.length;
 const SIGUIENTE = 'REQ-' + String(SEMBRADOS + 1).padStart(3, '0');
 
 let fallos = 0;
@@ -56,7 +59,7 @@ try {
   console.log('\n-- arranque y siembra --');
   const salud = await api('GET', '/api/salud');
   ok(salud.status === 200 && salud.datos.ok, 'el servidor responde');
-  ok(salud.datos.personal === 212, `la base se sembró con el padrón (${salud.datos.personal} personas)`);
+  ok(salud.datos.personal === TOTAL_PADRON, `la base se sembró con el padrón (${salud.datos.personal} personas)`);
   ok(salud.datos.solicitudes === SEMBRADOS, `y con el histórico 2026 (${salud.datos.solicitudes} servicios)`);
   ok(fs.existsSync(process.env.PLANSA_DB), 'el archivo SQLite existe en disco');
 
@@ -65,7 +68,7 @@ try {
   // servicios completos (DNI, teléfono, dirección) sin autenticarse.
   const estado = await api('GET', '/api/estado');
   ok(estado.status === 200, 'GET /api/estado responde sin sesión');
-  ok(estado.datos.totalPersonal === 212 && estado.datos.destinos.length > 0,
+  ok(estado.datos.totalPersonal === TOTAL_PADRON && estado.datos.destinos.length > 0,
      'trae lo público: conteo del padrón y catálogo de destinos');
   ok(Array.isArray(estado.datos.solicitudes) && estado.datos.solicitudes.length === 0,
      'pero NO el historial completo: sin sesión, la lista viene vacía');
@@ -80,8 +83,8 @@ try {
   console.log('\n-- ingreso --');
   const eddy = await api('GET', '/api/auth/solicitante/73012556');
   ok(eddy.status === 200 && eddy.datos.nombre.includes('AVALOS'), 'un DNI del padrón se encuentra');
-  ok((await api('GET', '/api/auth/solicitante/8161848')).status === 200,
-     'el DNI de 7 dígitos se encuentra escrito sin el cero inicial');
+  ok((await api('GET', '/api/auth/solicitante/9628739')).status === 200,
+     'el DNI de 7 dígitos se encuentra escrito sin el cero inicial (09628739, sin el "0")');
   ok((await api('GET', '/api/auth/solicitante/99999999')).status === 404,
      'un documento ajeno al padrón responde 404');
 
@@ -164,7 +167,7 @@ try {
   const sinBuscar = await api('GET', '/api/personal', undefined, tokenAdmin);
   ok(Array.isArray(sinBuscar.datos.resultados) && sinBuscar.datos.resultados.length === 0,
      'sin búsqueda no se vuelca el padrón completo');
-  ok(sinBuscar.datos.total === 212, 'pero sí dice cuántos hay');
+  ok(sinBuscar.datos.total === TOTAL_PADRON, 'pero sí dice cuántos hay');
 
   const busq = await api('GET', '/api/personal?q=avalos', undefined, tokenAdmin);
   ok(busq.datos.length === 1 && busq.datos[0].dni === '73012556', 'la búsqueda por apellido encuentra');
@@ -825,6 +828,167 @@ try {
 
   olvidarIntentos();
 
+  // ------------------------------------------------------- compras y logística
+  console.log('\n-- exportaciones (muestras al exterior) --');
+  const nuevaExport = {
+    fechaEnvio: '2026-09-20', oc: 'OC-2026-045', costoEnvio: 350.5,
+    descripcion: 'Muestras de resina PP homopolímero', paisDestino: 'China',
+    motivo: 'Evaluación de calidad', transportista: 'DHL', tracking: 'DHL123456'
+  };
+  ok((await api('POST', '/api/exportaciones', nuevaExport)).status === 401, 'sin sesión, no se registra');
+  ok((await api('POST', '/api/exportaciones', nuevaExport, tokenSeg)).status === 403,
+     'seguimiento no administra exportaciones: es cosa de admin');
+  ok((await api('POST', '/api/exportaciones', { ...nuevaExport, descripcion: '' }, tokenAdmin)).status === 400,
+     'sin descripción, no se registra');
+
+  const expCreada = await api('POST', '/api/exportaciones', nuevaExport, tokenAdmin);
+  ok(expCreada.status === 201 && expCreada.datos.paisDestino === 'China' && expCreada.datos.estado === 'En tránsito',
+     'admin registra una exportación, en tránsito por defecto');
+  ok((await api('GET', '/api/exportaciones', undefined, tokenSeg)).status === 403, 'ni verlas es cosa de seguimiento');
+  const listaExp = await api('GET', '/api/exportaciones', undefined, tokenAdmin);
+  ok(listaExp.status === 200 && listaExp.datos.some(e => e.id === expCreada.datos.id), 'admin sí las lista');
+
+  const expActualizada = await api('PATCH', '/api/exportaciones/' + expCreada.datos.id,
+    { ...nuevaExport, estado: 'Entregado', fechaLlegadaProveedor: '2026-10-05' }, tokenAdmin);
+  ok(expActualizada.datos.estado === 'Entregado' && expActualizada.datos.fechaLlegadaProveedor === '2026-10-05',
+     'admin actualiza el estado y la fecha de llegada al proveedor');
+  ok((await api('DELETE', '/api/exportaciones/' + expCreada.datos.id, undefined, tokenSeg)).status === 403,
+     'borrarla tampoco es de seguimiento');
+  ok((await api('DELETE', '/api/exportaciones/' + expCreada.datos.id, undefined, tokenAdmin)).status === 200,
+     'admin sí puede borrarla');
+  ok((await api('PATCH', '/api/exportaciones/' + expCreada.datos.id, { estado: 'Perdido' }, tokenAdmin)).status === 404,
+     'y ya no existe para actualizar');
+
+  console.log('\n-- requerimientos de compra --');
+  const nuevoReq = {
+    fechaSolicitud: '2026-09-20', areaSolicitante: 'Producción',
+    descripcion: 'Resina PE para soplado, contenedor 20 pies', categoria: 'Materia prima importada',
+    cantidad: 20000, unidadMedida: 'kg', prioridad: 'Alta', fechaRequerida: '2026-10-15'
+  };
+  ok((await api('POST', '/api/requerimientos-compra', nuevoReq)).status === 401, 'sin sesión, no se registra');
+  ok((await api('POST', '/api/requerimientos-compra', nuevoReq, tokenSeg)).status === 403,
+     'seguimiento no administra requerimientos de compra');
+  const reqCreado = await api('POST', '/api/requerimientos-compra', nuevoReq, tokenAdmin);
+  ok(reqCreado.status === 201 && reqCreado.datos.categoria === 'Materia prima importada'
+     && reqCreado.datos.estado === 'Pendiente' && reqCreado.datos.correlativo > 0,
+     'admin registra un requerimiento, pendiente por defecto y con correlativo propio');
+  const otroReq = await api('POST', '/api/requerimientos-compra', nuevoReq, tokenAdmin);
+  ok(otroReq.datos.correlativo === reqCreado.datos.correlativo + 1, 'el correlativo sigue, no se repite');
+  ok((await api('POST', '/api/requerimientos-compra', { ...nuevoReq, categoria: 'Inventada' }, tokenAdmin)).status === 201,
+     'una categoría que no existe no rompe el alta: cae a "Otros"');
+
+  const reqActualizado = await api('PATCH', '/api/requerimientos-compra/' + reqCreado.datos.id,
+    { ...nuevoReq, estado: 'OC emitida', numeroOc: 'OC-2026-050', costoEstimado: 45000, moneda: 'USD' }, tokenAdmin);
+  ok(reqActualizado.datos.estado === 'OC emitida' && reqActualizado.datos.numeroOc === 'OC-2026-050'
+     && reqActualizado.datos.moneda === 'USD', 'admin avanza el estado y liga el número de OC');
+  ok((await api('DELETE', '/api/requerimientos-compra/' + reqCreado.datos.id, undefined, tokenAdmin)).status === 200,
+     'admin puede borrarlo');
+
+  console.log('\n-- servicios de logística --');
+  const nuevoServ = {
+    fechaSolicitud: '2026-09-20', tipoServicio: 'Agenciamiento de aduana', proveedor: 'Agencia XYZ',
+    descripcion: 'Desaduanaje de contenedor de resina PP', costo: 1200, moneda: 'USD'
+  };
+  ok((await api('POST', '/api/servicios-logistica', nuevoServ)).status === 401, 'sin sesión, no se registra');
+  ok((await api('POST', '/api/servicios-logistica', nuevoServ, tokenSeg)).status === 403,
+     'seguimiento no administra servicios de logística');
+  const servCreado = await api('POST', '/api/servicios-logistica', nuevoServ, tokenAdmin);
+  ok(servCreado.status === 201 && servCreado.datos.tipoServicio === 'Agenciamiento de aduana'
+     && servCreado.datos.estado === 'Cotizando', 'admin registra un servicio, cotizando por defecto');
+  const servActualizado = await api('PATCH', '/api/servicios-logistica/' + servCreado.datos.id,
+    { ...nuevoServ, estado: 'Concluido', fechaInicio: '2026-09-21', fechaTermino: '2026-09-25' }, tokenAdmin);
+  ok(servActualizado.datos.estado === 'Concluido' && servActualizado.datos.fechaTermino === '2026-09-25',
+     'admin cierra el servicio con sus fechas');
+  ok((await api('GET', '/api/servicios-logistica', undefined, tokenAdmin)).datos.some(s => s.id === servCreado.datos.id),
+     'y aparece en el listado');
+  ok((await api('DELETE', '/api/servicios-logistica/' + servCreado.datos.id, undefined, tokenAdmin)).status === 200,
+     'admin puede borrarlo');
+
+  console.log('\n-- módulo de Almacén (ticket + cookie propia) --');
+  ok((await api('POST', '/api/almacen/ticket')).status === 401, 'sin sesión, no se emite ticket');
+  ok((await api('POST', '/api/almacen/ticket', undefined, tokenSeg)).status === 403,
+     'seguimiento no tiene acceso al módulo de Almacén, solo admin');
+
+  const sinNada = await fetch(BASE + '/almacen/', { redirect: 'manual' });
+  ok(sinNada.status === 401, 'sin ticket ni cookie, /almacen/ rechaza');
+
+  const emision = await api('POST', '/api/almacen/ticket', undefined, tokenAdmin);
+  ok(emision.status === 200 && typeof emision.datos.ticket === 'string' && emision.datos.ticket.length > 10,
+     'con sesión admin, se emite un ticket de un solo uso');
+  const ticket = emision.datos.ticket;
+
+  const canje = await fetch(BASE + '/almacen/?ticket=' + ticket, { redirect: 'manual' });
+  ok(canje.status === 302 && canje.headers.get('location') === '/almacen/',
+     'canjear el ticket redirige limpio, sin el ticket colgando en la URL');
+  const setCookie = canje.headers.get('set-cookie') || '';
+  ok(/almacen_sesion=[0-9a-f]+/.test(setCookie) && /HttpOnly/.test(setCookie) && /SameSite=Strict/.test(setCookie),
+     'y pone una cookie propia, httpOnly y de solo este sitio');
+  const cookie = setCookie.match(/almacen_sesion=[0-9a-f]+/)[0];
+
+  const conCookie = await fetch(BASE + '/almacen/', { headers: { Cookie: cookie } });
+  ok(conCookie.status === 200 && (await conCookie.text()).includes('<html'),
+     'con la cookie, el shell del módulo carga');
+  ok((await fetch(BASE + '/almacen/api/almacenes', { headers: { Cookie: cookie } })).status === 200,
+     'y su propia API namespaced bajo /almacen/api responde');
+
+  const reuso = await fetch(BASE + '/almacen/?ticket=' + ticket, { redirect: 'manual' });
+  ok(reuso.status === 401, 'el mismo ticket no sirve dos veces');
+
+  ok((await fetch(BASE + '/almacen/', { redirect: 'manual' })).status === 401,
+     'y sin la cookie, sigue sin poder entrar');
+
+  // Regresión: una cookie vieja e inválida en Path=/almacen (de antes de que
+  // el Path pasara a /) no debe tapar a una nueva y válida en Path=/. El
+  // navegador manda ambas con el mismo nombre en una sola cabecera Cookie,
+  // la de Path=/almacen primero por ser más específica.
+  const emision2 = await api('POST', '/api/almacen/ticket', undefined, tokenAdmin);
+  const canje2 = await fetch(BASE + '/almacen/?ticket=' + emision2.datos.ticket, { redirect: 'manual' });
+  const cookieNueva = (canje2.headers.get('set-cookie') || '').match(/almacen_sesion=[0-9a-f]+/)[0];
+  const cookieMezclada = 'almacen_sesion=00000000000000000000000000000000; ' + cookieNueva;
+  const conMezcla = await fetch(BASE + '/almacen/', { headers: { Cookie: cookieMezclada } });
+  ok(conMezcla.status === 200,
+     'una cookie vieja e inválida junto a la nueva y válida no bloquea la entrada');
+
+  const shellHeaders = await fetch(BASE + '/almacen/', { headers: { Cookie: cookie } });
+  ok(shellHeaders.headers.get('x-frame-options') === 'SAMEORIGIN'
+     && /frame-ancestors 'self'/.test(shellHeaders.headers.get('content-security-policy') || ''),
+     'el shell se puede enmarcar en un <iframe> del propio panel (mismo origen), no de cualquier sitio');
+  // Las teselas ya NO salen a un host externo: pasan por el proxy con caché
+  // del propio servidor (/almacen/api/tiles/...), así que la CSP no necesita
+  // abrirse a tile.openstreetmap.org ni server.arcgisonline.com.
+  ok(!/tile\.openstreetmap\.org|arcgisonline\.com/.test(shellHeaders.headers.get('content-security-policy') || ''),
+     'la CSP no necesita abrirse a hosts externos: las teselas pasan por el proxy propio');
+
+  const MAPA = '/modules/mapa-almacenes/index.html';
+  ok((await fetch(BASE + MAPA)).status === 401, 'los módulos internos (mapa, radar, plano) tampoco abren sin la cookie');
+  ok((await fetch(BASE + '/modules/radar-naranjal/radar_naranjal.html')).status === 401,
+     'ni el radar original, que trae adentro toda la data de almacenes');
+  const mapa = await fetch(BASE + MAPA, { headers: { Cookie: cookie } });
+  ok(mapa.status === 200 && mapa.headers.get('x-frame-options') === 'SAMEORIGIN'
+     && /frame-ancestors 'self'/.test(mapa.headers.get('content-security-policy') || ''),
+     'con la cookie, el mapa carga y se deja enmarcar por el shell (antes salía bloqueado)');
+  ok(/(^|;\s*)Path=\//.test(setCookie), 'la cookie vale para /modules también (Path=/)');
+
+  console.log('\n-- proxy de teselas del mapa (con caché) --');
+  ok((await fetch(BASE + '/almacen/api/tiles/esri-calles/5/16/12')).status === 401,
+     'el proxy de teselas también exige la cookie: no cualquiera en la red lo usa de relay');
+  const t1 = await fetch(BASE + '/almacen/api/tiles/esri-calles/5/16/12', { headers: { Cookie: cookie } });
+  const bytes1 = await t1.arrayBuffer();
+  ok(t1.status === 200 && t1.headers.get('content-type') === 'image/png' && bytes1.byteLength > 800,
+     'con la cookie, trae una tesela real de Esri (no el aviso de bloqueo de OSM)');
+  const t2 = await fetch(BASE + '/almacen/api/tiles/esri-calles/5/16/12', { headers: { Cookie: cookie } });
+  const bytes2 = await t2.arrayBuffer();
+  ok(t2.status === 200 && bytes2.byteLength === bytes1.byteLength,
+     'y la segunda vez sale del caché en disco, no vuelve a pedirla afuera');
+  ok((await fetch(BASE + '/almacen/api/tiles/otro-proveedor/5/16/12', { headers: { Cookie: cookie } })).status === 404,
+     'un proveedor que no está en la lista permitida no se atiende (nada de reenviar cualquier URL)');
+  ok((await fetch(BASE + '/almacen/api/tiles/esri-calles/-1/16/12', { headers: { Cookie: cookie } })).status === 404,
+     'coordenadas con signo no calzan con la ruta -ni se procesan- y quedan en 404');
+
+  const raiz = await fetch(BASE + '/');
+  ok(raiz.headers.get('x-frame-options') === 'DENY', 'el resto de la app sigue sin poder enmarcarse (sin cambios)');
+  ok(/fonts\.gstatic\.com/.test(raiz.headers.get('content-security-policy') || ''),
+     'la CSP deja cargar la tipografía Inter de Google Fonts (antes la bloqueaba)');
 
   // ------------------------------------------------------------- errores
   console.log('\n-- errores --');

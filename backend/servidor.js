@@ -2,6 +2,7 @@ import express from 'express';
 import compression from 'compression';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 
 import { CONFIG } from './config.js';
 import { abrir, cerrar } from './db/conexion.js';
@@ -10,6 +11,9 @@ import { api } from './rutas/index.js';
 import { noEncontrado, manejarErrores } from './middleware/errores.js';
 import { cabeceras, soloDatosPublicos } from './middleware/limites.js';
 import { origenPropio } from './middleware/origen.js';
+import { protegerAlmacen, exigirSesionAlmacen } from './almacen/acceso.js';
+import { handleApi } from './almacen/src/routes/api.js';
+import { sendError } from './almacen/src/lib/http.js';
 
 /**
  * Servidor de PLANSA Delivery.
@@ -49,6 +53,29 @@ export function crearApp() {
   // interpretara igual que una petición legítima (ver middleware/origen.js).
 
   app.use('/api', origenPropio, api);
+
+  // --- módulo de Almacén (otro repositorio, ALMACEN-LOS-OLIVOS, integrado
+  // acá dentro): protegido de verdad -ticket de un solo uso + cookie propia,
+  // ver almacen/acceso.js-, no solo un botón escondido en el sidebar. Su
+  // propio /api queda namespaced bajo /almacen/api para no chocar con el
+  // /api de arriba, que es otro sistema con otra sesión.
+  app.use('/almacen', protegerAlmacen, async (req, res, next) => {
+    if (req.url === '/' || req.url === '') {
+      return res.sendFile(path.join(CONFIG.estaticos.frontend, 'almacen', 'index.html'));
+    }
+    if (req.url.startsWith('/api/')) {
+      try {
+        await handleApi(req, res, new URL(req.url, 'http://localhost'));
+      } catch (err) {
+        if (!res.headersSent) sendError(req, res, err);
+      }
+      return;
+    }
+    next();
+  }, express.static(path.join(CONFIG.estaticos.frontend, 'almacen')));
+  // Los módulos del shell viven en frontend/modules (sus rutas absolutas no
+  // se reescribieron), pero con la misma puerta que el shell.
+  app.use('/modules', exigirSesionAlmacen);
 
   // --- estáticos ---
   // frontend/ es la raíz: lo que pida el navegador sale de ahí.

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radar Naranjal — Evaluación de almacenes</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script src="/assets/js/theme-sync.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="css/radar.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="head">
+    <div>
+      <span class="eyebrow">Supply chain · evaluación de almacenes candidatos</span>
+      <h1>Radar Naranjal</h1>
+      <p class="sub">Comparativo de opciones de almacén por proximidad a planta, capacidad, costo y calidad del dato, con seguimiento de la evaluación de cada opción.</p>
+    </div>
+    <div class="plant">
+      <i></i>
+      <div><b>Plásticos Nacionales · planta</b><span id="originAddr">Av. Los Talleres 4898, Urb. Ind. El Naranjal — Independencia</span></div>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-live="polite"></section>
+
+  <section class="viz-grid">
+    <article class="card">
+      <header class="card-h"><h2>Proximidad vs. capacidad</h2><span>Cada punto es un almacén · clic para ver su detalle en la tabla</span></header>
+      <div id="scatter" class="viz"></div>
+    </article>
+    <div class="viz-side">
+      <article class="card">
+        <header class="card-h"><h2>Distribución por tiempo a planta</h2><span>Clic en un rango para filtrar</span></header>
+        <div id="bandBar" class="viz"></div>
+      </article>
+      <article class="card">
+        <header class="card-h"><h2>Resumen por distrito</h2><span>Clic en un distrito para filtrar</span></header>
+        <div id="pivot" class="pivot-wrap"></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card table-card">
+    <header class="card-h table-h">
+      <div><h2>Almacenes evaluados</h2><span><b id="count">—</b> · clic en una fila para ver detalle y registrar la evaluación</span></div>
+      <div class="tools">
+        <input id="q" type="search" placeholder="Buscar en toda la tabla…" aria-label="Buscar en la tabla">
+        <details class="cols">
+          <summary>Columnas</summary>
+          <div id="colsMenu" class="cols-menu"></div>
+        </details>
+      </div>
+    </header>
+    <div id="activeFilters" class="active-filters"></div>
+    <div id="tableWrap" class="table-wrap"></div>
+  </section>
+
+  <footer class="foot">
+    <p id="source"></p>
+    <p><b>Metodología.</b> Distancia y tiempo calculados sobre la red vial real (OSRM / OpenStreetMap) entre cada almacén y la planta. El tiempo estimado aplica un factor de tráfico moderado (×1.4) sobre el tiempo en vía libre: es referencial y no corresponde a tráfico en tiempo real. Rangos: Ideal ≤ 10 min · Moderado 10–20 · Máximo 20–30 · Fuera de rango &gt; 30. El “área principal” es el primer valor que publica el anuncio; si el anuncio ofrece varias naves o un rango, se muestra también el rango. Precio por m² y precio mensual marcados como <i>calc</i> se derivan de ese valor. Las alertas de dato se infieren del texto del anuncio (por ejemplo, “verificar” o “ubicación aproximada”).</p>
+  </footer>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

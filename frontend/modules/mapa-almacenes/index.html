@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa de Almacenes — PLANSA</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script src="/assets/js/theme-sync.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/vendor/leaflet.markercluster/MarkerCluster.css">
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="css/mapa.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <aside class="sidebar" id="sidebar" aria-label="Filtros y resultados">
+    <header class="sb-head">
+      <span class="eyebrow">Inteligencia logística · Lima</span>
+      <h1>Mapa de Almacenes</h1>
+      <div class="origin-chip">
+        <i class="origin-sq"></i>
+        <div><b>Plásticos Nacionales</b><span id="originAddr">Av. Los Talleres 4898, Urb. Ind. El Naranjal — Independencia</span></div>
+      </div>
+    </header>
+
+    <div class="search">
+      <input id="q" type="search" autocomplete="off" placeholder="Buscar nombre, dirección, distrito o código…" aria-label="Buscar almacén" role="combobox" aria-expanded="false" aria-controls="suggest">
+      <ul id="suggest" class="suggest" role="listbox" hidden></ul>
+    </div>
+
+    <section class="stats" id="stats" aria-live="polite"></section>
+
+    <details class="sb-block" open>
+      <summary>Filtros</summary>
+      <div id="filters" class="filters"></div>
+    </details>
+
+    <section class="sb-block sb-results">
+      <div class="sb-results-head">
+        <span>Resultados <em id="resultCount"></em></span>
+        <label class="sort">Orden <select id="sortSelect" aria-label="Ordenar resultados"></select></label>
+      </div>
+      <ul id="results" class="results"></ul>
+    </section>
+
+    <footer class="sb-foot" id="sourceNote"></footer>
+  </aside>
+
+  <main class="map-wrap">
+    <div id="map" class="map" role="application" aria-label="Mapa interactivo de almacenes"></div>
+
+    <div class="toolbar" id="toolbar">
+      <button type="button" class="tb-btn tb-menu" id="toggleSidebar" aria-label="Mostrar filtros">☰ Filtros</button>
+      <button type="button" class="tb-btn" data-zone="lima">Lima</button>
+      <button type="button" class="tb-btn" data-zone="lima-norte">Lima Norte</button>
+      <button type="button" class="tb-btn" data-zone="peru">Perú</button>
+      <button type="button" class="tb-btn" data-act="origin">■ Planta</button>
+      <button type="button" class="tb-btn" data-act="all" title="Encuadrar los resultados visibles">Encuadrar</button>
+      <select id="zoneSelect" class="tb-select" aria-label="Ir a zona"></select>
+      <span class="tb-seg" role="group" aria-label="Colorear marcadores por">
+        <button type="button" data-color="modalidad" class="on">Modalidad</button>
+        <button type="button" data-color="band">Tiempo a planta</button>
+      </span>
+    </div>
+
+    <div class="legend" id="legend"></div>
+    <div class="map-status" id="status" hidden></div>
+
+    <aside class="detail" id="detail" hidden aria-label="Detalle del almacén">
+      <div class="detail-body" id="detailBody"></div>
+    </aside>
+  </main>
+</div>
+
+<dialog id="ficha" class="ficha-dialog" aria-label="Ficha completa"></dialog>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/vendor/leaflet.markercluster/leaflet.markercluster.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

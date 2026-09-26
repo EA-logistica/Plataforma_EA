@@ -1,0 +1,4 @@
+{
+  "_instrucciones": "Datos logísticos por almacén, para cargar a medida que se verifiquen. Vacío por diseño: no se agregan datos ficticios. Campos admitidos (ver frontend/modules/mapa-almacenes/js/data/logistics-schema.js): zonaLogistica, capacidad, vehiculoPermitido, accesoTrailer, accesoCamion, alturaLibreM, patioManiobras, costoTransporteEstimado, cercaniaPanamericanaNorteKm, cercaniaCallaoKm, cercaniaPuertosKm, cercaniaViasPrincipales. Ejemplo: \"almacenes\": {\"smp_tomas_valle\": {\"accesoTrailer\": true, \"alturaLibreM\": 9}}",
+  "almacenes": {}
+}

@@ -18,6 +18,27 @@
  */
 export let sesion = null;
 
+// Se guarda en sessionStorage (no localStorage) a propósito: sobrevive a un
+// F5 -que antes mandaba de vuelta al login, aun con el token todavía
+// vigente en el servidor-, pero se borra sola al cerrar la pestaña o el
+// navegador, que es lo esperable en una PC que comparten varias personas
+// (admin, seguimiento, o quien entra con DNI + credencial de área).
+const CLAVE = 'pn_mensajeria_sesion';
+
 export function setSesion(v) {
   sesion = v;
+  try {
+    if (v) sessionStorage.setItem(CLAVE, JSON.stringify(v));
+    else sessionStorage.removeItem(CLAVE);
+  } catch (e) { /* almacenamiento bloqueado (modo privado, etc.): sigue funcionando, solo no sobrevive un F5 */ }
+}
+
+/** Se lee una sola vez, al arrancar la página -ver restaurarSesion() en auth.js-. */
+export function leerSesionGuardada() {
+  try {
+    const v = sessionStorage.getItem(CLAVE);
+    return v ? JSON.parse(v) : null;
+  } catch (e) {
+    return null;
+  }
 }

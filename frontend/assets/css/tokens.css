@@ -1,0 +1,81 @@
+/* Tokens de diseño del shell de Almacén y sus módulos (mapa, radar).
+ *
+ * Antes esto era una paleta oscura fija, con su propia marca (acento
+ * amarillo, tipografía Space Grotesk): un sistema visual aparte, pegado
+ * dentro de PLANSA en vez de sentirse parte de la plataforma. Ahora usa los
+ * mismos nombres de variable (así que .css de cada módulo no cambia una
+ * línea) pero con los valores de PLANSA: azul/verde de marca, Inter, y
+ * responde al mismo selector de modo (claro / oscuro 1 / oscuro 2) del resto
+ * de la plataforma -ver /assets/js/theme-sync.js, que lee la misma
+ * preferencia (localStorage) que escribe frontend/js/ui/theme.js afuera-.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #F4F6F9;
+  --bg-panel: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-hover: #F3F5F9;
+  --border: #DFE4EC;
+  --border-soft: #ECEFF4;
+  --text: #1D1D1F;
+  --text-muted: #565E6C;
+  --text-dim: #6B7280;
+  --accent: #1B4E8E;
+  --accent-ink: #FFFFFF;
+  --plant: #2FA84F;
+  --blue: #1B4E8E;
+  --ok: #1F8A46;
+  --alert: #B0271E;
+  --radius: 10px;
+  --font-display: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --shadow: 0 8px 32px rgba(16, 24, 40, .08), 0 2px 6px rgba(16, 24, 40, .05);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0B121C;
+  --bg-panel: #141E2B;
+  --bg-card: #141E2B;
+  --bg-hover: #1B2836;
+  --border: #2A3B4E;
+  --border-soft: #20303F;
+  --text: #E7EEF6;
+  --text-muted: #93A7BC;
+  --text-dim: #647B92;
+  --accent: #63B0EE;
+  --accent-ink: #06192C;
+  --plant: #4FCB90;
+  --blue: #63B0EE;
+  --ok: #4FCB90;
+  --alert: #EC6C66;
+  --shadow: 0 10px 30px -12px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .3);
+}
+
+:root[data-theme="black"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-panel: #000000;
+  --bg-card: #0C0C0C;
+  --bg-hover: #191919;
+  --border: #272727;
+  --border-soft: #1A1A1A;
+  --text: #F5F6F7;
+  --text-muted: #A4A9B0;
+  --text-dim: #74787E;
+  --accent: #63B0EE;
+  --accent-ink: #06192C;
+  --plant: #4FCB90;
+  --blue: #63B0EE;
+  --ok: #4FCB90;
+  --alert: #EC6C66;
+  --shadow: 0 10px 30px -12px rgba(0, 0, 0, .8), 0 2px 6px rgba(0, 0, 0, .5);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--font-body); -webkit-font-smoothing: antialiased; }
+code { font-family: var(--font-mono); font-size: 0.92em; background: var(--bg-card); border: 1px solid var(--border-soft); padding: 0 4px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

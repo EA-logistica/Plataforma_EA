@@ -95,6 +95,9 @@ function controles() {
     + opcion('si', 'Sí: paga gratificaciones, CTS y EsSalud', estado.bonoRemunerativo)
     + opcion('no', 'No: es condición de trabajo (combustible contra comprobante)', !estado.bonoRemunerativo)
     + '</select></div>'
+    + '<div class="field" style="margin:0"><label for="pbAsignacion">Asignación familiar mensual (S/, personal propio)</label>'
+    + '<input class="input" id="pbAsignacion" type="number" min="0" step="0.5" value="' + estado.asignacionFamiliar
+    + '" placeholder="0.00" onchange="setAsignacionPayback(this.value)"></div>'
     + '<div class="field" style="margin:0"><label for="pbCreditoFiscal">¿Se puede usar el IGV como crédito fiscal? (tercerizar)</label>'
     + '<select class="select" id="pbCreditoFiscal" onchange="setCreditoFiscalPayback(this.value)">'
     + opcion('si', 'Sí: Régimen General/MYPE Tributario, con débito fiscal suficiente', estado.creditoFiscalIgv)

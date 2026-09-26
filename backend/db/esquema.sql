@@ -214,3 +214,93 @@ CREATE TABLE IF NOT EXISTS ajustes (
   clave  TEXT PRIMARY KEY,
   valor  TEXT NOT NULL
 );
+
+-- ================================================ Compras y Logística
+-- Tres registros propios del coordinador de logística, además de la
+-- mensajería: qué se manda de muestra al exterior, qué hay que comprar y qué
+-- servicios se contratan. Ninguno de los tres es visible para "seguimiento":
+-- solo admin los administra (ver requiereRol('admin') en las rutas).
+
+-- ------------------------------------------------------------ exportaciones
+-- Muestras enviadas a proveedores en el exterior. "Fecha de llegada al
+-- proveedor" -no "al cliente"- porque lo que sale de acá son muestras para
+-- evaluación, no ventas: el destino final del envío ES el proveedor.
+CREATE TABLE IF NOT EXISTS exportaciones (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha_envio              TEXT NOT NULL,
+  oc                       TEXT NOT NULL DEFAULT '',
+  costo_envio              REAL CHECK (costo_envio IS NULL OR costo_envio >= 0),
+  descripcion              TEXT NOT NULL,
+  pais_destino             TEXT NOT NULL,
+  fecha_llegada_proveedor  TEXT NOT NULL DEFAULT '',
+  motivo                   TEXT NOT NULL DEFAULT '',
+  transportista            TEXT NOT NULL DEFAULT '',
+  tracking                 TEXT NOT NULL DEFAULT '',
+  estado                   TEXT NOT NULL DEFAULT 'En tránsito'
+                           CHECK (estado IN ('En tránsito', 'Entregado', 'Devuelto', 'Perdido')),
+  responsable              TEXT NOT NULL DEFAULT '',
+  notas                    TEXT NOT NULL DEFAULT '',
+  creado_por               TEXT NOT NULL DEFAULT '',
+  creado_en                TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_exportaciones_estado ON exportaciones (estado);
+CREATE INDEX IF NOT EXISTS idx_exportaciones_fecha ON exportaciones (fecha_envio);
+
+-- ------------------------------------------------------- requerimientos_compra
+-- Lo que el coordinador de logística tiene que gestionar: materia prima local
+-- e importada (resinas, PP, PE de soplado e inyección), repuestos y
+-- servicios. `correlativo` es propio -no comparte numeración con `solicitudes`
+-- ni con nada más- porque es un universo de compras, no de mensajería.
+CREATE TABLE IF NOT EXISTS requerimientos_compra (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  correlativo         INTEGER NOT NULL,
+  fecha_solicitud     TEXT NOT NULL,
+  area_solicitante    TEXT NOT NULL DEFAULT '',
+  descripcion         TEXT NOT NULL,
+  categoria           TEXT NOT NULL DEFAULT 'Otros'
+                      CHECK (categoria IN ('Materia prima local', 'Materia prima importada', 'Repuestos', 'Servicios', 'Otros')),
+  cantidad            REAL CHECK (cantidad IS NULL OR cantidad >= 0),
+  unidad_medida       TEXT NOT NULL DEFAULT '',
+  proveedor_sugerido  TEXT NOT NULL DEFAULT '',
+  prioridad           TEXT NOT NULL DEFAULT 'Normal' CHECK (prioridad IN ('Urgente', 'Alta', 'Normal', 'Baja')),
+  fecha_requerida     TEXT NOT NULL DEFAULT '',
+  estado              TEXT NOT NULL DEFAULT 'Pendiente'
+                      CHECK (estado IN ('Pendiente', 'Cotizando', 'Aprobado', 'OC emitida', 'Recibido', 'Rechazado', 'Cancelado')),
+  numero_oc           TEXT NOT NULL DEFAULT '',
+  moneda              TEXT NOT NULL DEFAULT 'PEN' CHECK (moneda IN ('PEN', 'USD')),
+  costo_estimado      REAL CHECK (costo_estimado IS NULL OR costo_estimado >= 0),
+  costo_real          REAL CHECK (costo_real IS NULL OR costo_real >= 0),
+  observaciones       TEXT NOT NULL DEFAULT '',
+  creado_por          TEXT NOT NULL DEFAULT '',
+  creado_en           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_requerimientos_estado ON requerimientos_compra (estado);
+CREATE INDEX IF NOT EXISTS idx_requerimientos_categoria ON requerimientos_compra (categoria);
+
+-- --------------------------------------------------------- servicios_logistica
+-- Servicios que contrata logística -mantenimiento, transporte especializado,
+-- certificaciones, agenciamiento de aduana- y que no son mensajería: por eso
+-- es otra tabla y no una fila más de `solicitudes`.
+CREATE TABLE IF NOT EXISTS servicios_logistica (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha_solicitud  TEXT NOT NULL,
+  tipo_servicio    TEXT NOT NULL DEFAULT 'Otro'
+                   CHECK (tipo_servicio IN ('Mantenimiento', 'Transporte especializado', 'Certificación', 'Agenciamiento de aduana', 'Consultoría', 'Otro')),
+  proveedor        TEXT NOT NULL DEFAULT '',
+  descripcion      TEXT NOT NULL,
+  costo            REAL CHECK (costo IS NULL OR costo >= 0),
+  moneda           TEXT NOT NULL DEFAULT 'PEN' CHECK (moneda IN ('PEN', 'USD')),
+  estado           TEXT NOT NULL DEFAULT 'Cotizando'
+                   CHECK (estado IN ('Cotizando', 'Aprobado', 'En ejecución', 'Concluido', 'Cancelado')),
+  fecha_inicio     TEXT NOT NULL DEFAULT '',
+  fecha_termino    TEXT NOT NULL DEFAULT '',
+  responsable      TEXT NOT NULL DEFAULT '',
+  observaciones    TEXT NOT NULL DEFAULT '',
+  creado_por       TEXT NOT NULL DEFAULT '',
+  creado_en        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_servicios_logistica_estado ON servicios_logistica (estado);
+CREATE INDEX IF NOT EXISTS idx_servicios_logistica_tipo ON servicios_logistica (tipo_servicio);

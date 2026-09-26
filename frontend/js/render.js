@@ -5,6 +5,9 @@ import { renderPadronSiVisible } from './views/roster.js';
 import { renderKpiSiVisible } from './views/kpi.js';
 import { renderUsuariosSiVisible } from './views/usuarios.js';
 import { renderCredencialesAreaSiVisible } from './views/credencialesArea.js';
+import { renderExportacionesSiVisible } from './views/exportaciones.js';
+import { renderRequerimientosSiVisible } from './views/requerimientosCompra.js';
+import { renderServiciosLogisticaSiVisible } from './views/serviciosLogistica.js';
 import { renderMis } from './views/tickets.js';
 import { sincronizar as sincronizarStore } from './api/estado.js';
 
@@ -27,6 +30,11 @@ export function renderTodo() {
     renderKpiSiVisible();
     renderUsuariosSiVisible();
     renderCredencialesAreaSiVisible();
+    renderExportacionesSiVisible();
+    renderRequerimientosSiVisible();
+    renderServiciosLogisticaSiVisible();
+    // El módulo de Almacén no se repinta en cada sondeo: vive en su propio
+    // iframe con su propia sesión, y reasignar el src le resetearía el mapa.
   } else {
     renderMis();
   }

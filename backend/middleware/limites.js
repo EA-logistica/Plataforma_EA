@@ -127,18 +127,37 @@ export const olvidarPeticiones = () => peticiones.clear();
  *                     nada traído de fuera. 'unsafe-inline' sigue habilitado
  *                     porque el HTML usa atributos onclick; quitarlos es la
  *                     mejora siguiente, no esta.
+ *
+ * /almacen/* es la única excepción a "DENY": ese módulo se abre a propósito
+ * dentro de un <iframe> del propio panel de admin (mismo origen), así que
+ * necesita poder ser enmarcado por sí mismo -nunca por un origen ajeno, de
+ * ahí 'self' y no una lista abierta-. Las teselas del mapa (OpenStreetMap,
+ * Esri) pasan por el proxy con caché del propio servidor
+ * (backend/almacen/src/services/tiles.js), no se piden directo desde el
+ * navegador, así que img-src no necesita abrirse a ningún host externo.
  */
 export function cabeceras(req, res, next) {
+  // /modules/* son los módulos que el shell de /almacen abre en su propio
+  // iframe (mapa, radar, plano): necesitan el mismo trato que el shell.
+  const esAlmacen = /^\/(almacen|modules)(\/|$)/.test(req.path);
+
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Frame-Options', esAlmacen ? 'SAMEORIGIN' : 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
+  // Solo tiene efecto cuando el navegador llegó por HTTPS -el link oficial de
+  // Tailscale Serve, ver README-; por HTTP simple (127.0.0.1, LAN) el propio
+  // navegador la ignora, así que no hace falta condicionarla.
+  res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
+    // Google Fonts (Inter): la hoja de estilos y los archivos de fuente son
+    // lo único externo que se permite, y solo como estilo/fuente, no script.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
     "connect-src 'self'",
-    "frame-ancestors 'none'",
+    esAlmacen ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     // Nada de plugins (Flash y similares): esta app no usa ninguno, y es la
@@ -154,7 +173,7 @@ export function cabeceras(req, res, next) {
  * payback, que el navegador necesita, y el padrón y el histórico, que son
  * datos personales y de costos y no tienen por qué salir del servidor.
  *
- * Publicar la carpeta entera dejaba `/data/padron.js` —212 nombres con su
+ * Publicar la carpeta entera dejaba `/data/padron.js` —114 nombres con su
  * DNI— al alcance de cualquiera que escribiera la URL. Aquí se invierte la
  * regla: solo se sirve lo que está declarado como público y lo demás no
  * existe para el navegador, así que un archivo nuevo en `data/` nace privado.

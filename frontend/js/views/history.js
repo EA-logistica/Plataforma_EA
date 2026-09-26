@@ -6,48 +6,15 @@ import { chipEstado, origenCorto, vehiculoHTML } from './presenters.js';
 import { abrirModal, cerrarModal } from './dispatch.js';
 
 /**
- * Histórico de servicios: tabla filtrable y paginada, más exportación a CSV
- * (29 columnas planas, listo para Power BI / Looker Studio) y a Excel.
+ * Histórico de servicios: tabla filtrable y paginada, más exportación a Excel.
  */
-const COLUMNAS = [
-  ['ticket', s => s.id],
-  ['fuente', s => s.fuente === 'historico' ? 'planilla_2026' : 'app'],
-  ['fecha_registro', s => s.creado.slice(0, 10)],
-  ['dni_solicitante', s => s.dni],
-  ['solicitante', s => s.nombre],
-  ['area', s => s.area],
-  ['cargo', s => s.cargo || ''],
-  ['accion', s => s.tipo],
-  ['tipo_servicio', s => s.servicio || ''],
-  ['motivo', s => s.motivo],
-  ['origen', s => s.origen],
-  ['origen_detalle', s => s.origenDetalle || ''],
-  ['destino', s => s.destino],
-  ['contacto_receptor', s => s.contacto],
-  ['telefono_contacto', s => s.telefono],
-  ['fecha_programada', s => s.fechaProg],
-  ['hora_programada', s => s.horaProg],
-  ['vehiculo', s => s.vehiculo || ''],
-  ['costo_soles', s => s.costo != null ? s.costo.toFixed(2) : ''],
-  ['estado', s => s.estado],
-  ['fecha_transito', s => s.tsTransito ? s.tsTransito.slice(0, 16).replace('T', ' ') : ''],
-  ['fecha_conclusion', s => s.tsConcluido ? s.tsConcluido.slice(0, 16).replace('T', ' ') : ''],
-  ['horas_espera', s => { const h = horasEntre(s.tsEspera, s.tsTransito); return h != null ? h.toFixed(2) : ''; }],
-  ['horas_transito', s => { const h = horasEntre(s.tsTransito, s.tsConcluido); return h != null ? h.toFixed(2) : ''; }],
-  ['motivo_cancelacion', s => s.motivoCancelacion || ''],
-  ['detalle_cancelacion', s => s.motivoCancelacionDetalle || ''],
-  ['cancelado_por', s => s.canceladoPor || ''],
-  ['paradas_adicionales', s => (s.paradas || [])
-    .map(p => p.destino + (p.contacto || p.telefono ? ' (' + [p.contacto, p.telefono].filter(Boolean).join(', ') + ')' : ''))
-    .join(' | ')]
-];
 
 /**
  * Filas por página. El histórico pasa de mil seiscientos servicios y crece
  * cada día: pintarlo entero en el DOM son ~30 000 celdas, y la tabla se
  * repinta cada vez que alguien cambia algo desde otra PC. Se pagina de a 20 en
  * vez de recortar a un tope fijo, para poder llegar a cualquier fila sin más
- * que ir pasando página. El CSV y el Excel sí exportan todo, sin paginar.
+ * que ir pasando página. El Excel sí exporta todo, sin paginar.
  */
 const FILAS_POR_PAGINA = 20;
 let paginaActual = 1;
@@ -168,22 +135,6 @@ function paginacionHTML(actual, total, totalFilas, inicio) {
         + '</div>'
       : '')
     + '</div>';
-}
-
-export function exportarCSV() {
-  const sep = ';';
-  const limpia = v => { v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  const filas = [COLUMNAS.map(c => c[0]).join(sep)];
-  DB.solicitudes.slice().sort((a, b) => a.id.localeCompare(b.id)).forEach(s => {
-    filas.push(COLUMNAS.map(c => limpia(c[1](s))).join(sep));
-  });
-  const blob = new Blob(['﻿' + filas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'mensajeria_plasticos_nacionales_' + hoyISO() + '.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-  toast('CSV generado', DB.solicitudes.length + ' servicios exportados.');
 }
 
 /**

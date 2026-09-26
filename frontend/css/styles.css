@@ -22,17 +22,19 @@
   --brand-blue:#1B4E8E;
   --brand-green:#2FA84F;
 
-  /* Superficies y texto */
-  --ink:#F4F7FB;
+  /* Superficies y texto. Texto #1D1D1F (Apple) sobre fondo blanquecino; los
+     grises secundarios quedan por encima de 4.5:1 sobre blanco para que el
+     texto chico siga leyéndose encima del vidrio. */
+  --ink:#F4F6F9;
   --surface:#FFFFFF;
   --surface-a:rgba(255,255,255,.86);
-  --surface2:#F3F6FB;
-  --surface3:#E7ECF4;
-  --line:#DDE5EF;
-  --line-soft:#EAEFF6;
-  --text:#101A2C;
-  --muted:#57687F;
-  --muted2:#8695A8;
+  --surface2:#F3F5F9;
+  --surface3:#E8ECF2;
+  --line:#DFE4EC;
+  --line-soft:#ECEFF4;
+  --text:#1D1D1F;
+  --muted:#565E6C;
+  --muted2:#6B7280;
 
   /* Acento principal (azul del logo) */
   --primary:#1B4E8E;
@@ -73,6 +75,21 @@
   --ring:0 0 0 3px var(--primary-soft);
   --overlay-bg:rgba(12,20,34,.5);
   --backdrop-blur:saturate(180%) blur(14px);
+
+  /* Liquid Glass: superficies translúcidas del modo claro (Los Olivos
+     mantiene los bordes de marca, ver .waybill::before, que esto no toca).
+     En oscuro/negro estos mismos tokens se redefinen más abajo como
+     equivalentes opacos sin blur, así que .card/.panel/etc. no cambian ahí:
+     una sola regla por componente, el tema decide su apariencia. */
+  --glass-bg:rgba(255,255,255,.55);
+  --glass-bg-strong:rgba(255,255,255,.7);
+  --glass-border:rgba(255,255,255,.6);
+  --glass-blur:blur(20px) saturate(180%);
+  /* Flotación (sombra amplia y muy suave) + bisel: un brillo interior arriba
+     y un filo oscuro casi invisible afuera, para que la tarjeta no se funda
+     con el fondo claro -un borde blanco sobre casi-blanco no se ve solo-. */
+  --glass-shadow:0 8px 32px 0 rgba(0,0,0,.06), 0 0 0 1px rgba(16,24,40,.04), inset 0 1px 0 rgba(255,255,255,.8);
+  --glass-line:rgba(16,24,40,.09);
 
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
@@ -121,50 +138,91 @@
   --ring:0 0 0 3px var(--primary-soft);
   --overlay-bg:rgba(4,8,13,.72);
   --backdrop-blur:saturate(160%) blur(14px);
+
+  /* Liquid Glass es solo del modo claro: acá los mismos tokens quedan
+     opacos y sin blur, así .card/.panel/.modal/etc. se ven exactamente
+     como antes de este cambio. */
+  --glass-bg:var(--surface);
+  --glass-bg-strong:var(--surface);
+  --glass-border:var(--line);
+  --glass-blur:none;
+  --glass-shadow:var(--shadow-sm);
+  --glass-line:var(--line);
 }
 
 /* Negro puro (#000), tipo MacBook: mismos acentos que el oscuro, pero con la
    superficie y las tarjetas en negro real en vez de gris azulado, separadas
    solo por el borde. Pensado para pantallas OLED y ambientes muy oscuros. */
+/* Modo oscuro 2 (Luna llena): paleta estrictamente monocromática -negro,
+   gris grafito, blanco-, look macOS. Los acentos de MARCA (botón primario,
+   ítem activo del menú, foco, insignias decorativas) pasan a plateado/blanco;
+   los colores de ESTADO (warn/info/ok/danger de los chips de un ticket, y
+   los 4 colores de las gráficas) se mantienen -son información funcional,
+   no una preferencia de marca, y monocromarlos volvería ilegibles la
+   Bandeja y los gráficos de Indicadores-. */
 :root[data-theme="black"]{
   color-scheme: dark;
 
-  --ink:#000000;
-  --surface:#000000;
-  --surface-a:rgba(0,0,0,.82);
-  --surface2:#0C0C0C;
-  --surface3:#191919;
-  --line:#272727;
-  --line-soft:#1A1A1A;
-  --text:#F5F6F7;
-  --muted:#A4A9B0;
-  --muted2:#74787E;
+  --ink:#0D0D0E;
+  --surface:#1E1E22;
+  --surface-a:rgba(24,24,27,.62);
+  --surface2:#1A1A1D;
+  --surface3:#2C2C32;
+  --line:rgba(255,255,255,.08);
+  --line-soft:rgba(255,255,255,.05);
+  --text:#FFFFFF;
+  --muted:#E1E1E6;
+  --muted2:#A1A1AA;
 
-  --primary:#63B0EE;
-  --primary-strong:#8AC6F4;
-  --primary-soft:#0F1E2C;
-  --primary-line:#28425A;
-  --on-primary:#06192C;
-  --grad-primary:linear-gradient(135deg,#63B0EE,#3C7FBE);
+  /* Plateado/blanco en vez de azul: es el único "acento" que se permite en
+     este modo. */
+  --primary:#D4D4D8;
+  --primary-strong:#FFFFFF;
+  --primary-soft:rgba(255,255,255,.08);
+  --primary-line:rgba(255,255,255,.18);
+  --on-primary:#0D0D0E;
+  --grad-primary:linear-gradient(135deg,#F2F2F4,#B8B8BE);
 
-  --accent:#4FCB90;
-  --accent-strong:#72D7A5;
-  --accent-soft:#0D2018;
-  --on-accent:#052014;
+  --accent:#D4D4D8;
+  --accent-strong:#FFFFFF;
+  --accent-soft:rgba(255,255,255,.08);
+  --on-accent:#0D0D0E;
 
+  /* Colores de estado: se quedan como en "oscuro 1", a propósito (ver nota
+     arriba). */
   --warn:#F2AC44;   --warn-soft:#2A200E;   --warn-line:#584419;
   --info:#3FBEEC;   --info-soft:#0C2530;   --info-line:#193F50;
   --ok:#4FCB90;     --ok-soft:#0D2018;     --ok-line:#1C4230;
   --danger:#EC6C66; --danger-soft:#2A1413; --danger-line:#552624;
   --violet:#A392F2;
 
+  /* Los 4 colores de gráfica también se mantienen distinguibles -si
+     heredaran del nuevo --primary/--accent plateados, dos series quedarían
+     del mismo gris y el gráfico se volvería ilegible-. */
+  --chart-1:#63B0EE;
+  --chart-2:#3FBEEC;
+  --chart-3:#4FCB90;
+  --chart-4:#A392F2;
+
   --shadow-xs:0 1px 2px rgba(0,0,0,.6);
-  --shadow-sm:0 1px 2px rgba(0,0,0,.55), 0 4px 14px rgba(0,0,0,.55);
-  --shadow-md:0 2px 8px rgba(0,0,0,.55), 0 16px 36px rgba(0,0,0,.6);
-  --shadow-lg:0 8px 20px rgba(0,0,0,.6), 0 30px 70px rgba(0,0,0,.7);
-  --ring:0 0 0 3px var(--primary-soft);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.5);
+  --shadow-md:0 2px 8px rgba(0,0,0,.5), 0 16px 36px rgba(0,0,0,.55);
+  --shadow-lg:0 8px 20px rgba(0,0,0,.55), 0 30px 70px rgba(0,0,0,.65);
+  --ring:0 0 0 3px rgba(255,255,255,.16);
   --overlay-bg:rgba(0,0,0,.88);
-  --backdrop-blur:saturate(140%) blur(14px);
+  --backdrop-blur:blur(25px) saturate(190%);
+
+  /* El pedido de vidrio (blur) es para la BARRA LATERAL puntualmente -ver
+     .admin-sidebar más abajo-, no para toda tarjeta: acá las tarjetas se
+     quedan opacas (superficie grafito lisa), solo con el borde fino y el
+     radio pronunciado que sí pide la especificación para "Componentes y
+     Tarjetas". */
+  --glass-bg:var(--surface);
+  --glass-bg-strong:var(--surface);
+  --glass-border:var(--line);
+  --glass-blur:none;
+  --glass-shadow:var(--shadow-sm);
+  --glass-line:var(--line);
 }
 
 *{box-sizing:border-box}
@@ -180,6 +238,22 @@ body{
   line-height:1.5;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
+}
+/* Liquid Glass (solo modo claro): malla de gradientes pastel, fija detrás de
+   todo, para que el blur de las tarjetas tenga algo de qué despegarse -sobre
+   un fondo plano, un cristal esmerilado se ve igual que una tarjeta opaca-.
+   Tonos amortiguados del azul y verde de marca, más un lila y un celeste
+   que solo dan profundidad. Capa fija aparte (no background-attachment) para
+   que al hacer scroll no se repinte. */
+:root[data-theme="light"] body{background:var(--ink)}
+:root[data-theme="light"] body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(56vw 52vh at 2% 0%,   rgba(27,78,142,.22),  transparent 70%),
+    radial-gradient(46vw 46vh at 100% 6%, rgba(47,168,79,.17),  transparent 70%),
+    radial-gradient(52vw 54vh at 88% 100%, rgba(124,108,226,.14), transparent 70%),
+    radial-gradient(48vw 48vh at 8% 98%,  rgba(56,160,220,.15), transparent 70%),
+    radial-gradient(40vw 38vh at 50% 46%, rgba(255,255,255,.6), transparent 72%);
 }
 button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
 button{cursor:pointer}
@@ -300,22 +374,26 @@ h1,h2,h3{font-family:var(--sans)}
 @media(max-width:480px){.logistica-popover{position:fixed;top:60px;right:16px;left:16px;width:auto}}
 
 .card{
-  background:var(--surface);
-  border:1px solid var(--line);
+  background:var(--glass-bg);
+  border:1px solid var(--glass-border);
   border-radius:var(--r);
-  box-shadow:var(--shadow-sm);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
 }
 .card-pad{padding:24px}
 .card-title{font-size:16.5px;font-weight:700;margin:0 0 4px;letter-spacing:-.3px}
 .card-note{font-size:13px;color:var(--muted);margin:0 0 18px}
 
-/* Waybill: el ticket como guía de despacho */
+/* Waybill: el ticket como guía de despacho. El borde de marca (azul/verde,
+   ::before) es justo lo que el pedido de "Liquid Glass" dijo conservar: no
+   se toca, solo cambia el cristal detrás. */
 .waybill{
   position:relative;
-  background:var(--surface);
-  border:1px solid var(--line);
+  background:var(--glass-bg-strong);
+  border:1px solid var(--glass-border);
   border-radius:var(--r);
-  box-shadow:var(--shadow-sm);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
   overflow:hidden;
 }
 .waybill::before{
@@ -450,6 +528,104 @@ h1,h2,h3{font-family:var(--sans)}
 .tab.on .count{background:var(--primary-soft);color:var(--primary)}
 .view{display:none}
 .view.on{display:block;animation:fadeIn .22s var(--ease) both}
+
+/* ---------- Panel de administración: menú desplegable + contenido ---------- */
+/* La navegación de logística es un cajón que se abre desde el botón de arriba
+   a la izquierda (#btnMenu), no una columna fija: así el contenido usa todo
+   el ancho de la pantalla. El cajón y su velo viven FUERA de #viewAdmin a
+   propósito: la animación de entrada de .view.on crea un contexto de
+   apilamiento y, adentro, cualquier z-index quedaría debajo del topbar. */
+#viewAdmin.wrap{max-width:none;padding:26px clamp(18px,2.6vw,40px) 76px}
+
+.menu-toggle{
+  display:none;place-items:center;flex:none;
+  width:38px;height:38px;padding:0;border-radius:12px;
+  background:var(--surface2);border:1px solid var(--line);color:var(--text);
+  transition:background-color .15s var(--ease),border-color .15s var(--ease),transform .15s var(--ease),color .15s var(--ease);
+}
+.menu-toggle svg{width:19px;height:19px}
+.menu-toggle:hover{color:var(--primary);border-color:var(--primary-line);transform:translateY(-1px)}
+.menu-toggle:active{transform:scale(.94)}
+.menu-toggle.on{color:var(--primary);border-color:var(--primary-line);background:var(--primary-soft)}
+.menu-toggle:focus-visible{border-radius:12px}
+/* Solo existe para logística: el solicitante nunca ve el botón. */
+body:has(#viewAdmin.on) .menu-toggle{display:grid}
+/* Si la sesión de logística se cierra con el menú abierto, que no quede
+   flotando sobre la pantalla del solicitante. */
+body:not(:has(#viewAdmin.on)) .admin-sidebar,
+body:not(:has(#viewAdmin.on)) .nav-scrim{display:none}
+.topbar .menu-toggle + .brand{padding-left:4px}
+
+.nav-scrim{
+  position:fixed;inset:0;z-index:55;background:rgba(12,20,34,.28);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  opacity:0;visibility:hidden;transition:opacity .25s var(--ease),visibility 0s linear .25s;
+}
+.nav-scrim.on{opacity:1;visibility:visible;transition:opacity .25s var(--ease),visibility 0s linear 0s}
+
+.admin-sidebar{
+  position:fixed;z-index:56;top:10px;left:10px;bottom:10px;
+  width:292px;max-width:calc(100vw - 20px);overflow-y:auto;overscroll-behavior:contain;
+  display:flex;flex-direction:column;gap:20px;padding:14px 12px 18px;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-lg);
+  transform:translateX(calc(-100% - 24px));visibility:hidden;
+  transition:transform .32s cubic-bezier(.32,.72,0,1),visibility 0s linear .32s;
+}
+.admin-sidebar.abierto{transform:none;visibility:visible;transition:transform .32s cubic-bezier(.32,.72,0,1),visibility 0s linear 0s}
+.drawer-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:4px 4px 14px 8px;border-bottom:1px solid var(--line-soft);
+}
+.nav-section-title{
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted2);margin:0 0 8px 10px;
+}
+.nav-item{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;text-align:left;background:none;border:none;border-radius:10px;
+  padding:9px 12px;color:var(--muted);font-weight:600;font-size:13.5px;
+  cursor:pointer;transition:background-color .15s var(--ease),color .15s var(--ease);
+}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.on{background:var(--primary-soft);color:var(--primary)}
+.nav-item .count{
+  background:var(--surface3);border-radius:999px;padding:1px 7px;
+  font-size:11px;color:var(--muted);font-family:var(--mono);
+}
+.nav-item.on .count{background:var(--primary);color:var(--on-primary)}
+/* El acceso a payback ya tenía su propio look de píldora (.btn-payback);
+   se conserva, solo se adapta a ancho completo dentro del sidebar. */
+.admin-sidebar .btn-payback{margin:0;width:100%;justify-content:flex-start;border-radius:10px}
+
+.nav-group-toggle{
+  display:flex;align-items:center;justify-content:space-between;width:100%;
+  background:none;border:none;padding:0 10px 8px;cursor:pointer;
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);
+}
+.nav-group-toggle .chev{width:13px;height:13px;flex:none;transition:transform .18s var(--ease)}
+.nav-group.colapsado .chev{transform:rotate(-90deg)}
+.nav-group.colapsado .nav-group-body{display:none}
+.nav-group-body{display:flex;flex-direction:column;gap:2px}
+
+/* Los 3 sub-módulos (mapa, radar, plano) son otro repositorio, embebido
+   íntegro, con su propia sesión (ver backend/almacen/acceso.js). Sin marco:
+   nada de borde, esquinas redondeadas ni fondo propio -eso los mostraba como
+   una "ventana" aparte flotando dentro de la página, justo lo que no se
+   quería-. Cada uno vive en su propio iframe y se muestra uno a la vez.
+   Dos formas de ocupar el espacio, según qué tan alto sea el módulo -ver
+   ajustarAltoAlmacen() en almacen.js-:
+   .modo-fill  mapa/radar: apps de una sola pantalla, con su propio scroll
+               interno (su sidebar, no la página). Ocupan el resto del alto
+               visible y ninguna otra cosa scrollea.
+   .modo-auto  plano: una página larga común y corriente. El iframe mide su
+               propio contenido y toma esa altura exacta -sin scrollbar
+               propia-, y quien scrollea es la página de PLANSA, como
+               cualquier otra sección. */
+.almacen-frames{position:relative;width:100%}
+.almacen-frames.modo-fill{height:calc(100vh - 210px);min-height:520px}
+.almacen-frames.modo-fill iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.almacen-frames.modo-auto iframe{display:block;position:static;width:100%;min-height:400px;border:0}
 
 .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
 .section-head h2{margin:0;font-size:21px;font-weight:750;letter-spacing:-.5px}
@@ -588,8 +764,9 @@ tbody tr:hover{background:var(--surface2)}
 /* ---------- KPIs ---------- */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:13px;margin-bottom:22px}
 .kpi{
-  border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:17px 18px;
-  box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
+  border:1px solid var(--glass-border);border-radius:var(--r);background:var(--glass-bg-strong);padding:17px 18px;
+  box-shadow:var(--glass-shadow);position:relative;overflow:hidden;
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
   animation:fadeInUp .25s var(--ease) both;
   transition:box-shadow .18s var(--ease),transform .18s var(--ease);
 }
@@ -611,8 +788,9 @@ tbody tr:hover{background:var(--surface2)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 @media(max-width:900px){.grid2{grid-template-columns:1fr}}
 .panel{
-  border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:19px;
-  box-shadow:var(--shadow-sm);animation:fadeInUp .25s var(--ease) both;
+  border:1px solid var(--glass-border);border-radius:var(--r);background:var(--glass-bg);padding:19px;
+  box-shadow:var(--glass-shadow);animation:fadeInUp .25s var(--ease) both;
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
 }
 .panel h3{margin:0 0 3px;font-size:15.5px;font-weight:700}
 .panel .sub{margin:0 0 16px;font-size:12.5px;color:var(--muted2)}
@@ -626,8 +804,9 @@ svg{display:block;max-width:100%}
 }
 .overlay.on{display:flex;animation:fadeIn .2s var(--ease) both}
 .modal{
-  width:100%;max-width:600px;background:var(--surface);border:1px solid var(--line);
+  width:100%;max-width:600px;background:var(--glass-bg-strong);border:1px solid var(--glass-border);
   border-radius:var(--r-lg);box-shadow:var(--shadow-lg);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
   animation:scaleIn .22s var(--ease) both;
 }
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 22px;border-bottom:1px solid var(--line)}
@@ -894,4 +1073,244 @@ svg{display:block;max-width:100%}
   .pb-sim-fila select{grid-area:zona}
   .pb-sim-cant{grid-area:cant;width:100%}
   .pb-sim-fila button{grid-area:quitar;justify-self:start}
+}
+
+/* =========================================================
+   LIQUID GLASS · modo claro
+   Todo este bloque está acotado a :root[data-theme="light"]: oscuro y negro
+   no lo leen. No cambia clases ni ids, solo cómo se ven las superficies.
+
+   Reglas del sistema:
+   - Vidrio: blanco 45-70 % de opacidad + blur(20px) saturate(180%).
+     Cuanto más texto denso lleva (tablas, modales, KPIs), más opaco.
+   - Bisel: borde blanco al 60 % + brillo interior arriba (inset) + un filo
+     oscuro casi invisible afuera, para que no se funda con el fondo.
+   - Flotación: sombra amplia y muy suave, 0 8px 32px rgba(0,0,0,.06).
+   - Los controles donde se escribe (inputs) quedan casi opacos: un campo
+     translúcido se lee peor mientras se tipea.
+   - El borde de marca azul/verde del waybill (::before) no se toca.
+   ========================================================= */
+:root[data-theme="light"]{
+  --glass-thin:rgba(255,255,255,.45);
+  --glass-field:rgba(255,255,255,.82);
+  --glass-hover:rgba(255,255,255,.72);
+  --glass-edge:rgba(255,255,255,.6);
+  --glass-blur-strong:blur(28px) saturate(180%);
+  --overlay-bg:rgba(15,23,42,.26);
+}
+
+/* Barra superior: vidrio fino, deja ver el color de atrás al hacer scroll. */
+:root[data-theme="light"] .topbar{
+  background:rgba(255,255,255,.5);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  border-bottom:1px solid var(--glass-edge);
+  box-shadow:0 1px 0 rgba(16,24,40,.05), 0 8px 32px rgba(0,0,0,.04);
+}
+:root[data-theme="light"] .theme-switch,
+:root[data-theme="light"] .session{
+  background:var(--glass-thin);border-color:var(--glass-edge);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8), 0 0 0 1px rgba(16,24,40,.05);
+}
+:root[data-theme="light"] .theme-switch .theme-toggle.on{background:rgba(255,255,255,.9);box-shadow:0 1px 3px rgba(16,24,40,.1)}
+:root[data-theme="light"] .theme-toggle,
+:root[data-theme="light"] .menu-toggle,
+:root[data-theme="light"] .btn-exit{
+  background:rgba(255,255,255,.6);border-color:var(--glass-line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85);
+}
+:root[data-theme="light"] .theme-switch .theme-toggle{background:transparent;box-shadow:none}
+:root[data-theme="light"] .menu-toggle.on{background:var(--primary-soft);border-color:var(--primary-line)}
+:root[data-theme="light"] .btn-exit:hover{background:rgba(255,255,255,.92);border-color:rgba(16,24,40,.16)}
+
+/* Cajón de navegación: el vidrio más denso de la pantalla, flota encima. */
+:root[data-theme="light"] .admin-sidebar{
+  background:rgba(255,255,255,.62);
+  -webkit-backdrop-filter:var(--glass-blur-strong);backdrop-filter:var(--glass-blur-strong);
+  border-color:var(--glass-edge);
+  box-shadow:0 24px 64px -12px rgba(16,24,40,.18), 0 0 0 1px rgba(16,24,40,.05), inset 0 1px 0 rgba(255,255,255,.85);
+}
+:root[data-theme="light"] .nav-scrim{background:rgba(15,23,42,.16)}
+:root[data-theme="light"] .drawer-head{border-bottom-color:var(--glass-line)}
+:root[data-theme="light"] .nav-item:hover{background:var(--glass-hover);color:var(--text)}
+:root[data-theme="light"] .nav-item.on{
+  background:rgba(27,78,142,.09);color:var(--primary);
+  box-shadow:inset 0 0 0 1px rgba(27,78,142,.1), inset 0 1px 0 rgba(255,255,255,.7);
+}
+:root[data-theme="light"] .nav-item .count{background:rgba(16,24,40,.06)}
+:root[data-theme="light"] .nav-item.on .count{background:var(--primary);color:var(--on-primary)}
+
+/* Campos: casi opacos para leer bien lo que se escribe. */
+:root[data-theme="light"] .input,
+:root[data-theme="light"] .select,
+:root[data-theme="light"] .textarea,
+:root[data-theme="light"] .prefijado,
+:root[data-theme="light"] .mini-input,
+:root[data-theme="light"] .mini-select,
+:root[data-theme="light"] .tg{
+  background-color:var(--glass-field);border-color:var(--glass-line);
+}
+:root[data-theme="light"] .prefijado .input{background-color:transparent}
+:root[data-theme="light"] .input:hover:not(:disabled),
+:root[data-theme="light"] .select:hover:not(:disabled),
+:root[data-theme="light"] .textarea:hover:not(:disabled){border-color:rgba(16,24,40,.2)}
+:root[data-theme="light"] .input:focus,
+:root[data-theme="light"] .select:focus,
+:root[data-theme="light"] .textarea:focus{background-color:#fff;border-color:var(--primary)}
+:root[data-theme="light"] .input.bad,
+:root[data-theme="light"] .select.bad,
+:root[data-theme="light"] .textarea.bad{border-color:var(--danger)}
+:root[data-theme="light"] .tg.on{background:var(--primary-soft);border-color:var(--primary)}
+:root[data-theme="light"] .toggle.bad .tg{border-color:var(--danger)}
+
+/* Botones secundarios y filtros: vidrio claro. El primario sigue sólido (azul de marca). */
+:root[data-theme="light"] .btn-ghost,
+:root[data-theme="light"] .fchip{
+  background:rgba(255,255,255,.62);border-color:var(--glass-line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85);
+}
+:root[data-theme="light"] .btn-ghost:hover:not(:disabled),
+:root[data-theme="light"] .fchip:hover{background:rgba(255,255,255,.92);border-color:rgba(16,24,40,.16)}
+:root[data-theme="light"] .fchip.on{background:var(--primary-soft);border-color:var(--primary)}
+:root[data-theme="light"] .btn:not(.btn-ghost){box-shadow:0 1px 2px rgba(16,24,40,.08), 0 6px 16px -6px rgba(27,78,142,.45), inset 0 1px 0 rgba(255,255,255,.18)}
+
+/* Pestañas del solicitante: solo la línea base, más fina. */
+:root[data-theme="light"] .tabs{border-bottom-color:var(--glass-line)}
+
+/* Tablas: vidrio más opaco (texto denso) y cabecera esmerilada fija. */
+:root[data-theme="light"] .table-wrap{
+  background:var(--glass-bg-strong);border-color:var(--glass-edge);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  box-shadow:var(--glass-shadow);
+}
+:root[data-theme="light"] thead th{
+  background:rgba(246,248,251,.86);
+  -webkit-backdrop-filter:blur(12px) saturate(160%);backdrop-filter:blur(12px) saturate(160%);
+  border-bottom-color:var(--glass-line);
+}
+:root[data-theme="light"] tbody td{border-bottom-color:rgba(16,24,40,.06)}
+:root[data-theme="light"] tbody tr:hover{background:rgba(27,78,142,.04)}
+:root[data-theme="light"] .hist-paginacion{border-top-color:rgba(16,24,40,.06)}
+
+/* Tarjetas que no usaban los tokens de vidrio. */
+:root[data-theme="light"] .ticket,
+:root[data-theme="light"] .pb-card{
+  background:var(--glass-bg-strong);border-color:var(--glass-edge);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  box-shadow:var(--glass-shadow);
+}
+:root[data-theme="light"] .toast{
+  background:rgba(255,255,255,.8);border-top-color:var(--glass-edge);border-right-color:var(--glass-edge);border-bottom-color:var(--glass-edge);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  box-shadow:0 16px 40px -8px rgba(16,24,40,.16), 0 0 0 1px rgba(16,24,40,.05);
+}
+:root[data-theme="light"] .pb-card.on{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft), var(--glass-shadow)}
+:root[data-theme="light"] .pb-veredicto{
+  background:linear-gradient(160deg, rgba(233,240,249,.82), rgba(255,255,255,.55) 65%);
+  border-color:rgba(27,78,142,.16);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  box-shadow:var(--glass-shadow);
+}
+:root[data-theme="light"] .banner,
+:root[data-theme="light"] .paradas-extra,
+:root[data-theme="light"] .attach-item{background:var(--glass-thin);border-color:var(--glass-line)}
+:root[data-theme="light"] .kpi:hover{box-shadow:0 14px 40px -6px rgba(16,24,40,.12), 0 0 0 1px rgba(16,24,40,.05), inset 0 1px 0 rgba(255,255,255,.85)}
+:root[data-theme="light"] .ticket:hover{box-shadow:0 14px 40px -6px rgba(16,24,40,.12), 0 0 0 1px rgba(16,24,40,.05)}
+
+/* Modal: vidrio denso sobre un velo que también desenfoca. */
+:root[data-theme="light"] .overlay{-webkit-backdrop-filter:blur(8px) saturate(140%);backdrop-filter:blur(8px) saturate(140%)}
+:root[data-theme="light"] .modal{
+  background:rgba(255,255,255,.78);
+  -webkit-backdrop-filter:var(--glass-blur-strong);backdrop-filter:var(--glass-blur-strong);
+  box-shadow:0 30px 80px -16px rgba(16,24,40,.28), 0 0 0 1px rgba(16,24,40,.05), inset 0 1px 0 rgba(255,255,255,.9);
+}
+:root[data-theme="light"] .modal-head{border-bottom-color:var(--glass-line)}
+:root[data-theme="light"] ::-webkit-scrollbar-thumb{background:rgba(16,24,40,.16);border-color:transparent;background-clip:padding-box}
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(16,24,40,.28);background-clip:padding-box}
+
+/* Tipografía: Inter (ahora sí carga: la CSP la bloqueaba) con títulos más
+   apretados cuanto más grandes, como en las interfaces de Apple. */
+:root[data-theme="light"] .section-head h2{letter-spacing:-.022em}
+:root[data-theme="light"] .card-title,
+:root[data-theme="light"] .panel h3,
+:root[data-theme="light"] .modal-head h3{letter-spacing:-.015em}
+
+/* Navegadores sin backdrop-filter: el vidrio pasa a blanco casi opaco en vez
+   de quedar transparente y difícil de leer. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  :root[data-theme="light"]{--glass-bg:rgba(255,255,255,.92);--glass-bg-strong:rgba(255,255,255,.96)}
+  :root[data-theme="light"] .admin-sidebar,
+  :root[data-theme="light"] .modal,
+  :root[data-theme="light"] .topbar{background:rgba(255,255,255,.96)}
+}
+
+/* =========================================================
+   MODO OSCURO 2 (Luna llena) · macOS Liquid Glass, monocromático
+   Todo acotado a :root[data-theme="black"]: no toca claro ni oscuro 1.
+   Mismas clases y estructura de siempre -ver la nota en el bloque de
+   tokens, arriba-, esto es una capa de estilo nada más.
+   ========================================================= */
+
+/* Barra lateral: el único lugar que pidió vidrio (blur), con los números
+   exactos del pedido. */
+:root[data-theme="black"] .admin-sidebar{
+  background:rgba(20,20,23,.6);
+  -webkit-backdrop-filter:blur(25px) saturate(190%);backdrop-filter:blur(25px) saturate(190%);
+  border-right:1px solid rgba(255,255,255,.08);
+  border-color:rgba(255,255,255,.08);
+  box-shadow:4px 0 24px rgba(0,0,0,.4);
+}
+:root[data-theme="black"] .drawer-head{border-bottom-color:rgba(255,255,255,.08)}
+:root[data-theme="black"] .nav-scrim{background:rgba(0,0,0,.55)}
+:root[data-theme="black"] .nav-item:hover{background:rgba(255,255,255,.05);color:var(--text)}
+:root[data-theme="black"] .nav-item.on{
+  background:rgba(255,255,255,.08);color:#fff;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);
+}
+:root[data-theme="black"] .nav-item .count{background:rgba(255,255,255,.08);color:var(--muted)}
+:root[data-theme="black"] .nav-item.on .count{background:rgba(255,255,255,.16);color:#fff}
+:root[data-theme="black"] .admin-sidebar .btn-payback{
+  background:rgba(255,255,255,.06);color:var(--text);border-color:rgba(255,255,255,.12);
+}
+:root[data-theme="black"] .admin-sidebar .btn-payback:hover,
+:root[data-theme="black"] .admin-sidebar .btn-payback.on{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.2)}
+
+/* Tarjetas y módulos: radio pronunciado y borde ultra-fino en blanco -este
+   ya sale solo vía --line, redefinido más arriba-, más un brillo sutil al
+   pasar el cursor, en vez de la elevación de color de los otros modos. */
+:root[data-theme="black"] .card,
+:root[data-theme="black"] .waybill,
+:root[data-theme="black"] .panel,
+:root[data-theme="black"] .kpi,
+:root[data-theme="black"] .ticket,
+:root[data-theme="black"] .pb-card,
+:root[data-theme="black"] .modal,
+:root[data-theme="black"] .table-wrap,
+:root[data-theme="black"] .toast{border-radius:var(--r-lg)}
+:root[data-theme="black"] .kpi:hover,
+:root[data-theme="black"] .ticket:hover,
+:root[data-theme="black"] .pb-card:hover{
+  background-color:rgba(255,255,255,.03);
+  box-shadow:0 1px 0 rgba(255,255,255,.05), 0 14px 32px rgba(0,0,0,.4);
+}
+:root[data-theme="black"] .nav-group-toggle:hover,
+:root[data-theme="black"] .btn-ghost:hover:not(:disabled),
+:root[data-theme="black"] .fchip:hover,
+:root[data-theme="black"] .theme-toggle:hover,
+:root[data-theme="black"] .tab:hover,
+:root[data-theme="black"] .menu-toggle:hover{background-color:rgba(255,255,255,.05)}
+:root[data-theme="black"] .fchip.on{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.22);color:#fff}
+:root[data-theme="black"] .tab.on{color:#fff;border-bottom-color:#fff}
+
+/* Botón primario: gradiente plateado en vez de azul, texto oscuro encima
+   -mismo patrón "botón claro, alto contraste" que un CTA de macOS-. */
+:root[data-theme="black"] .btn:not(.btn-ghost){box-shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 16px -6px rgba(0,0,0,.5)}
+:root[data-theme="black"] .btn:not(.btn-ghost):hover:not(:disabled){filter:brightness(1.08)}
+
+:root[data-theme="black"] ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-color:transparent;background-clip:padding-box}
+:root[data-theme="black"] ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:padding-box}
+
+/* Navegadores sin backdrop-filter: la barra lateral pasa a un gris opaco en
+   vez de quedar apenas translúcida y difícil de leer. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  :root[data-theme="black"] .admin-sidebar{background:#1E1E22}
 }

@@ -8,9 +8,9 @@ import { $ } from '../utils/dom.js';
  * Ponerlo aparte, y no en la pantalla de ingreso, deja esa pantalla con una
  * sola cosa que hacer.
  */
-export const estaAbierto = () => $('logisticaPopover').classList.contains('on');
+const estaAbierto = () => $('logisticaPopover').classList.contains('on');
 
-export function abrirAccesoLogistica() {
+function abrirAccesoLogistica() {
   $('logisticaPopover').classList.add('on');
   $('btnLogisticaToggle').setAttribute('aria-expanded', 'true');
 }

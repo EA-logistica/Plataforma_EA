@@ -19,10 +19,11 @@ import { sesion } from './state/sessionState.js';
 import { iniciarSincronizacion } from './render.js';
 import { aplicarTema, actualizarBoton } from './ui/theme.js';
 import { alternarAccesoLogistica, cerrarAccesoLogistica } from './ui/logisticaPopover.js';
+import { toggleNavGroup, restaurarNavGroups, alternarMenu, cerrarMenu } from './ui/sidebar.js';
 
 import {
   entrarSolicitante, pedirAutorizacion, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
-  entrarSolicitanteArea, volverAlDni
+  entrarSolicitanteArea, volverAlDni, restaurarSesion
 } from './auth.js';
 import { tabUser, tabAdmin } from './views/tabs.js';
 import {
@@ -35,7 +36,7 @@ import {
   abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud
 } from './views/dispatch.js';
 import {
-  renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
+  renderHistorico, abrirExportarExcel, confirmarExportarExcel,
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico
 } from './views/history.js';
 import { setFiltroKpi, setQKpi, limpiarFiltroKpi } from './views/kpi.js';
@@ -50,18 +51,29 @@ import {
   crearCredencialAreaVista, restablecerClaveAreaVista, cambiarEstadoAreaVista
 } from './views/credencialesArea.js';
 import { subirGuia, abrirAdjunto, eliminarAdjunto } from './views/attachments.js';
+import { verModuloAlmacen } from './views/almacen.js';
+import {
+  renderExportaciones, abrirNuevaExportacion, editarExportacion, guardarExportacion, borrarExportacionVista
+} from './views/exportaciones.js';
+import {
+  renderRequerimientos, abrirNuevoRequerimiento, editarRequerimiento, guardarRequerimiento, borrarRequerimientoVista
+} from './views/requerimientosCompra.js';
+import {
+  renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
+  guardarServicioLogistica, borrarServicioLogisticaVista
+} from './views/serviciosLogistica.js';
 
 // Módulo payback: análisis de contratar motorizado propio frente al courier.
 // Vive fuera de js/ a propósito, con su propia data, backend y frontend.
 import {
-  renderPayback, setBonoPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setAsignacionPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
   pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
 } from './views/payback/vista.js';
 
 // ---- Puente hacia los atributos inline del HTML (estático y generado) ----
 Object.assign(window, {
-  aplicarTema, alternarAccesoLogistica,
+  aplicarTema, alternarAccesoLogistica, toggleNavGroup, alternarMenu, cerrarMenu,
   pedirAutorizacion, entrarSolicitante, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
   entrarSolicitanteArea, volverAlDni,
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
@@ -70,7 +82,7 @@ Object.assign(window, {
   consultarTicket, renderMis, cancelarMiSolicitud, pedirHistoricoCompleto,
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
   abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud,
-  renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
+  renderHistorico, abrirExportarExcel, confirmarExportarExcel,
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico,
   setFiltroKpi, setQKpi, limpiarFiltroKpi,
   renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut,
@@ -78,13 +90,18 @@ Object.assign(window, {
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista,
   crearCredencialAreaVista, restablecerClaveAreaVista, cambiarEstadoAreaVista,
   subirGuia, abrirAdjunto, eliminarAdjunto,
-  renderPayback, setBonoPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setAsignacionPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
-  pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
+  pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador,
+  verModuloAlmacen,
+  renderExportaciones, abrirNuevaExportacion, editarExportacion, guardarExportacion, borrarExportacionVista,
+  renderRequerimientos, abrirNuevoRequerimiento, editarRequerimiento, guardarRequerimiento, borrarRequerimientoVista,
+  renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
+  guardarServicioLogistica, borrarServicioLogisticaVista
 });
 
 // ---- Listeners que no van como atributos inline ----
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModal(); cerrarAccesoLogistica(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModal(); cerrarAccesoLogistica(); cerrarMenu(); } });
 // Clic fuera del icono o del panel: se cierra solo, como cualquier menú.
 document.addEventListener('click', e => {
   if (!$('logisticaAnchor').contains(e.target)) cerrarAccesoLogistica();
@@ -113,7 +130,12 @@ try {
   throw e;
 }
 
+// Si había una sesión de una recarga anterior (F5) y el token del servidor
+// todavía vale, se entra directo a su vista en vez de mostrar el login.
+await restaurarSesion();
+
 actualizarBoton();
+restaurarNavGroups();
 
 // Destinos frecuentes del histórico real: se ofrecen como sugerencia, el
 // campo sigue aceptando cualquier dirección escrita a mano.

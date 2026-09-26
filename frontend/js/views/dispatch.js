@@ -1,5 +1,5 @@
 import { $, esc } from '../utils/dom.js';
-import { fechaHora, fechaCorta, horasEntre, corta, soles } from '../utils/format.js';
+import { fechaHora, fechaCorta, horasEntre, corta, soles, isoDia, hoyISO } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import * as api from '../api/estado.js';
 import { DB } from '../api/estado.js';
@@ -25,28 +25,41 @@ export function buscar(id) { return DB.solicitudes.find(s => s.id === id); }
 // "Activos" es lo que todavía puede pasar algo: ni concluido ni cancelado.
 const esActivo = s => s.estado === 'En espera' || s.estado === 'En tránsito';
 
+// La Bandeja es la cola de trabajo del día, no un archivo: un concluido o
+// cancelado se ve acá el resto de ESE día (para confirmar que se cerró bien),
+// y al día siguiente ya no aparece -para entonces vive en el Histórico, que
+// es quien de verdad lo conserva-. Se compara por fecha LOCAL (isoDia lee
+// getFullYear/Mes/Día, no UTC), para no perder por un rato un ticket cerrado
+// de noche cuando UTC ya cruzó la medianoche y acá todavía no.
+const mismoDia = iso => !!iso && isoDia(iso) === hoyISO();
+const enBandejaHoy = s => {
+  if (s.estado === 'Concluido') return mismoDia(s.tsConcluido);
+  if (s.estado === 'Cancelado') return mismoDia(s.tsCancelado);
+  return true;
+};
+
 export function renderBandeja() {
-  const activos = DB.solicitudes.filter(esActivo);
+  const base = DB.solicitudes.filter(enBandejaHoy);
+  const activos = base.filter(esActivo);
   $('cntBandeja').textContent = activos.length;
 
+  // Sin "Todos" a propósito: ya se repite lo que se ve en el Histórico, y
+  // acá el punto es la cola de trabajo del día, no un espejo de todo.
   const opciones = [
     ['Activos', 'En curso'],
     ['En espera', 'En espera'],
     ['En tránsito', 'En tránsito'],
     ['Concluido', 'Concluidos'],
-    ['Cancelado', 'Cancelados'],
-    ['Todos', 'Todos']
+    ['Cancelado', 'Cancelados']
   ];
   $('fBandeja').innerHTML = opciones.map(([k, l]) => {
-    const n = k === 'Activos' ? activos.length
-      : k === 'Todos' ? DB.solicitudes.length
-      : DB.solicitudes.filter(s => s.estado === k).length;
+    const n = k === 'Activos' ? activos.length : base.filter(s => s.estado === k).length;
     return '<button class="fchip' + (filtroBandeja === k ? ' on' : '') + '" onclick="setFiltroBandeja(\'' + k + '\')">' + l + ' (' + n + ')</button>';
   }).join('');
 
-  let lista = DB.solicitudes.slice();
+  let lista = base.slice();
   if (filtroBandeja === 'Activos') lista = lista.filter(esActivo);
-  else if (filtroBandeja !== 'Todos') lista = lista.filter(s => s.estado === filtroBandeja);
+  else lista = lista.filter(s => s.estado === filtroBandeja);
   const orden = { 'En espera': 0, 'En tránsito': 1, 'Concluido': 2, 'Cancelado': 3 };
   lista.sort((a, b) => (orden[a.estado] - orden[b.estado]) || (a.fechaProg + a.horaProg).localeCompare(b.fechaProg + b.horaProg));
 

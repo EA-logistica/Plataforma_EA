@@ -19,6 +19,7 @@ import { sesion } from './state/sessionState.js';
 import { iniciarSincronizacion } from './render.js';
 import { aplicarTema, actualizarBoton } from './ui/theme.js';
 import { alternarAccesoLogistica, cerrarAccesoLogistica } from './ui/logisticaPopover.js';
+import { alternarMenuCuenta, cerrarMenuCuenta } from './ui/cuentaPopover.js';
 import { toggleNavGroup, restaurarNavGroups, alternarMenu, cerrarMenu } from './ui/sidebar.js';
 
 import {
@@ -73,7 +74,7 @@ import {
 
 // ---- Puente hacia los atributos inline del HTML (estático y generado) ----
 Object.assign(window, {
-  aplicarTema, alternarAccesoLogistica, toggleNavGroup, alternarMenu, cerrarMenu,
+  aplicarTema, alternarAccesoLogistica, alternarMenuCuenta, toggleNavGroup, alternarMenu, cerrarMenu,
   pedirAutorizacion, entrarSolicitante, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
   entrarSolicitanteArea, volverAlDni,
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
@@ -101,10 +102,11 @@ Object.assign(window, {
 });
 
 // ---- Listeners que no van como atributos inline ----
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModal(); cerrarAccesoLogistica(); cerrarMenu(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModal(); cerrarAccesoLogistica(); cerrarMenuCuenta(); cerrarMenu(); } });
 // Clic fuera del icono o del panel: se cierra solo, como cualquier menú.
 document.addEventListener('click', e => {
   if (!$('logisticaAnchor').contains(e.target)) cerrarAccesoLogistica();
+  if (!$('cuentaAnchor').contains(e.target)) cerrarMenuCuenta();
 });
 $('dniInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSolicitante(); });
 $('dniInput').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });

@@ -1,5 +1,22 @@
 /* ===== Mapa de Almacenes ===== */
-:root { --sidebar-w: 348px; --detail-w: 392px; }
+:root {
+  --sidebar-w: 348px; --detail-w: 392px;
+  /* Barra de herramientas, leyenda, chips de marcador y controles de Leaflet
+     -atención: eran negros fijos (#12161c) sin importar el tema, así que en
+     modo claro quedaban como recuadros oscuros sueltos sobre una página
+     clara. Acá si responden: claros en modo claro, oscuros en oscuro/negro,
+     que es donde ya se veían bien. */
+  --map-chrome: rgba(255, 255, 255, 0.92);
+  --map-chrome-solid: #FFFFFF;
+  --map-chrome-hover: #EDF0F4;
+  --map-fallback: #E7ECF4;
+}
+:root[data-theme="dark"], :root[data-theme="black"] {
+  --map-chrome: rgba(23, 28, 36, 0.94);
+  --map-chrome-solid: #12161C;
+  --map-chrome-hover: #1F2632;
+  --map-fallback: #1D2330;
+}
 
 .app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
 
@@ -101,21 +118,21 @@
 
 /* ---------- Mapa ---------- */
 .map-wrap { position: relative; min-width: 0; min-height: 0; }
-.map { position: absolute; inset: 0; background: #1d2330; }
+.map { position: absolute; inset: 0; background: var(--map-fallback); }
 
 .toolbar { position: absolute; top: 12px; left: 12px; right: 120px; z-index: 800; display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; }
 .toolbar > * { pointer-events: auto; }
-.tb-btn, .tb-select { background: rgba(23, 28, 36, 0.94); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: 600 12px var(--font-display); padding: 7px 11px; cursor: pointer; box-shadow: var(--shadow); backdrop-filter: blur(6px); }
+.tb-btn, .tb-select { background: var(--map-chrome); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: 600 12px var(--font-display); padding: 7px 11px; cursor: pointer; box-shadow: var(--shadow); backdrop-filter: blur(6px); }
 .tb-btn:hover { border-color: var(--accent); }
 .tb-btn[data-act='origin'] { color: #ff9a6e; }
 .tb-select { font-family: var(--font-body); font-weight: 500; }
 .tb-menu { display: none; }
-.tb-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); background: rgba(23, 28, 36, 0.94); }
+.tb-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); background: var(--map-chrome); }
 .tb-seg button { background: transparent; border: none; color: var(--text-muted); font: 600 11.5px var(--font-display); padding: 7px 10px; cursor: pointer; }
 .tb-seg button + button { border-left: 1px solid var(--border); }
 .tb-seg button.on { background: var(--accent); color: var(--accent-ink); }
 
-.legend { position: absolute; left: 12px; bottom: 34px; z-index: 700; background: rgba(23, 28, 36, 0.94); border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; font-size: 11px; color: var(--text-muted); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 5px; max-width: calc(100% - 24px); }
+.legend { position: absolute; left: 12px; bottom: 34px; z-index: 700; background: var(--map-chrome); border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; font-size: 11px; color: var(--text-muted); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 5px; max-width: calc(100% - 24px); }
 .lg-row { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .lg-row span { display: inline-flex; align-items: center; gap: 6px; }
 .lg-row em { font: 600 9.5px var(--font-mono); font-style: normal; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); min-width: 42px; }
@@ -141,24 +158,24 @@
 .mk:hover .mk-shape { transform: scale(1.2); }
 .mk:hover .mk-diamond { transform: rotate(45deg) scale(1.2); }
 .mk-active { z-index: 1000 !important; }
-.mk-active .mk-shape { transform: scale(1.45); box-shadow: 0 0 0 3px #12161c, 0 0 0 6px var(--c), 0 4px 14px rgba(0, 0, 0, 0.5); }
+.mk-active .mk-shape { transform: scale(1.45); box-shadow: 0 0 0 3px var(--map-chrome-solid), 0 0 0 6px var(--c), 0 4px 14px rgba(0, 0, 0, 0.5); }
 .mk-active .mk-diamond { transform: rotate(45deg) scale(1.45); }
 
 .mk-origin { display: flex; flex-direction: column; align-items: center; }
 .mk-origin-pin { position: relative; width: 34px; height: 34px; border-radius: 8px; background: var(--c); border: 3px solid #fff; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.55); margin-top: 3px; }
 .mk-origin-pin svg { width: 18px; height: 18px; }
 .mk-origin-pin::after { content: ''; position: absolute; inset: -9px; border-radius: 13px; border: 2px solid var(--c); opacity: 0.6; animation: pulse 2.2s ease-out infinite; }
-.mk-origin-tag { margin-top: 3px; font: 700 9px/1 var(--font-mono); letter-spacing: 0.1em; color: #fff; background: #12161c; padding: 3px 5px; border-radius: 4px; white-space: nowrap; }
+.mk-origin-tag { margin-top: 3px; font: 700 9px/1 var(--font-mono); letter-spacing: 0.1em; color: var(--text); background: var(--map-chrome-solid); padding: 3px 5px; border-radius: 4px; white-space: nowrap; }
 @keyframes pulse { from { transform: scale(0.85); opacity: 0.7; } to { transform: scale(1.35); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .mk-origin-pin::after { animation: none; } }
 
-.mk-cluster span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; display: inline-flex; align-items: baseline; gap: 4px; background: #12161c; color: var(--text); border: 2px solid var(--accent); border-radius: 999px; padding: 5px 11px; font: 500 11.5px var(--font-body); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), 0 3px 10px rgba(0, 0, 0, 0.5); cursor: pointer; }
+.mk-cluster span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; display: inline-flex; align-items: baseline; gap: 4px; background: var(--map-chrome-solid); color: var(--text); border: 2px solid var(--accent); border-radius: 999px; padding: 5px 11px; font: 500 11.5px var(--font-body); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), 0 3px 10px rgba(0, 0, 0, 0.5); cursor: pointer; }
 .mk-cluster b { font: 700 13.5px var(--font-display); color: var(--accent); }
 .mk-cluster-lg span { padding: 7px 14px; font-size: 12.5px; }
-.mk-cluster span:hover { background: #1f2632; }
+.mk-cluster span:hover { background: var(--map-chrome-hover); }
 
-.leaflet-tooltip.mk-tip { background: #12161c; color: var(--text); border: 1px solid var(--border); border-radius: 7px; font: 12px/1.35 var(--font-body); padding: 6px 9px; box-shadow: var(--shadow); }
-.leaflet-tooltip.mk-tip::before { border-right-color: #12161c; }
+.leaflet-tooltip.mk-tip { background: var(--map-chrome-solid); color: var(--text); border: 1px solid var(--border); border-radius: 7px; font: 12px/1.35 var(--font-body); padding: 6px 9px; box-shadow: var(--shadow); }
+.leaflet-tooltip.mk-tip::before { border-right-color: var(--map-chrome-solid); }
 .leaflet-tooltip.mk-tip b { font-weight: 600; }
 
 /* Controles de Leaflet en tema oscuro */
@@ -167,11 +184,11 @@
 .leaflet-bar a, .leaflet-bar a:hover { background: var(--bg-panel); color: var(--text); border-bottom-color: var(--border); }
 .leaflet-bar a:hover { background: var(--bg-hover); }
 .leaflet-control-layers { background: var(--bg-panel); color: var(--text); border: 1px solid var(--border) !important; border-radius: 8px !important; box-shadow: var(--shadow) !important; }
-.leaflet-control-layers-toggle { filter: invert(0.9); }
+:root[data-theme="dark"] .leaflet-control-layers-toggle, :root[data-theme="black"] .leaflet-control-layers-toggle { filter: invert(0.9); }
 .leaflet-control-layers-expanded { padding: 8px 12px; font-size: 12.5px; }
 .leaflet-control-layers label { margin: 3px 0; }
-.leaflet-control-scale-line { background: rgba(23, 28, 36, 0.85); color: var(--text-muted); border-color: var(--text-dim); font: 10.5px var(--font-mono); }
-.leaflet-control-attribution { background: rgba(18, 22, 28, 0.78) !important; color: var(--text-dim); font-size: 10px; }
+.leaflet-control-scale-line { background: var(--map-chrome); color: var(--text-muted); border-color: var(--text-dim); font: 10.5px var(--font-mono); }
+.leaflet-control-attribution { background: var(--map-chrome) !important; color: var(--text-dim); font-size: 10px; }
 .leaflet-control-attribution a { color: var(--text-muted); }
 .leaflet-top.leaflet-right { top: 0; }
 .leaflet-right, .leaflet-bottom.leaflet-right { transition: right 0.2s; }

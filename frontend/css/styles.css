@@ -328,13 +328,31 @@ h1,h2,h3{font-family:var(--sans)}
 .theme-switch .theme-toggle svg{width:14px;height:14px}
 
 .session{
-  display:flex;align-items:center;gap:10px;
-  background:var(--surface2);border:1px solid var(--line);
-  border-radius:999px;padding:5px 6px 5px 13px;
+  display:flex;align-items:center;gap:8px;
   animation:fadeIn .2s var(--ease) both;
 }
-.session-name{font-size:13px;font-weight:600;line-height:1.2;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.session-role{font-size:11px;color:var(--muted2);line-height:1.2}
+/* El nombre+rol ahora es el disparador de un menú (clave, padrón, usuarios),
+   no solo una etiqueta: mismo look de píldora que tenía .session antes. */
+.cuenta-anchor{position:relative}
+.session-trigger{
+  display:flex;align-items:center;gap:9px;
+  background:var(--surface2);border:1px solid var(--line);
+  border-radius:999px;padding:5px 13px;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease);
+}
+.session-trigger:hover{border-color:var(--muted2);background:var(--surface3)}
+.session-trigger[aria-expanded="true"]{border-color:var(--primary-line);background:var(--primary-soft)}
+.session-trigger::after{
+  content:"";width:7px;height:7px;flex:none;margin-left:1px;
+  border-right:1.5px solid var(--muted2);border-bottom:1.5px solid var(--muted2);
+  transform:rotate(45deg) translateY(-2px);transition:transform .15s var(--ease);
+}
+.session-trigger[aria-expanded="true"]::after{transform:rotate(-135deg) translateY(1px)}
+.session-name{font-size:13px;font-weight:600;line-height:1.2;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.session-role{font-size:11px;color:var(--muted2);line-height:1.2;text-align:left}
+.cuenta-popover .card{display:flex;flex-direction:column;gap:7px}
+.cuenta-popover .btn{justify-content:space-between}
+.cuenta-popover .count{background:var(--surface3);border-radius:999px;padding:1px 7px;font-size:11px;color:var(--muted);font-family:var(--mono)}
 .btn-exit{
   background:var(--surface);border:1px solid var(--line);color:var(--muted);
   border-radius:999px;padding:5px 13px;font-size:12.5px;font-weight:600;

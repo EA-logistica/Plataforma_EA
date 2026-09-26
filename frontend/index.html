@@ -83,11 +83,21 @@
     </div>
 
     <div class="session" id="session" style="display:none">
-      <div>
-        <div class="session-name" id="sessName">—</div>
-        <div class="session-role" id="sessRole">—</div>
+      <div class="cuenta-anchor" id="cuentaAnchor">
+        <button class="session-trigger" id="btnCuenta" onclick="alternarMenuCuenta()" aria-haspopup="true" aria-expanded="false">
+          <div>
+            <div class="session-name" id="sessName">—</div>
+            <div class="session-role" id="sessRole">—</div>
+          </div>
+        </button>
+        <div class="logistica-popover cuenta-popover" id="cuentaPopover">
+          <section class="card card-pad">
+            <button class="btn btn-ghost btn-wide" id="btnMiClave" style="display:none" onclick="abrirCambioClave()">Mi clave</button>
+            <button class="btn btn-ghost btn-wide" id="btnMenuPadron" style="display:none" onclick="tabAdmin('padron')">Padrón y accesos <span class="count" id="cntAut">0</span></button>
+            <button class="btn btn-ghost btn-wide" id="btnMenuUsuarios" style="display:none" onclick="tabAdmin('usuarios')">Usuarios</button>
+          </section>
+        </div>
       </div>
-      <button class="btn-exit" id="btnMiClave" style="display:none" onclick="abrirCambioClave()">Mi clave</button>
       <button class="btn-exit" onclick="salir()">Salir</button>
     </div>
   </div>
@@ -361,8 +371,6 @@
       <button class="nav-item on" data-atab="bandeja" onclick="tabAdmin('bandeja')">Bandeja de despacho <span class="count" id="cntBandeja">0</span></button>
       <button class="nav-item" data-atab="historico" onclick="tabAdmin('historico')">Histórico <span class="count" id="cntHist">0</span></button>
       <button class="nav-item" data-atab="kpi" onclick="tabAdmin('kpi')">Indicadores</button>
-      <button class="nav-item" data-atab="padron" onclick="tabAdmin('padron')">Padrón y accesos <span class="count" id="cntAut">0</span></button>
-      <button class="nav-item" data-atab="usuarios" id="tabUsuarios" onclick="tabAdmin('usuarios')">Usuarios</button>
       <button class="nav-item btn-payback" id="btnPayback" data-atab="payback" onclick="tabAdmin('payback')" title="Analizar si conviene motorizado propio">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>

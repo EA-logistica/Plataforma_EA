@@ -273,8 +273,12 @@ try {
   await authMod.restaurarSesion();
 
   console.log('\n-- usuarios de logística --');
-  ok($('tabUsuarios').style.display !== 'none', 'admin sí ve la pestaña de usuarios');
+  ok($('btnMenuUsuarios').style.display !== 'none', 'admin sí ve "Usuarios" en el menú de la cuenta');
+  ok($('btnMenuPadron').style.display !== 'none', 'y también "Padrón y accesos"');
+  globalThis.alternarMenuCuenta();
+  ok($('cuentaPopover').classList.contains('on'), 'el menú de la cuenta se abre al hacer clic en el nombre');
   globalThis.tabAdmin('usuarios');
+  ok(!$('cuentaPopover').classList.contains('on'), 'y elegir una opción lo cierra solo');
   ok($('aUsuarios').classList.contains('on'), 'y puede abrirla');
   await globalThis.renderUsuarios();
   ok($('tbUsuarios').innerHTML.includes('admin'), 'la cuenta admin aparece en el listado');

@@ -12,6 +12,7 @@ import { renderRequerimientos } from './requerimientosCompra.js';
 import { renderServiciosLogistica } from './serviciosLogistica.js';
 import { abrirAlmacen } from './almacen.js';
 import { cerrarMenu } from '../ui/sidebar.js';
+import { cerrarMenuCuenta } from '../ui/cuentaPopover.js';
 
 /** Pestañas de la vista de solicitante: nueva solicitud / seguimiento / mis servicios. */
 export function tabUser(k) {
@@ -37,9 +38,13 @@ const TABS_SOLO_ADMIN = [
  */
 export function aplicarPermisosAdmin() {
   const esAdmin = !sesion || sesion.rol === 'admin';
-  $('tabUsuarios').style.display = esAdmin ? '' : 'none';
+  // Padrón y accesos / Usuarios ya no viven en la barra lateral: son ítems
+  // del menú de la cuenta (ver ui/cuentaPopover.js), así que el permiso se
+  // aplica ahí.
+  $('btnMenuPadron').style.display = esAdmin ? '' : 'none';
+  $('btnMenuUsuarios').style.display = esAdmin ? '' : 'none';
   $('navCompras').style.display = esAdmin ? '' : 'none';
-  document.querySelectorAll('[data-atab="kpi"], [data-atab="payback"], [data-atab="padron"]')
+  document.querySelectorAll('[data-atab="kpi"], [data-atab="payback"]')
     .forEach(b => { b.style.display = esAdmin ? '' : 'none'; });
 }
 
@@ -77,4 +82,5 @@ export function tabAdmin(k) {
   if (k === 'requerimientos') renderRequerimientos();
   if (k === 'servicios') renderServiciosLogistica();
   cerrarMenu();
+  cerrarMenuCuenta();
 }

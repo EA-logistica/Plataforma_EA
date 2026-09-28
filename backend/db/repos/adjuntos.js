@@ -58,7 +58,7 @@ export function registrar(datos) {
   ).run(id, String(datos.ticketId), datos.nombreOriginal, datos.archivo,
         datos.tipo || '', datos.tamano || 0, datos.subidoPor || 'Logística',
         new Date().toISOString());
-  tocar();
+  tocar('app');
   return porId(id);
 }
 
@@ -72,7 +72,7 @@ export function eliminar(id) {
   // se fue y queda un huérfano en disco: molesto pero inofensivo. Al revés
   // sería peor: un registro apuntando a un archivo que ya no está.
   try { fs.unlinkSync(rutaDe(a.archivo)); } catch (e) { /* ya no estaba */ }
-  tocar();
+  tocar('app');
   return { id };
 }
 

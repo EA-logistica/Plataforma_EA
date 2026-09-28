@@ -17,6 +17,8 @@ export function registrar(tipo, { usuario = '', ip = '', detalle = '' } = {}) {
 }
 
 export function recientes(limite = 200) {
-  const n = Math.min(Number(limite) || 200, 500);
+  // Math.max(1, …): con ?limite=-1 llegaba LIMIT -1 a SQLite, que significa
+  // sin límite, y se volcaba la tabla entera.
+  const n = Math.max(1, Math.min(Math.trunc(Number(limite)) || 200, 500));
   return db().prepare('SELECT * FROM eventos_seguridad ORDER BY id DESC LIMIT ?').all(n).map(aCamel);
 }

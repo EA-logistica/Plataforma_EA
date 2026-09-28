@@ -96,9 +96,9 @@ const almacen = multer.diskStorage({
 });
 
 function filtro(req, archivo, cb) {
-  const admitido = CONFIG.archivos.tiposAceptados.some(re => re.test(archivo.mimetype));
+  const admitido = CONFIG.archivos.tiposAceptados.includes(archivo.mimetype);
   if (admitido) return cb(null, true);
-  cb(Object.assign(new Error('Solo se admiten imágenes o archivos PDF.'), { status: 415 }));
+  cb(Object.assign(new Error('Solo se admiten imágenes (JPEG, PNG, WEBP, HEIC, GIF) o archivos PDF.'), { status: 415 }));
 }
 
 /**

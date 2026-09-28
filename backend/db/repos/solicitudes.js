@@ -65,22 +65,25 @@ export function crear(datos) {
       id: 'REQ-' + pad(correlativo),
       correlativo,
       creado: ahora,
-      dni: datos.dni || '',
-      nombre: datos.nombre || '',
-      cargo: datos.cargo || '',
-      area: datos.area || '',
+      // texto() y no el valor crudo: la ruta es pública, y un objeto o un
+      // arreglo en cualquiera de estos campos hacía que SQLite rechazara el
+      // parámetro y la petición saliera como 500 en vez de guardarse.
+      dni: texto(datos.dni, 20),
+      nombre: texto(datos.nombre, 200),
+      cargo: texto(datos.cargo, 200),
+      area: texto(datos.area, 200),
       tipo: datos.tipo,
-      servicio: datos.servicio || '',
-      motivo: datos.motivo || '',
-      origen: datos.origen || '',
-      origen_detalle: datos.origenDetalle || '',
-      destino: datos.destino || '',
-      contacto: datos.contacto || '',
-      telefono: datos.telefono || '',
-      fecha_prog: datos.fechaProg || '',
-      hora_prog: datos.horaProg || '',
+      servicio: texto(datos.servicio),
+      motivo: texto(datos.motivo),
+      origen: texto(datos.origen, 200),
+      origen_detalle: texto(datos.origenDetalle),
+      destino: texto(datos.destino),
+      contacto: texto(datos.contacto),
+      telefono: texto(datos.telefono, 20),
+      fecha_prog: texto(datos.fechaProg),
+      hora_prog: texto(datos.horaProg),
       vehiculo: datos.vehiculo || null,
-      costo: datos.costo != null ? Number(datos.costo) : null,
+      costo: datos.costo != null && datos.costo !== '' ? Math.round(Number(datos.costo) * 100) / 100 : null,
       estado: 'En espera',
       ts_espera: ahora,
       ts_transito: null,
@@ -97,7 +100,7 @@ export function crear(datos) {
     // programación. El primer destino ya quedó en la fila de arriba.
     paradas.guardar(fila.id, datos.paradas);
 
-    tocar();
+    tocar('app');
     return porId(fila.id);
   });
 }
@@ -115,7 +118,15 @@ function tope(campo, valor) {
   }
 }
 
+const texto = (v, max = Infinity) => (v == null || typeof v === 'object' ? '' : String(v)).slice(0, max);
+
+const CAMPOS_TEXTO = ['dni', 'nombre', 'cargo', 'area', 'tipo', 'servicio', 'motivo', 'origen', 'origenDetalle',
+  'destino', 'contacto', 'telefono', 'fechaProg', 'horaProg', 'vehiculo'];
+
 function validar(d) {
+  for (const campo of CAMPOS_TEXTO) {
+    if (d[campo] != null && typeof d[campo] === 'object') throw error('El campo "' + campo + '" no es válido.');
+  }
   if (!['Recoger', 'Entregar'].includes(d.tipo)) throw error('Indica si el mensajero va a recoger o a entregar.');
   if (String(d.servicio || '').trim().length < 3) throw error('Indica qué se va a mover.');
   if (!String(d.origen || '').trim()) throw error('Elige desde dónde sale el servicio.');
@@ -132,6 +143,13 @@ function validar(d) {
     throw error('La hora debe tener el formato HH:MM.');
   }
   for (const campo of ['servicio', 'motivo', 'destino', 'contacto', 'origenDetalle']) tope(campo, d[campo]);
+  // Transporte y tarifa los fija logística después, pero si vienen al crear
+  // tienen que ser válidos: antes un costo 'abc' entraba como NaN y un
+  // vehículo cualquiera se guardaba tal cual, y los dos alimentan los KPI.
+  if (d.vehiculo && !['Motorizado', 'Carro'].includes(d.vehiculo)) throw error('El transporte debe ser Motorizado o Carro.');
+  if (d.costo != null && d.costo !== '' && (!isFinite(Number(d.costo)) || Number(d.costo) < 0)) {
+    throw error('La tarifa debe ser un número positivo.');
+  }
 }
 
 /** Cambia el transporte o la tarifa. Un ticket concluido o cancelado ya no se toca. */
@@ -157,7 +175,7 @@ export function actualizar(id, cambios) {
 
   valores.id = String(id);
   db().prepare('UPDATE solicitudes SET ' + sets.join(', ') + ' WHERE id = @id').run(valores);
-  tocar();
+  tocar('app');
   return porId(id);
 }
 
@@ -183,7 +201,7 @@ export function avanzar(id) {
   } else {
     throw error('El ticket ' + id + ' ya está ' + s.estado.toLowerCase() + ' y no se puede avanzar.', 409);
   }
-  tocar();
+  tocar('app');
   return porId(id);
 }
 
@@ -208,7 +226,7 @@ export function cancelar(id, { motivo, detalle, canceladoPor, soloDesdeEspera = 
     "UPDATE solicitudes SET estado = 'Cancelado', motivo_cancelacion = ?, "
     + 'motivo_cancelacion_detalle = ?, cancelado_por = ?, ts_cancelado = ? WHERE id = ?'
   ).run(motivo, detalle || '', canceladoPor || '', new Date().toISOString(), id);
-  tocar();
+  tocar('app');
   return porId(id);
 }
 
@@ -237,7 +255,7 @@ export function cargarHistorico(filas) {
         fuente: s.fuente || 'historico'
       }).changes;
     });
-    tocar();
+    tocar('app');
     return n;
   });
 }

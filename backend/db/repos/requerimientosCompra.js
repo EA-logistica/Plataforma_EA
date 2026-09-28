@@ -86,7 +86,7 @@ export function crear(datos, creadoPor) {
     ).run(correlativo, f.fecha_solicitud, f.area_solicitante, f.descripcion, f.categoria, f.cantidad,
           f.unidad_medida, f.proveedor_sugerido, f.prioridad, f.fecha_requerida, f.estado, f.numero_oc,
           f.moneda, f.costo_estimado, f.costo_real, f.observaciones, String(creadoPor || ''));
-    tocar();
+    tocar('app');
     return aCamel(base.prepare('SELECT * FROM requerimientos_compra WHERE id = ?').get(r.lastInsertRowid));
   });
 }
@@ -102,13 +102,13 @@ export function actualizar(id, datos) {
   ).run(f.fecha_solicitud, f.area_solicitante, f.descripcion, f.categoria, f.cantidad, f.unidad_medida,
         f.proveedor_sugerido, f.prioridad, f.fecha_requerida, f.estado, f.numero_oc, f.moneda,
         f.costo_estimado, f.costo_real, f.observaciones, Number(id));
-  tocar();
+  tocar('app');
   return porId(id);
 }
 
 export function eliminar(id) {
   const r = db().prepare('DELETE FROM requerimientos_compra WHERE id = ?').run(Number(id));
   if (!r.changes) throw error('No existe el requerimiento ' + id + '.', 404);
-  tocar();
+  tocar('app');
   return { id: Number(id) };
 }

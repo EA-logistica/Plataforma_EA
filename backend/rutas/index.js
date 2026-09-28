@@ -11,6 +11,7 @@ import * as ajustes from '../db/repos/ajustes.js';
 import { conSubida } from '../middleware/subida.js';
 import { limitarIntentos, limitarPeticiones } from '../middleware/limites.js';
 import { asinc } from '../middleware/errores.js';
+import { cachearGet } from '../middleware/cache.js';
 import { usuarios } from '../usuarios/rutas.js';
 import { areas } from '../areas/rutas.js';
 import { compras } from './compras.js';
@@ -61,7 +62,7 @@ const error = (msg, status) => Object.assign(new Error(msg), { status });
  * en /almacen). Que el sidebar solo le muestre el botón a admin no alcanza
  * -cualquiera con la URL igual entraría-: este ticket es la verificación de
  * verdad, del lado del servidor. Se exige requiereRol('admin') aquí, con la
- * MISMA sesión de PLANSA_DELIVERY que ya se validó en el login; el ticket
+ * MISMA sesión de Plataforma_EA que ya se validó en el login; el ticket
  * solo traslada esa autorización hacia el otro módulo (ver almacen/acceso.js).
  */
 api.post('/almacen/ticket', requiereSesion, requiereRol('admin'), (req, res) => {
@@ -84,7 +85,10 @@ api.post('/almacen/ticket', requiereSesion, requiereRol('admin'), (req, res) => 
  *     separado GET /solicitudes/mias (backend/areas/rutas.js), acotados a
  *     los últimos 5 y exigiendo esa sesión.
  */
-api.get('/estado', sesionOpcional, (req, res) => {
+// Cacheado por revisión (middleware/cache.js): con 50 pestañas abiertas, el
+// megabyte se arma y se comprime una vez por cambio, no una vez por pestaña,
+// y quien ya tiene la versión vigente recibe 304 por ETag.
+api.get('/estado', sesionOpcional, cachearGet(), (req, res) => {
   const base = {
     revision: ajustes.revision(),
     versionDatos: ajustes.leer('version_datos', ''),
@@ -101,7 +105,12 @@ api.get('/estado', sesionOpcional, (req, res) => {
   res.json({
     ...base,
     solicitudes: solicitudes.listar(),
-    autorizaciones: autorizaciones.listar(),
+    // Nombre, celular y correo de quien pide acceso fuera del padrón: lo
+    // mismo que /api/autorizaciones ya restringe a admin (ahí vive el "por
+    // qué"). Antes esto viajaba a CUALQUIER sesión de logística -seguimiento
+    // incluido- solo porque la pestaña de Padrón que lo pinta ya es
+    // admin-only en el navegador; eso no evita leerlo desde la consola.
+    autorizaciones: req.usuario.rol === 'admin' ? autorizaciones.listar() : [],
     adjuntos: adjuntos.listar()
   });
 });
@@ -153,7 +162,7 @@ api.delete('/personal/:dni', requiereSesion, requiereRol('admin'), (req, res) =>
 // llega a lo suyo por /solicitudes/mias; quien pide un ticket por id acá
 // tiene que estar en la sesión de logística (o ser un script con su token,
 // para Power BI o una hoja de cálculo, el mismo caso que /payback).
-api.get('/solicitudes', requiereSesion, (req, res) => res.json(solicitudes.listar()));
+api.get('/solicitudes', requiereSesion, cachearGet(), (req, res) => res.json(solicitudes.listar()));
 
 /**
  * Reporte de viajes en Excel, con columnas tipadas (fecha, número) en vez del
@@ -173,7 +182,7 @@ api.get('/solicitudes/exportar', requiereSesion, asinc(async (req, res) => {
   const filas = filtrarPorRango(solicitudes.listar(), desde, hasta);
 
   const libro = new ExcelJS.Workbook();
-  libro.creator = 'PLANSA Delivery';
+  libro.creator = 'Plataforma EA';
   libro.created = new Date();
 
   const hoja = libro.addWorksheet('Viajes', { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -316,7 +325,13 @@ api.get('/adjuntos/:id/archivo', (req, res) => {
   res.sendFile(path.resolve(ruta));
 });
 
-api.delete('/adjuntos/:id', requiereSesion, (req, res) => res.json(adjuntos.eliminar(req.params.id)));
+api.delete('/adjuntos/:id', requiereSesion, (req, res) => {
+  const motivo = String(req.body?.motivo || '').trim();
+  if (motivo.length < 3) throw error('Escribe el motivo de la eliminación (mínimo 3 caracteres).', 400);
+  const r = adjuntos.eliminar(req.params.id);
+  log('adjunto_eliminado', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
+  res.json(r);
+});
 
 // ----------------------------------------------------------------- payback
 /**

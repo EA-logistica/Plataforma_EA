@@ -46,7 +46,7 @@ export function crear({ usuario, claveHash, rol, creadoPor }) {
   db().prepare(
     'INSERT INTO usuarios (usuario, clave_hash, rol, creado_por, creado_en) VALUES (?, ?, ?, ?, ?)'
   ).run(nombre, claveHash, rol, String(creadoPor || ''), new Date().toISOString());
-  tocar();
+  tocar('app');
   return sinClave(porUsuario(nombre));
 }
 
@@ -55,13 +55,13 @@ export function cambiarClave(id, claveHash, { debeCambiar }) {
     'UPDATE usuarios SET clave_hash = ?, debe_cambiar_clave = ? WHERE id = ?'
   ).run(claveHash, debeCambiar ? 1 : 0, id);
   if (!r.changes) throw error('No existe ese usuario.', 404);
-  tocar();
+  tocar('app');
 }
 
 export function cambiarEstado(id, activo) {
   const r = db().prepare('UPDATE usuarios SET activo = ? WHERE id = ?').run(activo ? 1 : 0, id);
   if (!r.changes) throw error('No existe ese usuario.', 404);
-  tocar();
+  tocar('app');
   return sinClave(porId(id));
 }
 

@@ -2,7 +2,7 @@ import { $, esc } from '../utils/dom.js';
 import { fechaCorta, hoyISO } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import * as api from '../api/estado.js';
-import { abrirModal, cerrarModal } from './dispatch.js';
+import { abrirModal, cerrarModal, confirmarEliminacion } from './dispatch.js';
 
 /**
  * Servicios que contrata logística -mantenimiento, transporte especializado,
@@ -34,8 +34,8 @@ export async function renderServiciosLogistica() {
     { c: 'primary', v: cache.length, k: 'Servicios registrados', d: 'Histórico completo' },
     { c: 'info', v: enEjecucion, k: 'En ejecución', d: 'Contratados y en curso' },
     { c: '', v: cotizando, k: 'Cotizando', d: 'Pendientes de aprobar' },
-    { c: 'ok', v: 'S/ ' + montoEnPen.toLocaleString('es-PE', { minimumFractionDigits: 2 }), k: 'Monto en soles', d: 'Sin contar cancelados' },
-    { c: 'ok', v: 'US$ ' + montoEnUsd.toLocaleString('es-PE', { minimumFractionDigits: 2 }), k: 'Monto en dólares', d: 'Sin contar cancelados' }
+    { c: 'ok', v: 'S/ ' + montoEnPen.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), k: 'Monto en soles', d: 'Sin contar cancelados' },
+    { c: 'ok', v: 'US$ ' + montoEnUsd.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), k: 'Monto en dólares', d: 'Sin contar cancelados' }
   ].map(tarjeta).join('');
 
   if (!cache.length) {
@@ -48,7 +48,7 @@ export async function renderServiciosLogistica() {
     + '<td>' + esc(s.tipoServicio) + '</td>'
     + '<td>' + esc(s.proveedor || '—') + '</td>'
     + '<td class="cell-2">' + esc(s.descripcion) + '</td>'
-    + '<td class="num">' + (s.costo != null ? (s.moneda === 'USD' ? 'US$ ' : 'S/ ') + s.costo.toLocaleString('es-PE', { minimumFractionDigits: 2 }) : '<span class="muted">N/D</span>') + '</td>'
+    + '<td class="num">' + (s.costo != null ? (s.moneda === 'USD' ? 'US$ ' : 'S/ ') + s.costo.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span class="muted">N/D</span>') + '</td>'
     + '<td class="nowrap">' + (s.fechaInicio ? fechaCorta(s.fechaInicio) : '—') + (s.fechaTermino ? ' → ' + fechaCorta(s.fechaTermino) : '') + '</td>'
     + '<td>' + estadoChip(s.estado) + '</td>'
     + '<td class="nowrap"><button class="btn btn-sm btn-ghost" onclick="editarServicioLogistica(' + s.id + ')">Editar</button> '
@@ -134,14 +134,14 @@ export async function guardarServicioLogistica(id) {
   toast(id ? 'Servicio actualizado' : 'Servicio registrado');
 }
 
-export async function borrarServicioLogisticaVista(id) {
-  if (!confirm('¿Borrar este servicio? No se puede deshacer.')) return;
-  try {
-    await api.borrarServicioLogistica(id);
-  } catch (e) {
-    toast('No se pudo borrar', e.message, 'bad');
-    return;
-  }
-  renderServiciosLogistica();
-  toast('Servicio borrado', '', 'warn');
+export function borrarServicioLogisticaVista(id) {
+  confirmarEliminacion({
+    titulo: 'Eliminar servicio',
+    mensaje: 'Se va a eliminar este servicio. No se puede deshacer.',
+    onConfirmar: async motivo => {
+      await api.borrarServicioLogistica(id, motivo);
+      renderServiciosLogistica();
+      toast('Servicio borrado', '', 'warn');
+    }
+  });
 }

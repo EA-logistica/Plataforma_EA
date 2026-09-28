@@ -158,6 +158,7 @@ globalThis.setInterval = (fn, ms) => { intervalos.push(ms); return intervalos.le
 
 const $ = id => registro.get(id);
 const esperar = ms => new Promise(r => setTimeout(r, ms));
+const { esc } = await mod('frontend/js/utils/dom.js');
 
 try {
   // -------------------------------------------------------------- arranque
@@ -369,9 +370,13 @@ try {
   // servidor real en tests/api.mjs: ese lado no tiene sentido simularlo aquí.
 
   // ------------------------------------------------------------ indicadores
+  // "Indicadores" ya no es una pestaña aparte: es una sub-pestaña dentro de
+  // "Histórico" (ver frontend/js/state/historicoSubtab.js).
   console.log('\n-- indicadores --');
-  globalThis.tabAdmin('kpi');
-  ok($('aKpi').classList.contains('on'), 'la pestaña de indicadores abre');
+  globalThis.tabAdmin('historico');
+  globalThis.subtabHistorico('indicadores');
+  ok($('aHistorico').classList.contains('on') && $('histPanelIndicadores').style.display !== 'none',
+     'la sub-pestaña de indicadores abre dentro de Histórico');
   const totalSinFiltro = Number($('kpiCards').innerHTML.match(/<div class="v">([\d.,]+)<\/div>/)[1].replace(/,/g, ''));
   ok(totalSinFiltro > 0, `sin búsqueda, muestra los viajes totales del rango (${totalSinFiltro})`);
 
@@ -444,6 +449,90 @@ try {
   ok($('aServiciosLogistica').classList.contains('on'), 'la pestaña de servicios abre');
   await globalThis.renderServiciosLogistica();
   ok($('tServiciosLogistica').innerHTML.includes('Agencia XYZ'), 'y pinta el servicio recién creado');
+
+  console.log('\n-- Proveedores --');
+  globalThis.tabAdmin('proveedores');
+  ok($('aProveedores').classList.contains('on'), 'la pestaña de proveedores abre');
+  await globalThis.renderProveedores();
+  const panoramaProv = $('provCuerpo').innerHTML;
+  ok(((panoramaProv.match(/prov-rank-row/g) || []).length) >= 2 && panoramaProv.includes('Top proveedores'),
+     'sin elegir proveedor, muestra el top por SUNAT y por historial de OC');
+  ok(/Concentración top 5/.test(panoramaProv) && /del total/.test(panoramaProv),
+     'el panorama explica la concentración y la participación de cada uno');
+  ok(!/undefined|NaN|\[object/.test(panoramaProv), 'sin valores rotos en el panorama');
+
+  // El buscador reemplaza al <select> gigante: sugiere en el navegador, con RUC y monto.
+  const desEsc = s => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const sugeridos = await globalThis.buscarProveedorSeccion('');
+  const enCaja = [...$('provSugerencias').innerHTML.matchAll(/data-prov="([^"]+)"/g)].map(m => desEsc(m[1]));
+  ok(sugeridos.length > 0 && enCaja.length === sugeridos.length && $('provSugerencias').classList.contains('on'),
+     'el buscador trae proveedores de verdad, no vacío (' + sugeridos.length + ' sugeridos)');
+  const elegido = sugeridos[0];
+  const fragmento = elegido.split(/\s+/)[0].toLowerCase();
+  const porNombre = await globalThis.buscarProveedorSeccion(fragmento);
+  ok(porNombre.includes(elegido), 'buscar por parte del nombre (sin importar mayúsculas) lo encuentra: "' + fragmento + '"');
+  ok((await globalThis.buscarProveedorSeccion('zzqq-no-existe')).length === 0 && $('provSugerencias').innerHTML.includes('Ningún proveedor coincide'),
+     'una búsqueda sin coincidencias lo dice, no deja la lista vacía');
+
+  await globalThis.elegirProveedorSeccion(elegido);
+  const cuerpoProv = $('provCuerpo').innerHTML;
+  ok(cuerpoProv.includes(esc(elegido).slice(0, 20)), 'elegir uno pinta su propio detalle');
+  ok(/Primera compra/.test(cuerpoProv) && /Ticket promedio/.test(cuerpoProv) && /Facturado por mes/.test(cuerpoProv),
+     'la ficha trae primera/última compra, ticket promedio y la evolución mensual');
+  ok(/irARegistroDeProveedor|irAOCDeProveedor/.test(cuerpoProv), 'y los atajos a Registro de compras / Historial de OC');
+  ok(!/undefined|NaN|\[object/.test(cuerpoProv), 'sin valores rotos en el detalle del proveedor');
+  await globalThis.elegirProveedorSeccion('');
+  ok($('provCuerpo').innerHTML.includes('Top proveedores'), 'volver al top no se queda pegado en el detalle');
+
+  // Regresión: esc(nombre).replace(/'/g, '&#39;') dentro de onclick="…('…')"
+  // se decodifica de vuelta a ' antes de llegar a JS, y un proveedor como
+  // "'NEGOCIACION KIO' SAC" rompía el clic. Todo onclick generado debe compilar.
+  const onclicks = html => [...html.matchAll(/onclick="([^"]*)"/g)].map(m => desEsc(m[1]));
+  const compila = code => { try { new Function(code); return true; } catch (e) { return false; } };
+  const conComilla = sugeridos.length && (await globalThis.buscarProveedorSeccion("'"))[0];
+  if (conComilla) {
+    await globalThis.elegirProveedorSeccion(conComilla);
+    ok(onclicks($('provCuerpo').innerHTML).every(compila), 'con un proveedor con comillas en el nombre, sus botones siguen funcionando');
+    await globalThis.elegirProveedorSeccion('');
+  }
+  globalThis.tabAdmin('ordenesCompra');
+  await globalThis.elegirProveedorOrdenesCompra(conComilla || elegido);
+  await globalThis.elegirProveedorOC(conComilla || elegido);
+  ok($('ocProveedor').value === (conComilla || elegido) && $('ocdProveedor').value === (conComilla || elegido),
+     'el atajo desde Proveedores deja el filtro puesto en ambas tablas, aunque la pestaña recién abra');
+  ok([$('ocProveedores').innerHTML, $('ocdProveedores').innerHTML, $('tOC').innerHTML].every(h => onclicks(h).every(compila)),
+     'los onclick de Registro de compras / Historial de OC compilan (nombres con comillas incluidos)');
+
+  console.log('\n-- Materia Prima --');
+  globalThis.tabAdmin('materiaPrima');
+  await globalThis.renderMateriaPrima();
+  ok(/Valorizado total/.test($('mpMetrics').innerHTML) && /Concentración/.test($('mpMetrics').innerHTML),
+     'tarjetas: valorizado, productos, cantidad, almacenes y concentración');
+  ok($('mpNivel').innerHTML.includes('ordenarMateriaPrima') && $('mpNivel').innerHTML.includes('% del nivel'),
+     'las categorías salen en tabla ordenable con su participación');
+  ok($('mpBreadcrumb').innerHTML.includes('Paso 1 de 3'), 'la miga de pan explica en qué paso se está');
+  globalThis.filaMateriaPrima('cat', 0);
+  await esperar(200);
+  ok($('mpBreadcrumb').innerHTML.includes('Paso 2 de 3') && $('mpNivel').innerHTML.includes('Línea (familia)'),
+     'clic en una categoría baja a sus líneas');
+  globalThis.ordenarMateriaPrima('lin', 'nombre');
+  ok($('mpNivel').innerHTML.includes('aria-sort="ascending"'), 'clic en un encabezado reordena la tabla');
+  globalThis.filaMateriaPrima('lin', 0);
+  await esperar(200);
+  ok($('mpBreadcrumb').innerHTML.includes('Paso 3 de 3') && $('mpNivel').innerHTML.includes('Costo prom.'),
+     'y de la línea, a sus productos');
+  ok(!/undefined|NaN|\[object/.test($('mpNivel').innerHTML + $('mpMetrics').innerHTML + $('mpAlmacenes').innerHTML),
+     'sin valores rotos en Materia Prima');
+  // Regresión: la categoría OTROS existe en ambos tipos; sus líneas no deben mezclarlos.
+  const tiposMp = await (await fetch('/api/materia-prima/tipos', { headers: auth })).json();
+  if (tiposMp.length > 1) {
+    const t = tiposMp[tiposMp.length - 1].tipo;
+    const cats = await (await fetch('/api/materia-prima/categorias?tipo=' + encodeURIComponent(t), { headers: auth })).json();
+    const c = cats[0];
+    const lineas = await (await fetch('/api/materia-prima/categorias/' + encodeURIComponent(c.categoria) + '/lineas?tipo=' + encodeURIComponent(t), { headers: auth })).json();
+    const suma = lineas.reduce((a, l) => a + l.valorizadoUsd, 0);
+    ok(Math.abs(suma - c.valorizadoUsd) < 0.01, 'las líneas de una categoría suman lo mismo que la categoría dentro de su tipo (no mezclan tipos)');
+  }
 
   console.log('\n-- Control de Almacenes (mapa/radar/plano, pestañas nativas) --');
   const almacenVista = await mod('frontend/js/views/almacen.js');

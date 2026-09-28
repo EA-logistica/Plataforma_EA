@@ -211,8 +211,63 @@ export function verDetalle(id) {
   refrescarAdjuntos(s.id, admin);
 }
 
-export function abrirModal(t, html) { $('modalTitle').textContent = t; $('modalBody').innerHTML = html; $('overlay').classList.add('on'); }
+/**
+ * `opciones.ancho === 'wide'` pide la variante ancha del modal (ver
+ * `.modal.wide` en styles.css): solo hace falta donde el cuerpo es una tabla
+ * de datos que si no fuerza scroll horizontal. Sin `opciones`, el modal
+ * queda con el ancho de siempre -la inmensa mayoría de los usos, formularios
+ * y listas cortas-.
+ */
+export function abrirModal(t, html, opciones) {
+  $('modalTitle').textContent = t;
+  $('modalBody').innerHTML = html;
+  $('modal').classList.toggle('wide', !!(opciones && opciones.ancho === 'wide'));
+  $('overlay').classList.add('on');
+}
 export function cerrarModal() { $('overlay').classList.remove('on'); }
+
+/**
+ * Confirmación de eliminación con motivo obligatorio: sustituye al `confirm()`
+ * nativo en las tablas de admin. El servidor también exige y registra el
+ * motivo (ver backend/rutas/compras.js e index.js) -esto no reemplaza esa
+ * validación, solo evita el viaje redondo cuando el campo está vacío.
+ *
+ * `onConfirmar(motivo)` hace el borrado de verdad; si lanza, el error se
+ * muestra dentro del propio modal (no se cierra, como con la cancelación de
+ * arriba) y si resuelve bien, el modal se cierra solo.
+ */
+let _eliminarOnConfirmar = null;
+
+export function confirmarEliminacion({ titulo, mensaje, onConfirmar }) {
+  _eliminarOnConfirmar = onConfirmar;
+  const html = '<p class="card-note">' + esc(mensaje || 'Esta acción no se puede deshacer.') + '</p>'
+    + '<div class="field"><label for="elimMotivo">Motivo de la eliminación</label>'
+    + '<textarea class="textarea" id="elimMotivo" placeholder="Escribe por qué se elimina este registro"></textarea></div>'
+    + '<div class="err" id="eElim"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:6px">'
+    + '<button class="btn btn-sm btn-danger" onclick="confirmarEliminacionSubmit()">Eliminar</button>'
+    + '<button class="btn btn-sm btn-ghost" onclick="cerrarModal()">Cancelar</button>'
+    + '</div>';
+  abrirModal(titulo || 'Confirmar eliminación', html);
+}
+
+export async function confirmarEliminacionSubmit() {
+  const motivo = $('elimMotivo').value.trim();
+  if (motivo.length < 5) {
+    $('eElim').textContent = 'Escribe el motivo de la eliminación (mínimo 5 caracteres).';
+    $('eElim').classList.add('on');
+    return;
+  }
+  const onConfirmar = _eliminarOnConfirmar;
+  try {
+    if (onConfirmar) await onConfirmar(motivo);
+  } catch (e) {
+    $('eElim').textContent = e.message;
+    $('eElim').classList.add('on');
+    return;
+  }
+  cerrarModal();
+}
 
 /**
  * Cancelar desde logística (admin o seguimiento) sí pide motivo, a diferencia

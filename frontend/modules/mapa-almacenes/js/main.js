@@ -10,6 +10,8 @@ import { renderResults, renderStats, SORTS } from './ui/results.js';
 import { renderOriginDetail, renderWarehouseDetail } from './ui/detail.js';
 import { openFicha } from './ui/ficha.js';
 import { escapeHtml, fmtMin } from '/assets/js/ui/format.js';
+import { initPlanner } from './planner/planner.js';
+import { initTraffic } from './planner/traffic.js';
 
 const $ = (id) => document.getElementById(id);
 const ORIGIN_KEY = '__origen__';
@@ -30,6 +32,7 @@ const state = {
   routeSeq: 0,
 };
 let map;
+let planner = null;
 
 // ---------- apariencia de marcadores ----------
 const shapeOf = (i) => (i.modalidad === 'Venta' ? 'ring' : i.modalidad === 'Referencia' ? 'diamond' : 'circle');
@@ -158,6 +161,11 @@ function wireDetail() {
     else if (act === 'route') requestRoute();
     else if (act === 'locate') map.focusWarehouse(state.selected, { zoom: 17 });
     else if (act === 'ficha') openFicha($('ficha'), state.byKey.get(state.selected), state.fuente);
+    else if (act === 'add-stop' && planner) {
+      const item = state.byKey.get(state.selected);
+      showTab('rutas');
+      if (item?.ubicacion && planner.addStopFromWarehouse(item)) setStatus(`"${item.nombre || item.key}" agregado a las paradas.`, 'info', 2500);
+    }
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('ficha').open && !$('detail').hidden) closeDetail();
@@ -212,11 +220,29 @@ async function geocodeMissing() {
   if (pending.length) applyFilters();
 }
 
-function setStatus(msg, kind = 'info') {
+let statusTimer = null;
+function setStatus(msg, kind = 'info', autoHideMs = 0) {
   const el = $('status');
+  clearTimeout(statusTimer);
   el.hidden = !msg;
   el.className = `map-status ${kind}`;
   el.textContent = msg || '';
+  if (msg && autoHideMs) statusTimer = setTimeout(() => setStatus(null), autoHideMs);
+}
+
+// ---------- pestañas del panel lateral: Almacenes / Rutas y camiones ----------
+function showTab(tab) {
+  const rutas = tab === 'rutas';
+  $('tabAlmacenes').hidden = rutas;
+  $('tabRutas').hidden = !rutas;
+  $('app').classList.toggle('mode-rutas', rutas);
+  document.querySelectorAll('.sb-tabs [data-tab]').forEach((b) => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+  if (rutas) planner?.activate();
+  else planner?.deactivate();
 }
 
 // ---------- inicio ----------
@@ -229,8 +255,10 @@ async function boot() {
   renderLegend();
 
   let payload;
+  let cfg = null;
   try {
-    const [cfg, raw] = await Promise.all([api.config().catch(() => null), api.almacenes()]);
+    let raw;
+    [cfg, raw] = await Promise.all([api.config().catch(() => null), api.almacenes()]);
     if (cfg?.routing?.perfiles) state.perfiles = cfg.routing.perfiles;
     payload = adaptPayload(raw);
   } catch (err) {
@@ -266,6 +294,22 @@ async function boot() {
   });
   applyFilters();
   setStatus(null);
+
+  // Planificador de rutas / programación de camiones y capas de tráfico.
+  initTraffic({ map, panel: $('trafficPanel'), toggleBtn: $('trafficBtn'), badge: $('trafficBadge'), wazePanel: $('wazePanel'), config: cfg });
+  planner = initPlanner({
+    map,
+    root: $('tabRutas'),
+    getOrigin: () => state.origin,
+    getWarehouses: () => state.items,
+    padding: detailPadding,
+    onStatus: setStatus,
+    config: cfg || {},
+  });
+  document.querySelector('.sb-tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tab]');
+    if (b) showTab(b.dataset.tab);
+  });
 
   // Enlace directo: /modules/mapa-almacenes/#<código>. También lo usa el Radar ("Ver en mapa").
   const openFromHash = () => {

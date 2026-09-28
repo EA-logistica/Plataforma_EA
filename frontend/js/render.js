@@ -1,12 +1,17 @@
 import { sesion } from './state/sessionState.js';
 import { renderBandeja } from './views/dispatch.js';
+import { renderDashboardSiVisible } from './views/dashboard.js';
 import { renderHistoricoSiVisible } from './views/history.js';
 import { renderPadronSiVisible } from './views/roster.js';
 import { renderKpiSiVisible } from './views/kpi.js';
 import { renderUsuariosSiVisible } from './views/usuarios.js';
 import { renderCredencialesAreaSiVisible } from './views/credencialesArea.js';
 import { renderExportacionesSiVisible } from './views/exportaciones.js';
-import { renderRequerimientosSiVisible } from './views/requerimientosCompra.js';
+import { renderRequerimientosSiVisible, renderRequerimientosHistoricoSiVisible } from './views/requerimientosCompra.js';
+import { renderOrdenesCompraSiVisible, renderOCSiVisible } from './views/ordenesCompra.js';
+import { renderProveedoresSiVisible } from './views/proveedores.js';
+import { renderProductosSiVisible } from './views/productos.js';
+import { renderMateriaPrimaSiVisible } from './views/materiaPrima.js';
 import { renderServiciosLogisticaSiVisible } from './views/serviciosLogistica.js';
 import { renderMis } from './views/tickets.js';
 import { sincronizar as sincronizarStore } from './api/estado.js';
@@ -25,6 +30,7 @@ export function renderTodo() {
   if (!sesion) return;
   if (sesion.tipo === 'admin') {
     renderBandeja();
+    renderDashboardSiVisible();
     renderHistoricoSiVisible();
     renderPadronSiVisible();
     renderKpiSiVisible();
@@ -32,6 +38,12 @@ export function renderTodo() {
     renderCredencialesAreaSiVisible();
     renderExportacionesSiVisible();
     renderRequerimientosSiVisible();
+    renderRequerimientosHistoricoSiVisible();
+    renderOrdenesCompraSiVisible();
+    renderOCSiVisible();
+    renderProveedoresSiVisible();
+    renderProductosSiVisible();
+    renderMateriaPrimaSiVisible();
     renderServiciosLogisticaSiVisible();
     // El módulo de Almacén no se repinta en cada sondeo: vive en su propio
     // iframe con su propia sesión, y reasignar el src le resetearía el mapa.

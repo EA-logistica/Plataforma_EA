@@ -16,3 +16,30 @@ Thumbs.db
 # y de revisiones -se regeneran solos, no son código ni datos de origen-.
 backend/almacen/storage/cache/
 backend/almacen/storage/revisiones.json
+backend/almacen/storage/auditoria-metraje.jsonl
+backend/almacen/storage/programacion-camiones.json
+
+# Exportaciones crudas (SUNAT, planillas, etc.) que se convierten a un módulo
+# de data/*.js y se cargan una sola vez (ver backend/db/sembrar.js): el
+# archivo de origen no es código ni hace falta versionarlo, solo el resultado
+# ya convertido.
+.csv/
+
+# Credenciales de servicios externos (ORS_API_KEY, TOMTOM_API_KEY, etc.),
+# nunca al repo -y el repo es público, así que esto es más que una
+# formalidad-.
+.env
+.env.*
+
+# Volcados del ERP convertidos a data/*.js (compras SUNAT, órdenes de compra,
+# catálogo de productos, stock valorizado): datos reales del negocio, no
+# código. data/padron.js, data/historico.js, data/destinos.js y data/payback/
+# NO entran acá -son la fuente de verdad que sembrar.js espera encontrar y
+# forman parte del repo desde antes-, pero esto sí evita que un futuro
+# `git add -A` suba de nuevo un volcado de 30+ MB de compras/proveedores.
+data/compras.js
+data/ordenesCompraDetalle.js
+data/productos.js
+data/materiaPrimaStock.js
+data/stockValorizado.js
+data/requerimientosCompraHistorico.js

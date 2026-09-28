@@ -1,6 +1,6 @@
 // Cliente de la API del backend. Todas las llamadas a servicios externos (rutas, geocodificación)
 // pasan por el backend, que aplica caché y mantiene las credenciales fuera del navegador.
-// '/almacen/api' porque este módulo se integró dentro de PLANSA_DELIVERY, que
+// '/almacen/api' porque este módulo se integró dentro de Plataforma_EA, que
 // ya tiene su propio '/api' -distinto y protegido por su propia sesión-: sin
 // este prefijo, las dos APIs chocarían en la misma ruta.
 const API_BASE = '/almacen/api';

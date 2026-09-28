@@ -35,3 +35,8 @@ export function capabilities() {
     return { ...p, disponible: !!prov, proveedor: prov?.nombre ?? null };
   });
 }
+
+// Proveedor que sabe calcular el orden óptimo de visita (hoy OSRM `/trip`, gratuito).
+export function optimizerProvider() {
+  return Object.values(providers).find((p) => p.optimiza && typeof p.optimize === 'function') || null;
+}

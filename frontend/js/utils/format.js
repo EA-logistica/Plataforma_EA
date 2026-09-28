@@ -19,6 +19,9 @@ export const hoyISO = () => isoDia(new Date());
 
 export function fechaCorta(iso) {
   if (!iso) return '—';
+  // "2025-01-02" (solo fecha) se lee tal cual: new Date() la toma como
+  // medianoche UTC y en Lima (UTC-5) se pintaba el día anterior.
+  if (typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
   const d = new Date(iso);
   if (isNaN(d)) return '—';
   return pad(d.getDate(), 2) + '/' + pad(d.getMonth() + 1, 2) + '/' + d.getFullYear();

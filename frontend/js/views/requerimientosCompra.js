@@ -1,14 +1,18 @@
 import { $, esc } from '../utils/dom.js';
-import { soles, fechaCorta, hoyISO } from '../utils/format.js';
+import { soles, fechaCorta, hoyISO, corta } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import * as api from '../api/estado.js';
-import { abrirModal, cerrarModal } from './dispatch.js';
+import { abrirModal, cerrarModal, confirmarEliminacion } from './dispatch.js';
+
+/** Texto seguro dentro de un onclick="fn('…')": escapa \ y ' para JS y después para HTML. Con esc() solo, un nombre como 'NEGOCIACION KIO' SAC rompía el clic. */
+const jsStr = s => esc(String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 
 /**
  * Requerimientos de compra: materia prima local e importada (resinas, PP,
  * PE de soplado e inyección), repuestos y servicios que el coordinador de
  * logística tiene que gestionar. Solo lo ve admin (ver tabs.js).
  */
+const dolares = n => 'US$ ' + (Number(n) || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const CATEGORIAS = ['Materia prima local', 'Materia prima importada', 'Repuestos', 'Servicios', 'Otros'];
 const PRIORIDADES = ['Urgente', 'Alta', 'Normal', 'Baja'];
 const ESTADOS = ['Pendiente', 'Cotizando', 'Aprobado', 'OC emitida', 'Recibido', 'Rechazado', 'Cancelado'];
@@ -152,14 +156,177 @@ export async function guardarRequerimiento(id) {
   toast(id ? 'Requerimiento actualizado' : 'Requerimiento registrado');
 }
 
-export async function borrarRequerimientoVista(id) {
-  if (!confirm('¿Borrar este requerimiento de compra? No se puede deshacer.')) return;
+export function borrarRequerimientoVista(id) {
+  confirmarEliminacion({
+    titulo: 'Eliminar requerimiento',
+    mensaje: 'Se va a eliminar este requerimiento de compra. No se puede deshacer.',
+    onConfirmar: async motivo => {
+      await api.borrarRequerimiento(id, motivo);
+      renderRequerimientos();
+      toast('Requerimiento borrado', '', 'warn');
+    }
+  });
+}
+
+/**
+ * Historial de requerimientos de compra del ERP (data/
+ * requerimientosCompraHistorico.js): solo lectura, vive en el mismo panel
+ * porque es la misma pregunta -"qué se requirió comprar"- que el bloque de
+ * arriba, solo que resuelta por el ERP en vez de registrada a mano en la app.
+ * Paginado en servidor: son ~2200 requerimientos, no caben de una vez.
+ */
+const RQC_FILAS_POR_PAGINA = 30;
+let rqcPagina = 1;
+let rqcProveedoresCache = null;
+let rqcOpcionesCache = null;
+let rqcEstadoFiltro = '';
+
+export function renderRequerimientosHistoricoSiVisible() {
+  if ($('aRequerimientos').classList.contains('on')) renderRequerimientosHistorico();
+}
+
+function rqcFiltroActual() {
+  return {
+    q: $('rqcQ').value.trim(),
+    proveedor: $('rqcProveedor').value,
+    familia: $('rqcFamilia').value,
+    linea: $('rqcLinea').value,
+    desde: $('rqcDesde').value,
+    hasta: $('rqcHasta').value,
+    estado: rqcEstadoFiltro
+  };
+}
+
+export function setFiltroRequerimientosHistorico() { rqcPagina = 1; renderRequerimientosHistorico(); }
+export function irPaginaRequerimientosHistorico(n) { rqcPagina = n; renderRequerimientosHistorico(); }
+export function limpiarFiltroRequerimientosHistorico() {
+  $('rqcQ').value = ''; $('rqcProveedor').value = ''; $('rqcFamilia').value = ''; $('rqcLinea').value = '';
+  $('rqcDesde').value = ''; $('rqcHasta').value = ''; rqcEstadoFiltro = '';
+  setFiltroRequerimientosHistorico();
+}
+
+/** Clic en un chip de estado (Todos / Aprobados / Parcialmente atendidos): filtra y vuelve a pintar los chips con los conteos ya actualizados. */
+export function setEstadoRequerimientosHistorico(estado) { rqcEstadoFiltro = estado; setFiltroRequerimientosHistorico(); }
+
+async function rqcAsegurarOpciones() {
+  if (rqcProveedoresCache) return;
+  const [proveedores, opciones] = await Promise.all([
+    api.proveedoresRequerimientosHistorico(),
+    api.opcionesRequerimientosHistorico()
+  ]);
+  rqcProveedoresCache = proveedores;
+  rqcOpcionesCache = opciones;
+  $('rqcProveedor').innerHTML = '<option value="">Todos los proveedores</option>'
+    + proveedores.map(p => '<option value="' + esc(p.proveedor) + '">' + esc(p.proveedor) + ' (' + p.requerimientos + ')</option>').join('');
+  $('rqcFamilia').innerHTML = '<option value="">Toda familia</option>' + opciones.familias.map(v => '<option>' + esc(v) + '</option>').join('');
+  $('rqcLinea').innerHTML = '<option value="">Toda línea</option>' + opciones.lineas.map(v => '<option>' + esc(v) + '</option>').join('');
+}
+
+export async function renderRequerimientosHistorico() {
   try {
-    await api.borrarRequerimiento(id);
+    await rqcAsegurarOpciones();
+    const filtro = rqcFiltroActual();
+    const [resumen, lista] = await Promise.all([
+      api.resumenRequerimientosHistorico(filtro),
+      api.listarRequerimientosHistorico({ ...filtro, pagina: rqcPagina, porPagina: RQC_FILAS_POR_PAGINA })
+    ]);
+    rqcPintarMetricas(resumen);
+    rqcPintarChipsEstado(resumen);
+    rqcPintarTabla(lista);
   } catch (e) {
-    toast('No se pudo borrar', e.message, 'bad');
+    $('tRequerimientosHistorico').innerHTML = '<div class="empty"><strong>No se pudo cargar</strong>' + esc(e.message) + '</div>';
+  }
+}
+
+/**
+ * El ERP solo distingue dos estados -Aprobada y Parcialmente atendida-, y en
+ * los datos de verdad "Aprobada" siempre significa cero avance (en cuanto se
+ * atiende algo, el ERP la pasa a "Parcialmente atendida"): por eso el número
+ * es el mismo si se le llama "Aprobados" o "Pendientes" -aquí se usa
+ * "Pendientes", que es la lectura operativa (qué falta atender), y NO se
+ * repite como "Aprobados" aparte, que sería el mismo número dos veces-.
+ */
+function rqcPintarMetricas(r) {
+  $('rqcMetrics').innerHTML = [
+    { c: 'primary', v: r.requerimientos.toLocaleString('es-PE'), k: 'Requerimientos totales', d: 'Según el filtro aplicado' },
+    { c: 'info', v: r.pendientes.toLocaleString('es-PE'), k: 'Pendientes', d: 'Aprobados sin ninguna atención iniciada' },
+    { c: '', v: r.parciales.toLocaleString('es-PE'), k: 'Parcialmente atendidos', d: 'Con saldo pendiente de recibir' },
+    { c: 'ok', v: r.proveedores.toLocaleString('es-PE'), k: 'Proveedores', d: r.productos.toLocaleString('es-PE') + ' productos distintos en el filtro' }
+  ].map(tarjeta).join('');
+}
+
+function rqcPintarChipsEstado(r) {
+  $('rqcChipsEstado').innerHTML = [
+    ['', 'Todos', r.requerimientos],
+    ['APROBADA', 'Aprobados', r.aprobados],
+    ['PARCIALMEN', 'Parcialmente atendidos', r.parciales]
+  ].map(([valor, etiqueta, n]) =>
+    '<button class="fchip' + (rqcEstadoFiltro === valor ? ' on' : '') + '" onclick="setEstadoRequerimientosHistorico(\'' + valor + '\')">'
+    + esc(etiqueta) + ' (' + n.toLocaleString('es-PE') + ')</button>'
+  ).join('');
+}
+
+function rqcEstadoChip(estado) {
+  const clase = estado === 'APROBADA' ? 'st-concluido' : estado === 'PARCIALMEN' ? 'st-transito' : 'st-espera';
+  const texto = estado === 'PARCIALMEN' ? 'Parcialmente atendida' : (estado || '—');
+  return '<span class="chip ' + clase + '"><i class="dot"></i>' + esc(texto) + '</span>';
+}
+
+function rqcPintarTabla(lista) {
+  if (!lista.filas.length) {
+    $('tRequerimientosHistorico').innerHTML = '<div class="empty"><strong>Sin coincidencias</strong>Prueba con otro filtro.</div>';
+    $('rqcPaginacion').innerHTML = '';
     return;
   }
-  renderRequerimientos();
-  toast('Requerimiento borrado', '', 'warn');
+  const filas = lista.filas.map(r => '<tr>'
+    + '<td class="nowrap">' + fechaCorta(r.fechaEmision) + '</td>'
+    + '<td class="tk">' + esc(r.numeroRequerimiento) + '/' + r.item + '</td>'
+    + '<td class="cell-2">' + esc(r.nombreProducto) + '<span>' + esc(r.codigoProducto || '—') + '</span></td>'
+    + '<td class="num">' + r.cantidad.toLocaleString('es-PE') + ' ' + esc(r.unidadMedida) + '</td>'
+    + '<td class="num">' + r.saldo.toLocaleString('es-PE') + '</td>'
+    + '<td>' + (r.proveedor
+        ? '<button class="btn btn-sm btn-ghost" onclick="verFacturasProveedorRqc(\'' + jsStr(r.proveedor) + '\')">' + esc(corta(r.proveedor, 28)) + '</button>'
+        : '<span class="muted">—</span>')
+    + '</td>'
+    + '<td>' + rqcEstadoChip(r.estado) + '</td>'
+    + '</tr>').join('');
+
+  $('tRequerimientosHistorico').innerHTML = '<table><thead><tr>'
+    + '<th>Emisión</th><th>Requerimiento</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Saldo</th><th>Proveedor</th><th>Estado</th>'
+    + '</tr></thead><tbody>' + filas + '</tbody></table>';
+
+  const totalPaginas = Math.max(1, Math.ceil(lista.total / lista.porPagina));
+  const inicio = (lista.pagina - 1) * lista.porPagina;
+  const hasta = Math.min(inicio + lista.porPagina, lista.total);
+  $('rqcPaginacion').innerHTML = '<span class="muted small">Mostrando ' + (lista.total ? inicio + 1 : 0) + '–' + hasta + ' de ' + lista.total + '</span>'
+    + (totalPaginas > 1
+      ? '<button class="btn btn-sm btn-ghost"' + (lista.pagina <= 1 ? ' disabled' : '') + ' onclick="irPaginaRequerimientosHistorico(' + (lista.pagina - 1) + ')">‹ Anterior</button>'
+        + '<span class="small">Página ' + lista.pagina + ' de ' + totalPaginas + '</span>'
+        + '<button class="btn btn-sm btn-ghost"' + (lista.pagina >= totalPaginas ? ' disabled' : '') + ' onclick="irPaginaRequerimientosHistorico(' + (lista.pagina + 1) + ')">Siguiente ›</button>'
+      : '');
+}
+
+/**
+ * Cruce con Órdenes de Compra: el historial de requerimientos no trae monto
+ * ni factura -el ERP de requerimientos y el registro de compras de SUNAT son
+ * dos libros distintos-, pero comparten el nombre del proveedor tal cual, así
+ * que esta es la pregunta que sí se puede responder con certeza: "¿cuánto le
+ * hemos facturado en total a este proveedor?".
+ */
+export async function verFacturasProveedorRqc(proveedor) {
+  let r;
+  try {
+    r = await api.resumenOrdenesCompra({ proveedor });
+  } catch (e) {
+    abrirModal(proveedor, '<div class="empty"><strong>No se pudo cargar</strong>' + esc(e.message) + '</div>');
+    return;
+  }
+  const html = r.comprobantes
+    ? '<div class="kpis">'
+      + tarjeta({ c: 'primary', v: r.comprobantes.toLocaleString('es-PE'), k: 'Comprobantes', d: 'En el registro de compras' })
+      + (r.pen.comprobantes ? tarjeta({ c: 'ok', v: soles(r.pen.total), k: 'Valorizado en soles', d: r.pen.comprobantes.toLocaleString('es-PE') + ' comp. · promedio ' + soles(r.pen.ticketPromedio) }) : '')
+      + (r.usd.comprobantes ? tarjeta({ c: 'info', v: dolares(r.usd.total), k: 'Valorizado en dólares', d: r.usd.comprobantes.toLocaleString('es-PE') + ' comp. · promedio ' + dolares(r.usd.ticketPromedio) }) : '')
+      + '</div>'
+    : '<div class="empty"><strong>Sin comprobantes</strong>Este proveedor no aparece en el registro de compras.</div>';
+  abrirModal('Órdenes de compra · ' + proveedor, html);
 }

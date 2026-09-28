@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { CONFIG } from '../config.js';
 import { registrar } from '../db/repos/eventosSeguridad.js';
 
@@ -30,6 +31,9 @@ const intentos = new Map();          // ip -> { n, hasta }
 /** Se limpia sola: sin esto, la tabla crece con cada IP que pasa alguna vez. */
 function purgar(ahora) {
   for (const [ip, e] of intentos) if (e.hasta <= ahora) intentos.delete(ip);
+  // Tope duro por si todas siguen vigentes (muchas IP distintas a la vez):
+  // se sueltan las más viejas antes que dejar crecer la memoria sin fin.
+  for (const ip of intentos.keys()) { if (intentos.size <= 5000) break; intentos.delete(ip); }
 }
 
 export function limitarIntentos({ maximo = CONFIG.limites.intentos, ventanaMs = CONFIG.limites.ventanaMs } = {}) {
@@ -85,6 +89,7 @@ const peticiones = new Map();          // clave -> { n, hasta }
 
 function purgarPeticiones(ahora) {
   for (const [k, e] of peticiones) if (e.hasta <= ahora) peticiones.delete(k);
+  for (const k of peticiones.keys()) { if (peticiones.size <= 10000) break; peticiones.delete(k); }
 }
 
 export function limitarPeticiones({ maximo, ventanaMs, mensaje, nombre = '' }) {
@@ -157,6 +162,8 @@ export function cabeceras(req, res, next) {
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
     "connect-src 'self'",
+    // Mapa de almacenes: panel "Tráfico en vivo (Waze)" = iframe oficial de embed.waze.com (sin key).
+    esAlmacen ? "frame-src 'self' https://embed.waze.com" : "frame-src 'self'",
     esAlmacen ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -179,9 +186,24 @@ export function cabeceras(req, res, next) {
  * existe para el navegador, así que un archivo nuevo en `data/` nace privado.
  */
 export function soloDatosPublicos(req, res, next) {
-  const pedido = decodeURIComponent(req.path).replace(/^\/+/, '');
+  let pedido;
+  try {
+    pedido = decodeURIComponent(req.path).replace(/^\/+/, '');
+  } catch {
+    return res.status(400).json({ error: 'Ruta inválida' });
+  }
+  // `pedido.startsWith('payback/')` por sí solo no alcanza: algo como
+  // "payback/../padron.js" también empieza con "payback/", pero
+  // express.static() lo normaliza y termina sirviendo data/padron.js -el
+  // archivo privado que esta función existe para bloquear-. Si normalizar
+  // cambia la ruta (hay "." o ".." de por medio) o el resultado se sale de
+  // data/, se rechaza antes de mirar la lista de públicos.
+  const normalizado = path.posix.normalize(pedido);
+  if (normalizado !== pedido || normalizado.startsWith('..')) {
+    return res.status(400).json({ error: 'Ruta inválida' });
+  }
   const publico = CONFIG.datosPublicos.some(p =>
-    p.endsWith('/') ? pedido.startsWith(p) : pedido === p);
+    p.endsWith('/') ? normalizado.startsWith(p) : normalizado === p);
   if (publico) return next();
-  res.status(404).json({ error: 'No existe /data/' + pedido });
+  res.status(404).json({ error: 'No existe /data/' + normalizado });
 }

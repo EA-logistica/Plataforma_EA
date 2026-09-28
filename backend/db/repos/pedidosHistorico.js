@@ -30,7 +30,7 @@ export function pedir(area, dni) {
   db().prepare(
     "INSERT INTO pedidos_historico (area, dni, solicitado, estado) VALUES (?, ?, ?, 'Pendiente')"
   ).run(a, String(dni || ''), new Date().toISOString());
-  tocar();
+  tocar('app');
   return { area: a, repetido: false };
 }
 
@@ -40,6 +40,6 @@ export function resolver(id, estado) {
     "UPDATE pedidos_historico SET estado = ? WHERE id = ? AND estado = 'Pendiente'"
   ).run(estado, Number(id));
   if (!r.changes) throw error('No hay un pedido pendiente con ese id.', 404);
-  tocar();
+  tocar('app');
   return { id: Number(id), estado };
 }

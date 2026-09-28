@@ -26,7 +26,7 @@ import {
   entrarSolicitante, pedirAutorizacion, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
   entrarSolicitanteArea, volverAlDni, restaurarSesion
 } from './auth.js';
-import { tabUser, tabAdmin } from './views/tabs.js';
+import { tabUser, tabAdmin, subtabHistorico } from './views/tabs.js';
 import {
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
   agregarParada, editarParada, quitarParada
@@ -34,7 +34,7 @@ import {
 import { consultarTicket, renderMis, cancelarMiSolicitud, pedirHistoricoCompleto } from './views/tickets.js';
 import {
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
-  abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud
+  abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud, confirmarEliminacionSubmit
 } from './views/dispatch.js';
 import {
   renderHistorico, abrirExportarExcel, confirmarExportarExcel,
@@ -57,8 +57,29 @@ import {
   renderExportaciones, abrirNuevaExportacion, editarExportacion, guardarExportacion, borrarExportacionVista
 } from './views/exportaciones.js';
 import {
-  renderRequerimientos, abrirNuevoRequerimiento, editarRequerimiento, guardarRequerimiento, borrarRequerimientoVista
+  renderRequerimientos, abrirNuevoRequerimiento, editarRequerimiento, guardarRequerimiento, borrarRequerimientoVista,
+  renderRequerimientosHistorico, setFiltroRequerimientosHistorico, limpiarFiltroRequerimientosHistorico,
+  irPaginaRequerimientosHistorico, verFacturasProveedorRqc, setEstadoRequerimientosHistorico
 } from './views/requerimientosCompra.js';
+import {
+  renderOrdenesCompra, setFiltroOrdenesCompra, limpiarFiltroOrdenesCompra, irPaginaOrdenesCompra,
+  renderEvolucionProveedorCompra, filtrarOrdenesCompraPorMes, elegirProveedorOrdenesCompra,
+  renderOC, setFiltroOC, limpiarFiltroOC, irPaginaOC, verItemsOC, filtrarOCPorMes, elegirProveedorOC
+} from './views/ordenesCompra.js';
+import {
+  renderProveedores, elegirProveedorSeccion, elegirProveedorIndice, buscarProveedorSeccion, teclaProveedorSeccion,
+  cerrarSugerenciasProveedor, irARegistroDeProveedor, irAOCDeProveedor
+} from './views/proveedores.js';
+import {
+  renderProductos, setFiltroProductos, limpiarFiltroProductos, irPaginaProductos, verRequerimientosProducto,
+  ordenarProductosPorStock, setClaseRotacionProductos, filtrarFamiliaClaseC
+} from './views/productos.js';
+import { renderDashboard } from './views/dashboard.js';
+import {
+  renderMateriaPrima, irACategoriasMateriaPrima, abrirCategoriaMateriaPrima, abrirLineaMateriaPrima,
+  verAlmacenesProductoMateriaPrima, buscarProductosMateriaPrima, cambiarTipoMateriaPrima, verProductosDeAlmacenMateriaPrima,
+  ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima
+} from './views/materiaPrima.js';
 import {
   renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
   guardarServicioLogistica, borrarServicioLogisticaVista
@@ -79,10 +100,10 @@ Object.assign(window, {
   entrarSolicitanteArea, volverAlDni,
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
   agregarParada, editarParada, quitarParada,
-  tabUser, tabAdmin,
+  tabUser, tabAdmin, subtabHistorico,
   consultarTicket, renderMis, cancelarMiSolicitud, pedirHistoricoCompleto,
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
-  abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud,
+  abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud, confirmarEliminacionSubmit,
   renderHistorico, abrirExportarExcel, confirmarExportarExcel,
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico,
   setFiltroKpi, setQKpi, limpiarFiltroKpi,
@@ -97,6 +118,18 @@ Object.assign(window, {
   verModuloAlmacen,
   renderExportaciones, abrirNuevaExportacion, editarExportacion, guardarExportacion, borrarExportacionVista,
   renderRequerimientos, abrirNuevoRequerimiento, editarRequerimiento, guardarRequerimiento, borrarRequerimientoVista,
+  renderRequerimientosHistorico, setFiltroRequerimientosHistorico, limpiarFiltroRequerimientosHistorico,
+  irPaginaRequerimientosHistorico, verFacturasProveedorRqc, setEstadoRequerimientosHistorico,
+  renderOrdenesCompra, setFiltroOrdenesCompra, limpiarFiltroOrdenesCompra, irPaginaOrdenesCompra, renderEvolucionProveedorCompra,
+  filtrarOrdenesCompraPorMes, elegirProveedorOrdenesCompra,
+  renderOC, setFiltroOC, limpiarFiltroOC, irPaginaOC, verItemsOC, filtrarOCPorMes, elegirProveedorOC,
+  renderProveedores, elegirProveedorSeccion, elegirProveedorIndice, buscarProveedorSeccion, teclaProveedorSeccion,
+  cerrarSugerenciasProveedor, irARegistroDeProveedor, irAOCDeProveedor,
+  renderProductos, setFiltroProductos, limpiarFiltroProductos, irPaginaProductos, verRequerimientosProducto, ordenarProductosPorStock,
+  setClaseRotacionProductos, filtrarFamiliaClaseC, renderDashboard,
+  renderMateriaPrima, irACategoriasMateriaPrima, abrirCategoriaMateriaPrima, abrirLineaMateriaPrima,
+  verAlmacenesProductoMateriaPrima, buscarProductosMateriaPrima, cambiarTipoMateriaPrima, verProductosDeAlmacenMateriaPrima,
+  ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima,
   renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
   guardarServicioLogistica, borrarServicioLogisticaVista
 });

@@ -2,6 +2,7 @@ import { $, esc } from '../utils/dom.js';
 import { fechaCorta, soles, solesK, horasEntre, corta } from '../utils/format.js';
 import { DB } from '../api/estado.js';
 import { origenCorto } from './presenters.js';
+import { subtabHistoricoActual } from '../state/historicoSubtab.js';
 
 /**
  * Panel de indicadores: tarjetas KPI y gráficos (barras horizontales y
@@ -14,7 +15,9 @@ let qKpi = '';
 export function setFiltroKpi(d) { filtroKpi = d; renderKpi(); }
 export function setQKpi(v) { qKpi = v || ''; renderKpi(); }
 export function limpiarFiltroKpi() { qKpi = ''; $('qKpi').value = ''; renderKpi(); }
-export function renderKpiSiVisible() { if ($('aKpi').classList.contains('on')) renderKpi(); }
+export function renderKpiSiVisible() {
+  if ($('aHistorico').classList.contains('on') && subtabHistoricoActual() === 'indicadores') renderKpi();
+}
 
 function barras(items, total, clase) {
   if (!items.length) return '<div class="empty" style="padding:26px 0"><strong>Sin datos todavía</strong>Los gráficos se llenan cuando haya servicios registrados.</div>';

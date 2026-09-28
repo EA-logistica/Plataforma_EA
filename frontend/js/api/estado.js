@@ -239,17 +239,74 @@ export const resolverPedidoHistorico = (id, estado) => modificar('/pedidos-histo
 export const listarExportaciones = () => obtener('/exportaciones');
 export const crearExportacion = datos => crear('/exportaciones', datos);
 export const actualizarExportacion = (id, datos) => modificar('/exportaciones/' + id, datos);
-export const borrarExportacion = id => borrar('/exportaciones/' + id);
+export const borrarExportacion = (id, motivo) => borrar('/exportaciones/' + id, { motivo });
 
 export const listarRequerimientos = () => obtener('/requerimientos-compra');
 export const crearRequerimiento = datos => crear('/requerimientos-compra', datos);
 export const actualizarRequerimiento = (id, datos) => modificar('/requerimientos-compra/' + id, datos);
-export const borrarRequerimiento = id => borrar('/requerimientos-compra/' + id);
+export const borrarRequerimiento = (id, motivo) => borrar('/requerimientos-compra/' + id, { motivo });
 
 export const listarServiciosLogistica = () => obtener('/servicios-logistica');
 export const crearServicioLogistica = datos => crear('/servicios-logistica', datos);
 export const actualizarServicioLogistica = (id, datos) => modificar('/servicios-logistica/' + id, datos);
-export const borrarServicioLogistica = id => borrar('/servicios-logistica/' + id);
+export const borrarServicioLogistica = (id, motivo) => borrar('/servicios-logistica/' + id, { motivo });
+
+// Órdenes de compra: registro de compras de SUNAT, cargado una sola vez desde
+// data/compras.js. Solo lectura -no hay crear/actualizar/borrar-.
+function aQuery(f) {
+  const p = new URLSearchParams();
+  Object.entries(f || {}).forEach(([k, v]) => { if (v !== '' && v != null) p.set(k, v); });
+  const s = p.toString();
+  return s ? '?' + s : '';
+}
+export const listarOrdenesCompra = (f) => obtener('/ordenes-compra' + aQuery(f));
+export const resumenOrdenesCompra = (f) => obtener('/ordenes-compra/resumen' + aQuery(f));
+export const proveedoresOrdenesCompra = () => obtener('/ordenes-compra/proveedores');
+export const evolucionProveedorCompra = (proveedor) => obtener('/ordenes-compra/evolucion' + aQuery({ proveedor }));
+
+// Productos (catálogo SKU del ERP, cargado en cada arranque). Solo lectura.
+export const listarProductos = (f) => obtener('/productos' + aQuery(f));
+export const resumenProductos = (f) => obtener('/productos/resumen' + aQuery(f));
+export const resumenRotacionProductos = (f) => obtener('/productos/resumen-rotacion' + aQuery(f));
+export const resumenRotacionPorFamiliaProductos = (f) => obtener('/productos/resumen-rotacion-por-familia' + aQuery(f));
+export const opcionesProductos = () => obtener('/productos/opciones');
+export const requerimientosDeProducto = (codigo) => obtener('/productos/' + encodeURIComponent(codigo) + '/requerimientos');
+
+// Historial de requerimientos de compra del ERP (contraparte de solo lectura
+// de listarRequerimientos, que es lo que admin registra a mano).
+export const listarRequerimientosHistorico = (f) => obtener('/requerimientos-compra-historico' + aQuery(f));
+export const resumenRequerimientosHistorico = (f) => obtener('/requerimientos-compra-historico/resumen' + aQuery(f));
+export const proveedoresRequerimientosHistorico = () => obtener('/requerimientos-compra-historico/proveedores');
+export const opcionesRequerimientosHistorico = () => obtener('/requerimientos-compra-historico/opciones');
+
+// Historial de Órdenes de Compra (OC) del ERP: solo lectura. Documento
+// distinto del registro de compras SUNAT (listarOrdenesCompra): la OC es la
+// orden al proveedor, no la factura.
+export const listarOC = (f) => obtener('/oc' + aQuery(f));
+export const resumenOC = (f) => obtener('/oc/resumen' + aQuery(f));
+export const mesesOC = (f) => obtener('/oc/meses' + aQuery(f));
+export const opcionesOC = () => obtener('/oc/opciones');
+export const proveedoresOC = (f) => obtener('/oc/proveedores' + aQuery(f));
+export const todosLosProveedoresOC = () => obtener('/oc/proveedores/todos');
+// Ficha de un proveedor (SUNAT + OC): RUC, primera/última compra, top de ítems y su costo unitario mes a mes.
+export const perfilProveedor = (proveedor) => obtener('/proveedores/perfil' + aQuery({ proveedor }));
+export const itemsDeOC = (numeroOc) => obtener('/oc/' + encodeURIComponent(numeroOc) + '/items');
+
+// Materia prima: stock valorizado del ERP (foto actual, no histórico). Solo
+// lectura, navegación Categoría -> Línea -> Producto, más el corte por
+// almacén.
+export const tiposMateriaPrima = () => obtener('/materia-prima/tipos');
+export const resumenMateriaPrima = (tipo) => obtener('/materia-prima/resumen' + aQuery({ tipo }));
+export const categoriasMateriaPrima = (tipo) => obtener('/materia-prima/categorias' + aQuery({ tipo }));
+export const almacenesMateriaPrima = (tipo) => obtener('/materia-prima/almacenes' + aQuery({ tipo }));
+export const buscarMateriaPrima = (q) => obtener('/materia-prima/buscar' + aQuery({ q }));
+export const lineasDeCategoriaMateriaPrima = (categoria, tipo) => obtener('/materia-prima/categorias/' + encodeURIComponent(categoria) + '/lineas' + aQuery({ tipo }));
+export const productosDeLineaMateriaPrima = (familia, tipo) => obtener('/materia-prima/lineas/productos' + aQuery({ familia, tipo }));
+export const almacenesDeProductoMateriaPrima = (codigo) => obtener('/materia-prima/productos/' + encodeURIComponent(codigo) + '/almacenes');
+export const productosDeAlmacenMateriaPrima = (almacen, tipo) => obtener('/materia-prima/almacenes/productos' + aQuery({ almacen, tipo }));
+
+// Stock valorizado global (todos los almacenes y tipos de producto): solo para el Dashboard.
+export const resumenStockValorizadoGlobal = () => obtener('/stock-valorizado/resumen');
 
 // Ticket de un solo uso para entrar al módulo de Almacén (otro repositorio,
 // embebido en un iframe propio; ver backend/almacen/acceso.js).

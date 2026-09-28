@@ -1,4 +1,4 @@
-# PLANSA Delivery
+# Plataforma EA
 
 Mensajería y encargos de Plásticos Nacionales: registro de solicitudes,
 trazabilidad del despacho, guías de entrega e indicadores de costo.
@@ -29,7 +29,7 @@ npm run db:reiniciar   # vacía y vuelve a sembrar la base
 Al arrancar imprime por qué direcciones se llega, incluida la de Tailscale:
 
 ```
-  PLANSA Delivery
+  Plataforma EA
   en esta PC   http://localhost:3000
   en la red    http://100.93.169.28:3000   (Tailscale)
   en la red    http://192.168.0.10:3000

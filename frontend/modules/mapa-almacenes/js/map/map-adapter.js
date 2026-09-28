@@ -11,6 +11,13 @@
 //   clearRoute()
 //   fitBounds([[lat,lon],[lat,lon]], padding) / fitToKeys(keySet, padding) / flyTo([lat,lon], zoom)
 //   invalidateSize()
+//   Planificador de paradas:
+//   setStops(stops, { onDragEnd, onClick })    marcadores numerados (S = salida, 1..n)
+//   showPlan(geojson, { color, padding }) / clearPlan() / fitStops(stops, padding)
+//   showSearchPin({lat,lon}, popupEl) / clearSearchPin()
+//   onMapClick(fn({lat,lon})) / setPickMode(bool)
+//   setOverlay(id, { urls, opciones } | null) / refreshOverlays()   capas de tráfico en vivo
+//   getView() -> { lat, lon, zoom }
 import { createLeafletMap } from './leaflet-adapter.js';
 
 const ENGINES = { leaflet: createLeafletMap };

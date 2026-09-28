@@ -186,7 +186,6 @@
     <div class="section-head">
       <div>
         <h2>Nueva solicitud de servicio</h2>
-        <p>La fecha y hora son referenciales; logística confirma la ruta al asignar el transporte.</p>
       </div>
     </div>
 
@@ -317,7 +316,6 @@
     <div class="section-head">
       <div>
         <h2>Seguimiento de un ticket</h2>
-        <p>Escribe solo el número de tu ticket para ver en qué punto está el servicio.</p>
       </div>
     </div>
     <div class="card card-pad trace-box">
@@ -367,16 +365,7 @@
     </div>
 
     <div class="nav-section">
-      <div class="nav-section-title">General</div>
-      <button class="nav-item on" data-atab="bandeja" onclick="tabAdmin('bandeja')">Bandeja de despacho <span class="count" id="cntBandeja">0</span></button>
-      <button class="nav-item" data-atab="historico" onclick="tabAdmin('historico')">Histórico <span class="count" id="cntHist">0</span></button>
-      <button class="nav-item" data-atab="kpi" onclick="tabAdmin('kpi')">Indicadores</button>
-      <button class="nav-item btn-payback" id="btnPayback" data-atab="payback" onclick="tabAdmin('payback')" title="Analizar si conviene motorizado propio">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>
-        </svg>
-        Payback
-      </button>
+      <button class="nav-item on" data-atab="dashboard" onclick="tabAdmin('dashboard')">Dashboard</button>
     </div>
 
     <div class="nav-section nav-group" id="navCompras">
@@ -387,19 +376,47 @@
       <div class="nav-group-body">
         <button class="nav-item" data-atab="almacen" onclick="tabAdmin('almacen')">Control de Almacenes</button>
         <button class="nav-item" data-atab="exportaciones" onclick="tabAdmin('exportaciones')">Exportaciones</button>
+        <button class="nav-item" data-atab="productos" onclick="tabAdmin('productos')">Productos</button>
+        <button class="nav-item" data-atab="materiaPrima" onclick="tabAdmin('materiaPrima')">Materia Prima</button>
         <button class="nav-item" data-atab="requerimientos" onclick="tabAdmin('requerimientos')">Requerimientos de compra</button>
+        <button class="nav-item" data-atab="ordenesCompra" onclick="tabAdmin('ordenesCompra')">Órdenes de compra</button>
+        <button class="nav-item" data-atab="proveedores" onclick="tabAdmin('proveedores')">Proveedores</button>
         <button class="nav-item" data-atab="servicios" onclick="tabAdmin('servicios')">Servicios</button>
       </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">General</div>
+      <button class="nav-item" data-atab="bandeja" onclick="tabAdmin('bandeja')">Bandeja de despacho <span class="count" id="cntBandeja">0</span></button>
+      <button class="nav-item" data-atab="historico" onclick="tabAdmin('historico')">Histórico <span class="count" id="cntHist">0</span></button>
+      <button class="nav-item btn-payback" id="btnPayback" data-atab="payback" onclick="tabAdmin('payback')" title="Analizar si conviene motorizado propio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>
+        </svg>
+        Payback
+      </button>
     </div>
 </nav>
 
 <main class="wrap view" id="viewAdmin">
   <div class="admin-content">
-  <section class="view on" id="aBandeja">
+  <section class="view on" id="aDashboard">
+    <div class="section-head">
+      <div>
+        <h2>Dashboard</h2>
+      </div>
+      <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="renderDashboard()">Actualizar</button>
+      </div>
+    </div>
+    <div class="kpis" id="dashboardHero"></div>
+    <div id="dashboardBody"></div>
+  </section>
+
+  <section class="view" id="aBandeja">
     <div class="section-head">
       <div>
         <h2>Bandeja de despacho</h2>
-        <p>Asigna transporte y tarifa, luego mueve el ticket por el flujo.</p>
       </div>
       <div class="tools">
         <button class="btn btn-ghost btn-sm" onclick="renderBandeja()">Actualizar</button>
@@ -412,81 +429,79 @@
   <section class="view" id="aHistorico">
     <div class="section-head">
       <div>
-        <h2>Histórico de servicios</h2>
+        <h2>Histórico</h2>
       </div>
       <div class="tools">
-        <button class="btn btn-sm" onclick="abrirExportarExcel()">Exportar a Excel</button>
+        <button class="btn btn-sm" id="histBtnExportar" onclick="abrirExportarExcel()">Exportar a Excel</button>
       </div>
     </div>
-    <div id="histMetricsWrap"></div>
-    <div class="filters">
-      <input class="input" id="qHist" placeholder="Persona o DNI" style="width:190px" oninput="filtrarHistorico()">
-      <input class="input" id="histTicket" placeholder="Ticket" style="width:120px" oninput="filtrarHistorico()">
-      <input class="input" id="histDestino" placeholder="Destino" style="width:190px" oninput="filtrarHistorico()">
-      <input class="input" id="histDesde" type="date" title="Desde" style="width:150px" oninput="filtrarHistorico()">
-      <input class="input" id="histHasta" type="date" title="Hasta" style="width:150px" oninput="filtrarHistorico()">
-      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltrosHistorico()">Limpiar filtros</button>
+    <div class="filters" style="margin-bottom:18px">
+      <button class="fchip on" id="histSubListado" onclick="subtabHistorico('listado')">Listado</button>
+      <button class="fchip" id="histSubIndicadores" onclick="subtabHistorico('indicadores')">Indicadores</button>
     </div>
-    <div class="table-wrap" id="tHist"></div>
-  </section>
 
-  <section class="view" id="aKpi">
-    <div class="section-head">
-      <div>
-        <h2>Indicadores</h2>
-        <p id="kpiRango">—</p>
+    <div id="histPanelListado">
+      <div id="histMetricsWrap"></div>
+      <div class="filters">
+        <input class="input" id="qHist" placeholder="Persona o DNI" style="width:190px" oninput="filtrarHistorico()">
+        <input class="input" id="histTicket" placeholder="Ticket" style="width:120px" oninput="filtrarHistorico()">
+        <input class="input" id="histDestino" placeholder="Destino" style="width:190px" oninput="filtrarHistorico()">
+        <input class="input" id="histDesde" type="date" title="Desde" style="width:150px" oninput="filtrarHistorico()">
+        <input class="input" id="histHasta" type="date" title="Hasta" style="width:150px" oninput="filtrarHistorico()">
+        <button class="btn btn-sm btn-ghost" onclick="limpiarFiltrosHistorico()">Limpiar filtros</button>
       </div>
-      <div class="tools" id="fKpi"></div>
+      <div class="table-wrap" id="tHist"></div>
     </div>
-    <div class="filters">
-      <input class="input" id="qKpi" placeholder="Buscar por persona, DNI, área o destino" style="width:280px" oninput="setQKpi(this.value)">
-      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroKpi()">Limpiar búsqueda</button>
-    </div>
-    <div class="kpis" id="kpiCards"></div>
-    <div class="panel">
-      <h3>Gasto por mes</h3>
-      <p class="sub">Lo facturado por mensajería en cada mes del rango.</p>
-      <div id="chMeses"></div>
-    </div>
-    <div class="grid2">
-      <div class="panel">
-        <h3>Servicios por día</h3>
-        <p class="sub">Los últimos 21 días en los que hubo servicios.</p>
-        <div id="chDias"></div>
+
+    <div id="histPanelIndicadores" style="display:none">
+      <div class="section-head" style="margin-bottom:14px">
+        <div>
+          <p id="kpiRango" style="margin:0">—</p>
+        </div>
+        <div class="tools" id="fKpi"></div>
       </div>
-      <div class="panel">
-        <h3>Costo por sede de origen</h3>
-        <p class="sub">Suma valorizada de los servicios concluidos y en tránsito.</p>
-        <div id="chSedes"></div>
+      <div class="filters">
+        <input class="input" id="qKpi" placeholder="Buscar por persona, DNI, área o destino" style="width:280px" oninput="setQKpi(this.value)">
+        <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroKpi()">Limpiar búsqueda</button>
       </div>
-    </div>
-    <div class="grid2">
+      <div class="kpis" id="kpiCards"></div>
       <div class="panel">
-        <h3>Quiénes más solicitan</h3>
-        <p class="sub">Top 8 por número de servicios.</p>
-        <div id="chUsuarios"></div>
+        <h3>Gasto por mes</h3>
+        <div id="chMeses"></div>
       </div>
-      <div class="panel">
-        <h3>Destinos más frecuentes</h3>
-        <p class="sub">Top 8 por número de visitas.</p>
-        <div id="chDestinos"></div>
+      <div class="grid2">
+        <div class="panel">
+          <h3>Servicios por día</h3>
+          <div id="chDias"></div>
+        </div>
+        <div class="panel">
+          <h3>Costo por sede de origen</h3>
+          <div id="chSedes"></div>
+        </div>
       </div>
-    </div>
-    <div class="panel">
-      <h3>Distritos más recurrentes</h3>
-      <p class="sub">A qué distrito de Lima se dirigen más servicios, top 10. A diferencia de "Destinos más frecuentes" (por lugar puntual), esto agrupa por zona.</p>
-      <div id="chDistritos"></div>
-    </div>
-    <div class="grid2">
-      <div class="panel">
-        <h3>Reparto por vehículo</h3>
-        <p class="sub">Solo los tickets registrados en la app: la planilla de 2026 no anotaba el transporte.</p>
-        <div id="chVehiculo"></div>
+      <div class="grid2">
+        <div class="panel">
+          <h3>Quiénes más solicitan</h3>
+          <div id="chUsuarios"></div>
+        </div>
+        <div class="panel">
+          <h3>Destinos más frecuentes</h3>
+          <div id="chDestinos"></div>
+        </div>
       </div>
       <div class="panel">
-        <h3>Tiempos del flujo</h3>
-        <p class="sub">Promedio entre cada paso, en horas. Se llena con los tickets registrados en la app.</p>
-        <div id="chTiempos"></div>
+        <h3>Distritos más recurrentes</h3>
+        <div id="chDistritos"></div>
+      </div>
+      <div class="grid2">
+        <div class="panel">
+          <h3>Reparto por vehículo</h3>
+          <div id="chVehiculo"></div>
+        </div>
+        <div class="panel">
+          <h3>Tiempos del flujo</h3>
+          <div id="chTiempos"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -495,20 +510,17 @@
     <div class="section-head">
       <div>
         <h2>Padrón y accesos</h2>
-        <p>Personal habilitado para solicitar servicios y pedidos de autorización pendientes.</p>
       </div>
     </div>
 
     <div class="grid2" style="align-items:start">
       <div class="panel">
         <h3>Autorizaciones pendientes</h3>
-        <p class="sub">DNI que intentaron ingresar sin estar en el padrón.</p>
         <div id="listaAut"></div>
       </div>
 
       <div class="panel">
         <h3>Pedidos de historial completo</h3>
-        <p class="sub">Áreas que quieren ver más de sus últimos 5 servicios. Al atenderlo, hazle llegar el histórico completo por fuera de la aplicación -ya lo tienes en "Histórico"-.</p>
         <div id="listaPedidosHistorico"></div>
       </div>
 
@@ -544,13 +556,11 @@
     <div class="section-head">
       <div>
         <h2>Usuarios de logística</h2>
-        <p>Cuentas para entrar a esta pantalla. El padrón de personal (quién puede pedir un servicio) se administra aparte, en "Padrón y accesos".</p>
       </div>
     </div>
     <div class="grid2" style="align-items:start">
       <div class="panel">
         <h3>Crear usuario</h3>
-        <p class="sub">Se genera una clave temporal de un solo uso: se muestra una vez y el usuario debe cambiarla al ingresar.</p>
         <div class="field">
           <label for="uNuevoUsuario">Usuario</label>
           <input class="input" id="uNuevoUsuario" placeholder="p. ej. jperez" autocomplete="off">
@@ -576,7 +586,6 @@
     <div class="grid2" style="align-items:start">
       <div class="panel">
         <h3>Credencial de un área</h3>
-        <p class="sub">El segundo paso del ingreso del solicitante: DNI (detecta el área) + esta credencial, compartida por todos los que trabajan ahí. Se siembra una por cada área del padrón; acá se le puede generar una clave temporal nueva o desactivarla.</p>
         <div class="field">
           <label for="caArea">Área</label>
           <input class="input" id="caArea" placeholder="Debe coincidir con un área del padrón, p. ej. Logistica" autocomplete="off">
@@ -601,7 +610,6 @@
     <div class="section-head">
       <div>
         <h2>Payback de la mensajería</h2>
-        <p>Cuánto cuesta tercerizar hoy frente a tener motorizado propio, y en cuánto se recupera la inversión.</p>
       </div>
       <div class="tools">
         <button class="btn btn-ghost btn-sm" onclick="renderPayback()">Recalcular</button>
@@ -614,7 +622,6 @@
     <div class="section-head">
       <div>
         <h2>Control de Almacenes</h2>
-        <p>Mapa de almacenes, radar de evaluación y plano del almacén, integrados en la plataforma.</p>
       </div>
     </div>
     <div class="tabs" id="tabsAlmacen">
@@ -630,7 +637,6 @@
     <div class="section-head">
       <div>
         <h2>Exportaciones</h2>
-        <p>Trazabilidad de las muestras enviadas a proveedores en el exterior.</p>
       </div>
       <div class="tools">
         <button class="btn btn-ghost btn-sm" onclick="renderExportaciones()">Actualizar</button>
@@ -641,11 +647,63 @@
     <div class="table-wrap" id="tExportaciones"></div>
   </section>
 
+  <section class="view" id="aProductos">
+    <div class="section-head">
+      <div>
+        <h2>Productos</h2>
+      </div>
+      <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="renderProductos()">Actualizar</button>
+      </div>
+    </div>
+    <div class="filters">
+      <input class="input" id="prodQ" placeholder="Código o descripción" style="width:260px" oninput="setFiltroProductos()">
+      <select class="select" id="prodFamilia" style="width:170px" onchange="setFiltroProductos()"><option value="">Toda familia</option></select>
+      <select class="select" id="prodTipo" style="width:190px" onchange="setFiltroProductos()"><option value="">Todo tipo</option></select>
+      <select class="select" id="prodEstado" style="width:150px" onchange="setFiltroProductos()"><option value="">Todo estado</option></select>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="prodSoloStock" onchange="setFiltroProductos()"> Solo con stock</label>
+      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroProductos()">Limpiar filtros</button>
+    </div>
+    <div class="filters" style="margin-top:8px">
+      <span class="muted small" style="align-self:center">Rotación (por frecuencia de compra en 12 meses):</span>
+      <div class="tools" id="prodChipsRotacion"></div>
+    </div>
+    <div class="kpis" id="prodMetrics"></div>
+    <div id="prodFamiliasC"></div>
+    <div class="table-wrap" id="tProductos"></div>
+    <div class="tools" id="prodPaginacion" style="justify-content:center;margin-top:10px"></div>
+  </section>
+
+  <section class="view" id="aMateriaPrima">
+    <div class="section-head">
+      <div>
+        <h2>Materia Prima</h2>
+      </div>
+      <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="renderMateriaPrima()">Actualizar</button>
+      </div>
+    </div>
+    <p class="mp-intro">Foto del stock según el último reporte del ERP (no es un histórico). <b>Valorizado</b> = cantidad en stock × costo promedio en US$. Elige el tipo y baja de <b>Categoría</b> a <b>Línea</b> y a <b>Producto</b>, o busca directo por código.</p>
+    <div class="filters mp-filtros">
+      <label class="mp-campo"><span>Tipo</span><select class="select" id="mpTipo" onchange="cambiarTipoMateriaPrima()"></select></label>
+      <label class="mp-campo mp-campo-q"><span>Buscar</span><input class="input" id="mpQ" type="search" placeholder="Código o descripción" autocomplete="off" oninput="buscarProductosMateriaPrima()"></label>
+    </div>
+    <div class="kpis" id="mpMetrics"></div>
+    <div class="panel">
+      <div id="mpBreadcrumb"></div>
+      <div id="mpNivel"></div>
+    </div>
+    <div class="panel">
+      <h3>Almacenes</h3>
+      <p class="sub">Dónde está físicamente el stock de este tipo. Clic en un almacén para ver sus productos.</p>
+      <div id="mpAlmacenes"></div>
+    </div>
+  </section>
+
   <section class="view" id="aRequerimientos">
     <div class="section-head">
       <div>
         <h2>Requerimientos de compra</h2>
-        <p>Materia prima local e importada -resinas, PP, PE-, repuestos y otros pedidos por gestionar.</p>
       </div>
       <div class="tools">
         <button class="btn btn-ghost btn-sm" onclick="renderRequerimientos()">Actualizar</button>
@@ -654,13 +712,129 @@
     </div>
     <div class="kpis" id="reqMetrics"></div>
     <div class="table-wrap" id="tRequerimientos"></div>
+
+    <div class="section-head" style="margin-top:26px">
+      <div>
+        <h3>Historial de requerimientos (ERP)</h3>
+      </div>
+    </div>
+    <div class="filters">
+      <input class="input" id="rqcQ" placeholder="Producto, proveedor, glosa o N° de requerimiento" style="width:260px" oninput="setFiltroRequerimientosHistorico()">
+      <select class="select" id="rqcProveedor" style="width:210px" onchange="setFiltroRequerimientosHistorico()"><option value="">Todos los proveedores</option></select>
+      <select class="select" id="rqcFamilia" style="width:160px" onchange="setFiltroRequerimientosHistorico()"><option value="">Toda familia</option></select>
+      <select class="select" id="rqcLinea" style="width:160px" onchange="setFiltroRequerimientosHistorico()"><option value="">Toda línea</option></select>
+    </div>
+    <div class="filters" style="margin-top:8px">
+      <input class="input" id="rqcDesde" type="date" title="Desde" style="width:150px" onchange="setFiltroRequerimientosHistorico()">
+      <input class="input" id="rqcHasta" type="date" title="Hasta" style="width:150px" onchange="setFiltroRequerimientosHistorico()">
+      <div class="tools" id="rqcChipsEstado"></div>
+      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroRequerimientosHistorico()">Limpiar filtros</button>
+    </div>
+    <div class="kpis" id="rqcMetrics"></div>
+    <div class="table-wrap" id="tRequerimientosHistorico"></div>
+    <div class="tools" id="rqcPaginacion" style="justify-content:center;margin-top:10px"></div>
+  </section>
+
+  <section class="view" id="aOrdenesCompra">
+    <div class="section-head">
+      <div>
+        <h2>Registro de compras (SUNAT)</h2>
+      </div>
+      <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="renderOrdenesCompra()">Actualizar</button>
+      </div>
+    </div>
+    <div class="filters">
+      <input class="input" id="ocQ" placeholder="Proveedor, glosa, documento o RUC" style="width:260px" oninput="setFiltroOrdenesCompra()">
+      <select class="select" id="ocProveedor" style="width:220px" onchange="setFiltroOrdenesCompra()"><option value="">Todos los proveedores</option></select>
+      <input class="input" id="ocDesde" type="date" title="Desde" style="width:150px" onchange="setFiltroOrdenesCompra()">
+      <input class="input" id="ocHasta" type="date" title="Hasta" style="width:150px" onchange="setFiltroOrdenesCompra()">
+      <select class="select" id="ocMoneda" style="width:120px" onchange="setFiltroOrdenesCompra()">
+        <option value="">Soles y US$</option><option value="PEN">Solo soles</option><option value="USD">Solo US$</option>
+      </select>
+      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroOrdenesCompra()">Limpiar filtros</button>
+    </div>
+    <div class="kpis" id="ocMetrics"></div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>Gasto por mes · Soles</h3>
+        <div id="ocMesesPen"></div>
+      </div>
+      <div class="panel">
+        <h3>Gasto por mes · Dólares</h3>
+        <div id="ocMesesUsd"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Proveedores y evolución de precio</h3>
+      <div id="ocProveedores"></div>
+      <div class="filters" style="margin-top:16px">
+        <select class="select" id="ocEvolProveedor" style="width:320px" onchange="renderEvolucionProveedorCompra()"><option value="">Elige un proveedor…</option></select>
+      </div>
+      <div id="ocEvolucion"></div>
+    </div>
+    <div class="table-wrap" id="tOrdenesCompra"></div>
+    <div class="tools" id="ocPaginacion" style="justify-content:center;margin-top:10px"></div>
+
+    <div class="section-head" style="margin-top:26px">
+      <div>
+        <h3 id="ocdTitulo">Historial de Órdenes de Compra (OC)</h3>
+      </div>
+    </div>
+    <div class="filters">
+      <select class="select" id="ocdProveedor" style="width:260px" onchange="setFiltroOC()"><option value="">Todos los proveedores</option></select>
+      <input class="input" id="ocdDesde" type="date" title="Desde" style="width:150px" onchange="setFiltroOC()">
+      <input class="input" id="ocdHasta" type="date" title="Hasta" style="width:150px" onchange="setFiltroOC()">
+      <select class="select" id="ocdMoneda" style="width:130px" onchange="setFiltroOC()">
+        <option value="">Soles y US$</option><option value="PEN">Solo soles</option><option value="USD">Solo US$</option>
+      </select>
+      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroOC()">Limpiar filtros</button>
+    </div>
+    <div class="kpis" id="ocdMetrics"></div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>OC por mes · Soles</h3>
+        <div id="ocdMesesPen"></div>
+      </div>
+      <div class="panel">
+        <h3>OC por mes · Dólares</h3>
+        <div id="ocdMesesUsd"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Proveedores</h3>
+      <div id="ocdProveedores"></div>
+    </div>
+
+    <div class="table-wrap" id="tOC"></div>
+    <div class="tools" id="ocdPaginacion" style="justify-content:center;margin-top:10px"></div>
+  </section>
+
+  <section class="view" id="aProveedores">
+    <div class="section-head">
+      <div>
+        <h2>Proveedores</h2>
+      </div>
+    </div>
+    <div class="prov-buscador">
+      <div class="prov-search">
+        <svg class="prov-search-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input class="input" id="provBuscar" type="search" placeholder="Buscar proveedor por nombre o RUC" autocomplete="off" spellcheck="false"
+          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="provSugerencias" aria-label="Buscar proveedor"
+          oninput="buscarProveedorSeccion(this.value)" onfocus="buscarProveedorSeccion(this.value)" onkeydown="teclaProveedorSeccion(event)" onblur="cerrarSugerenciasProveedor()">
+        <div class="prov-sug" id="provSugerencias" role="listbox"></div>
+      </div>
+      <span class="muted small">Escribe parte del nombre o del RUC · ↑ ↓ para moverte · Enter para abrir la ficha</span>
+    </div>
+    <div id="provCuerpo"></div>
   </section>
 
   <section class="view" id="aServiciosLogistica">
     <div class="section-head">
       <div>
         <h2>Servicios</h2>
-        <p>Mantenimiento, transporte especializado, certificaciones, agenciamiento de aduana y demás servicios que gestiona logística.</p>
       </div>
       <div class="tools">
         <button class="btn btn-ghost btn-sm" onclick="renderServiciosLogistica()">Actualizar</button>
@@ -674,7 +848,7 @@
 </main>
 
 <div class="overlay" id="overlay" onclick="if(event.target===this)cerrarModal()">
-  <div class="modal">
+  <div class="modal" id="modal">
     <div class="modal-head"><h3 id="modalTitle">Detalle</h3><button class="x" onclick="cerrarModal()">×</button></div>
     <div class="modal-body" id="modalBody"></div>
   </div>

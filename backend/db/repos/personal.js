@@ -71,7 +71,7 @@ export function agregar({ dni, nombre, cargo, area }) {
 
     // Dar de alta a alguien aprueba de paso su pedido de autorización.
     base.prepare("UPDATE autorizaciones SET estado = 'Aprobada' WHERE dni = ? AND estado = 'Pendiente'").run(doc);
-    tocar();
+    tocar('app');
     return porDocumento(doc);
   });
 }
@@ -80,7 +80,7 @@ export function quitar(doc) {
   const d = normalizarDoc(doc);
   const r = db().prepare('DELETE FROM personal WHERE dni = ?').run(d);
   if (!r.changes) throw error('No hay nadie con el documento ' + d + ' en el padrón.', 404);
-  tocar();
+  tocar('app');
   return { dni: d };
 }
 
@@ -101,7 +101,7 @@ export function cargarPadronOficial(personas) {
       const r = insertar.run(normalizarDoc(p.dni), p.nombre, p.cargo || '', p.area || '', 'padron', ahora);
       n += r.changes;
     }
-    tocar();
+    tocar('app');
     return n;
   });
 }

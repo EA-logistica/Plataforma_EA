@@ -27,6 +27,12 @@
       </div>
     </header>
 
+    <nav class="sb-tabs" role="tablist" aria-label="Secciones">
+      <button type="button" role="tab" id="tabBtnAlm" aria-selected="true" aria-controls="tabAlmacenes" class="on" data-tab="almacenes">Almacenes</button>
+      <button type="button" role="tab" id="tabBtnRutas" aria-selected="false" aria-controls="tabRutas" data-tab="rutas">Rutas y camiones</button>
+    </nav>
+
+    <div id="tabAlmacenes" role="tabpanel" aria-labelledby="tabBtnAlm" class="sb-tab">
     <div class="search">
       <input id="q" type="search" autocomplete="off" placeholder="Buscar nombre, dirección, distrito o código…" aria-label="Buscar almacén" role="combobox" aria-expanded="false" aria-controls="suggest">
       <ul id="suggest" class="suggest" role="listbox" hidden></ul>
@@ -46,6 +52,64 @@
       </div>
       <ul id="results" class="results"></ul>
     </section>
+    </div>
+
+    <div id="tabRutas" role="tabpanel" aria-labelledby="tabBtnRutas" class="sb-tab planner" hidden>
+      <section class="pl-block">
+        <h2 class="pl-h">1 · Buscar dirección o lugar</h2>
+        <div class="search pl-search" id="plSearch">
+          <input id="plQ" type="search" autocomplete="off" placeholder="Ej.: Av. Alfredo Mendiola 3900, Los Olivos" aria-label="Buscar dirección o lugar en Perú" role="combobox" aria-expanded="false" aria-controls="plSuggest">
+          <ul id="plSuggest" class="suggest" role="listbox" hidden></ul>
+        </div>
+        <div class="pl-quick">
+          <button type="button" class="btn" data-pl="pick" aria-pressed="false">📍 Marcar paradas en el mapa</button>
+          <select id="plWarehouse" class="pl-select" aria-label="Agregar un almacén como parada"></select>
+        </div>
+      </section>
+
+      <section class="pl-block">
+        <h2 class="pl-h">2 · Paradas <em id="plStopCount"></em>
+          <span class="pl-h-acts">
+            <button type="button" class="link-btn" data-pl="fit">Encuadrar</button>
+            <button type="button" class="link-btn" data-pl="start" title="Insertar la planta como punto de salida">+ Planta</button>
+            <button type="button" class="link-btn" data-pl="clear">Limpiar</button>
+          </span>
+        </h2>
+        <ol id="plStops" class="pl-stops"></ol>
+        <div class="pl-row">
+          <button type="button" class="btn" data-pl="optimize" title="Reordena las paradas para el menor tiempo total (la salida queda fija)">Optimizar orden</button>
+          <button type="button" class="btn btn-primary" data-pl="compute">Calcular ruta</button>
+        </div>
+      </section>
+
+      <section class="pl-block">
+        <h2 class="pl-h">3 · Programación del camión</h2>
+        <form id="plForm" class="pl-form" autocomplete="off">
+          <label>Placa<input name="placa" maxlength="12" placeholder="ABC-123"></label>
+          <label>Conductor<input name="conductor" maxlength="80" placeholder="Nombre"></label>
+          <label class="span2">Nombre del viaje<input name="nombre" maxlength="80" placeholder="Opcional · p. ej. Reparto Lima Norte"></label>
+          <label>Fecha<input name="fecha" type="date"></label>
+          <label>Hora de salida<input name="salida" type="time" step="300"></label>
+          <label>Fin de jornada<input name="finJornada" type="time" step="300"></label>
+          <label>Vehículo<select name="perfil"><option value="auto">Automóvil / furgón</option><option value="camion">Camión (requiere ORS)</option></select></label>
+          <label class="span2 pl-check"><input type="checkbox" name="regreso"> Regresar al punto de salida al terminar</label>
+        </form>
+        <div class="pl-row">
+          <button type="button" class="btn" data-pl="new" hidden>Nuevo viaje</button>
+          <button type="button" class="btn btn-primary" data-pl="save">Guardar viaje</button>
+        </div>
+      </section>
+
+      <section class="pl-block">
+        <h2 class="pl-h">4 · Ruta, horario y navegación</h2>
+        <div id="plResult" aria-live="polite"></div>
+      </section>
+
+      <section class="pl-block">
+        <h2 class="pl-h">Viajes programados</h2>
+        <ul id="plViajes" class="pl-trips"></ul>
+      </section>
+    </div>
 
     <footer class="sb-foot" id="sourceNote"></footer>
   </aside>
@@ -65,7 +129,24 @@
         <button type="button" data-color="modalidad" class="on">Modalidad</button>
         <button type="button" data-color="band">Tiempo a planta</button>
       </span>
+      <button type="button" class="tb-btn" id="trafficBtn" aria-controls="trafficPanel">🚦 Tráfico</button>
+      <button type="button" class="tb-badge" id="trafficBadge" title="Fuente de tráfico activa">Tráfico: estimado</button>
     </div>
+
+    <div class="traffic-panel" id="trafficPanel" hidden aria-label="Tráfico"></div>
+
+    <aside class="waze-panel" id="wazePanel" hidden aria-label="Tráfico en vivo · Waze">
+      <header>
+        <b>Tráfico en vivo · Waze</b>
+        <span>
+          <button type="button" class="btn sm" data-wz="recenter" title="Centrar Waze en la vista actual del mapa">Centrar aquí</button>
+          <button type="button" class="btn sm" data-wz="size">Ampliar</button>
+          <button type="button" class="icon-btn" data-wz="close" aria-label="Cerrar">✕</button>
+        </span>
+      </header>
+      <iframe title="Mapa en vivo de Waze" loading="lazy" allow="geolocation" src="about:blank"></iframe>
+      <footer>Datos en vivo de la comunidad Waze (gratuito). Independiente del cálculo de ETA.</footer>
+    </aside>
 
     <div class="legend" id="legend"></div>
     <div class="map-status" id="status" hidden></div>

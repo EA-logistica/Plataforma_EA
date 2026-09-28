@@ -3,6 +3,10 @@ import { fechaHora } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import { sesion } from '../state/sessionState.js';
 import * as archivos from '../api/adjuntos.js';
+// Import circular intencional, igual que el de render.js en dispatch.js: es
+// seguro porque confirmarEliminacion solo se invoca desde un manejador de
+// clic (eliminarAdjunto), nunca durante la carga inicial de los módulos.
+import { confirmarEliminacion } from './dispatch.js';
 
 /**
  * Guía / documento de entrega de cada viaje.
@@ -106,8 +110,14 @@ export async function abrirAdjunto(id) {
 }
 
 /** Elimina un adjunto (expuesto como window.eliminarAdjunto). */
-export async function eliminarAdjunto(id, ticketId) {
-  await archivos.eliminar(id);
-  toast('Adjunto eliminado', 'Se quitó el documento de ' + ticketId + '.', 'warn');
-  await refrescarAdjuntos(ticketId, true);
+export function eliminarAdjunto(id, ticketId) {
+  confirmarEliminacion({
+    titulo: 'Eliminar adjunto',
+    mensaje: 'Se va a quitar este documento de ' + ticketId + '. No se puede deshacer.',
+    onConfirmar: async motivo => {
+      await archivos.eliminar(id, motivo);
+      toast('Adjunto eliminado', 'Se quitó el documento de ' + ticketId + '.', 'warn');
+      await refrescarAdjuntos(ticketId, true);
+    }
+  });
 }

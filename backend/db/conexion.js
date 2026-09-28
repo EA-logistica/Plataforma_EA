@@ -31,6 +31,19 @@ export function abrir() {
   bd.exec('PRAGMA foreign_keys = ON');
   // Espera en vez de fallar si otra escritura tiene la base tomada.
   bd.exec('PRAGMA busy_timeout = 5000');
+  // Con WAL, NORMAL es seguro contra corrupción (solo un corte de luz puede
+  // perder la última transacción confirmada) y ahorra un fsync por cada
+  // escritura: con 50 personas registrando, ese fsync es lo que más tarda.
+  bd.exec('PRAGMA synchronous = NORMAL');
+  // 64 MB de caché de páginas (el default son 2 MB): la base entera ronda los
+  // 30 MB, así que queda en memoria y los agregados no vuelven al disco.
+  bd.exec('PRAGMA cache_size = -65536');
+  // GROUP BY / DISTINCT / ORDER BY sin índice arman b-trees temporales;
+  // en memoria en vez de en un archivo temporal.
+  bd.exec('PRAGMA temp_store = MEMORY');
+  // mmap_size queda en 0 a propósito: con la caché de arriba la base ya vive
+  // en memoria, y en Windows (y en una carpeta de OneDrive) un archivo
+  // mapeado complica que otro proceso lo copie o lo sincronice.
 
   const esquema = fs.readFileSync(path.join(import.meta.dirname, 'esquema.sql'), 'utf8');
   bd.exec(esquema);
@@ -47,7 +60,12 @@ export function abrir() {
 }
 
 export function cerrar() {
-  if (bd) { bd.close(); bd = null; }
+  if (!bd) return;
+  // Estadísticas para el planificador y el WAL volcado a la base principal
+  // antes de cerrar: el archivo -wal no queda creciendo entre arranques.
+  try { bd.exec('PRAGMA optimize'); bd.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (_) { /* best effort */ }
+  bd.close();
+  bd = null;
 }
 
 /** La conexión ya abierta. Falla claro si alguien la pide antes de tiempo. */

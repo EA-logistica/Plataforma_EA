@@ -12,10 +12,18 @@ import { registrar as registrarEvento } from '../db/repos/eventosSeguridad.js';
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
 
+// Hash de relleno con el mismo costo (N=32768) que uno real: sin esto,
+// `verificarHash` solo corre cuando el usuario SÍ existe (el `||` de abajo
+// corta antes), y esa diferencia de tiempo -scrypt real tarda decenas de ms;
+// saltárselo, prácticamente nada- deja adivinar qué usuarios existen con
+// solo cronometrar la respuesta, aunque el mensaje de error sea igual.
+const HASH_FICTICIO = '32768:8:1:' + '0'.repeat(32) + ':' + '0'.repeat(128);
+
 /** `req` es opcional (solo para la auditoría); nunca hace falta para la lógica en sí. */
 export function ingresar(usuario, clave, req) {
   const u = repo.porUsuario(usuario);
-  if (!u || !u.activo || !verificarHash(clave, u.claveHash)) {
+  const claveOk = verificarHash(clave, u && u.activo ? u.claveHash : HASH_FICTICIO);
+  if (!u || !u.activo || !claveOk) {
     // El mismo mensaje de siempre no dice si el problema fue el usuario o la
     // clave; en el log sí conviene distinguir "no existe/inactivo" de "clave
     // mala", porque son dos formas distintas de sospechoso.

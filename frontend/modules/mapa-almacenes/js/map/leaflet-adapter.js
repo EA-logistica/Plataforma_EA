@@ -60,6 +60,13 @@ export function createLeafletMap(container, opts) {
 
   map.createPane('routePane').style.zIndex = 450;
   map.createPane('originPane').style.zIndex = 660;
+  map.createPane('trafficPane').style.zIndex = 350; // sobre las capas base, bajo rutas y marcadores
+  map.getPane('trafficPane').style.pointerEvents = 'none';
+  map.createPane('stopsPane').style.zIndex = 670;
+  const stopsLayer = L.layerGroup().addTo(map);
+  const overlays = new Map();
+  let planLayer = null;
+  let searchPin = null;
 
   const cluster = L.markerClusterGroup({
     maxClusterRadius: 48,
@@ -196,6 +203,104 @@ export function createLeafletMap(container, opts) {
 
     invalidateSize() {
       map.invalidateSize({ pan: false });
+    },
+
+    // ---------- planificador de paradas ----------
+    setStops(stops, { onDragEnd, onClick } = {}) {
+      stopsLayer.clearLayers();
+      stops.forEach((s, i) => {
+        const tipo = i === 0 ? 'mk-stop-start' : '';
+        const marker = L.marker([s.lat, s.lon], {
+          icon: L.divIcon({
+            className: `mk-stop ${tipo}`,
+            html: `<span>${i === 0 ? 'S' : i}</span>`,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+            tooltipAnchor: [0, -14],
+          }),
+          pane: 'stopsPane',
+          draggable: !!onDragEnd,
+          title: s.nombre,
+          alt: s.nombre,
+        }).bindTooltip(`<b>${i === 0 ? 'Salida' : 'Parada ' + i}</b><br>${escapeHtml(s.nombre || '')}${s.eta ? '<br>ETA ' + escapeHtml(s.eta) : ''}`, { direction: 'top', className: 'mk-tip' });
+        if (onDragEnd) marker.on('dragend', () => { const p = marker.getLatLng(); onDragEnd(i, { lat: p.lat, lon: p.lng }); });
+        if (onClick) marker.on('click', () => onClick(i));
+        stopsLayer.addLayer(marker);
+      });
+    },
+
+    showPlan(geometry, { color = '#7A3FD1', padding = {}, fit = true } = {}) {
+      api.clearPlan();
+      const latlngs = geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+      planLayer = L.layerGroup([
+        L.polyline(latlngs, { pane: 'routePane', color: '#0b1a2e', weight: 9, opacity: 0.4, lineCap: 'round', lineJoin: 'round', interactive: false }),
+        L.polyline(latlngs, { pane: 'routePane', color, weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round', interactive: false }),
+      ]).addTo(map);
+      if (fit) map.fitBounds(L.latLngBounds(latlngs), { ...padding, maxZoom: 16, animate: true });
+    },
+
+    clearPlan() {
+      if (planLayer) planLayer.remove();
+      planLayer = null;
+    },
+
+    fitStops(stops, padding = {}) {
+      if (!stops.length) return;
+      if (stops.length === 1) return map.flyTo([stops[0].lat, stops[0].lon], 15, { duration: 0.6 });
+      map.flyToBounds(L.latLngBounds(stops.map((s) => [s.lat, s.lon])), { ...padding, duration: 0.7, maxZoom: 16 });
+    },
+
+    // Pin temporal de un resultado de búsqueda; `popupEl` es un nodo DOM (con sus propios listeners).
+    showSearchPin({ lat, lon }, popupEl) {
+      api.clearSearchPin();
+      searchPin = L.marker([lat, lon], {
+        icon: L.divIcon({ className: 'mk-search', html: '<span></span>', iconSize: [22, 22], iconAnchor: [11, 22], popupAnchor: [0, -20] }),
+        pane: 'stopsPane',
+      }).addTo(map);
+      if (popupEl) searchPin.bindPopup(popupEl, { className: 'pl-popup', closeButton: true, autoPan: true }).openPopup();
+      map.flyTo([lat, lon], Math.max(map.getZoom(), 16), { duration: 0.6 });
+    },
+
+    clearSearchPin() {
+      if (searchPin) searchPin.remove();
+      searchPin = null;
+    },
+
+    onMapClick(fn) {
+      map.on('click', (e) => fn({ lat: e.latlng.lat, lon: e.latlng.lng }));
+    },
+
+    setPickMode(on) {
+      container.classList.toggle('pick-mode', !!on);
+    },
+
+    // Capas superpuestas (tráfico en vivo). def = { urls, opciones } | null para quitarla.
+    setOverlay(id, def) {
+      if (overlays.has(id)) {
+        overlays.get(id).remove();
+        overlays.delete(id);
+      }
+      if (!def) return;
+      const tiles = def.urls.map((url) => L.tileLayer(url, { pane: 'trafficPane', ...def.opciones, baseUrl: url }));
+      const layer = tiles.length === 1 ? tiles[0] : L.layerGroup(tiles);
+      layer.addTo(map);
+      overlays.set(id, layer);
+    },
+
+    // Fuerza a pedir de nuevo las teselas superpuestas (tráfico que cambia cada pocos minutos).
+    refreshOverlays() {
+      const bust = Date.now();
+      overlays.forEach((layer) => {
+        const list = [];
+        if (layer instanceof L.TileLayer) list.push(layer);
+        else layer.eachLayer((l) => list.push(l));
+        list.forEach((l) => l.setUrl(`${l.options.baseUrl}${l.options.baseUrl.includes('?') ? '&' : '?'}t=${bust}`));
+      });
+    },
+
+    getView() {
+      const c = map.getCenter();
+      return { lat: c.lat, lon: c.lng, zoom: map.getZoom() };
     },
   };
   return api;

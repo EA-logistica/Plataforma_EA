@@ -4,6 +4,7 @@ import { toast } from '../utils/toast.js';
 import { DB, exportarExcel } from '../api/estado.js';
 import { chipEstado, origenCorto, vehiculoHTML } from './presenters.js';
 import { abrirModal, cerrarModal } from './dispatch.js';
+import { subtabHistoricoActual } from '../state/historicoSubtab.js';
 
 /**
  * Histórico de servicios: tabla filtrable y paginada, más exportación a Excel.
@@ -21,7 +22,7 @@ let paginaActual = 1;
 
 /** Repinta solo si la pestaña está a la vista, como hace el panel de indicadores. */
 export function renderHistoricoSiVisible() {
-  if ($('aHistorico').classList.contains('on')) renderHistorico();
+  if ($('aHistorico').classList.contains('on') && subtabHistoricoActual() === 'listado') renderHistorico();
 }
 
 function listaFiltrada() {

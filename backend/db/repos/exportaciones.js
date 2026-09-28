@@ -67,7 +67,7 @@ export function crear(datos, creadoPor) {
     + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(f.fecha_envio, f.oc, f.costo_envio, f.descripcion, f.pais_destino, f.fecha_llegada_proveedor,
         f.motivo, f.transportista, f.tracking, f.estado, f.responsable, f.notas, String(creadoPor || ''));
-  tocar();
+  tocar('app');
   return porId(r.lastInsertRowid);
 }
 
@@ -79,13 +79,13 @@ export function actualizar(id, datos) {
     + 'fecha_llegada_proveedor=?, motivo=?, transportista=?, tracking=?, estado=?, responsable=?, notas=? WHERE id=?'
   ).run(f.fecha_envio, f.oc, f.costo_envio, f.descripcion, f.pais_destino, f.fecha_llegada_proveedor,
         f.motivo, f.transportista, f.tracking, f.estado, f.responsable, f.notas, Number(id));
-  tocar();
+  tocar('app');
   return porId(id);
 }
 
 export function eliminar(id) {
   const r = db().prepare('DELETE FROM exportaciones WHERE id = ?').run(Number(id));
   if (!r.changes) throw error('No existe la exportación ' + id + '.', 404);
-  tocar();
+  tocar('app');
   return { id: Number(id) };
 }

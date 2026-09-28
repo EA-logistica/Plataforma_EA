@@ -53,8 +53,17 @@ export const CONFIG = {
   archivos: {
     /** 15 MB por archivo. */
     tamanoMaximo: 15 * 1024 * 1024,
-    /** Se admiten imágenes y PDF: es una guía de entrega, no un repositorio. */
-    tiposAceptados: [/^image\//, /^application\/pdf$/]
+    /**
+     * Lista cerrada, no un patrón "cualquier image/*": ese patrón dejaba
+     * pasar "image/svg+xml", que ni `extension()` ni `coincideConFirma()`
+     * (backend/middleware/subida.js) saben tratar -su "sin firma conocida,
+     * no se bloquea de más" es justo el hueco- y que un navegador ejecuta
+     * como HTML/JS al abrirlo, aunque el servidor lo sirva como "guía de
+     * entrega". Cada tipo de esta lista tiene su verificación de firma y su
+     * extensión fija en subida.js; un tipo nuevo debe agregarse en los tres
+     * lugares a la vez, no solo aquí.
+     */
+    tiposAceptados: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif', 'application/pdf']
   },
 
   limites: {

@@ -55,7 +55,7 @@ export function pedir(doc, datos = {}) {
     "INSERT INTO autorizaciones (dni, apellidos, nombres, celular, email, area, solicitado, estado) "
     + "VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente')"
   ).run(dni, apellidos, nombres, celular, email, area, new Date().toISOString());
-  tocar();
+  tocar('app');
   return { dni, repetido: false };
 }
 
@@ -66,6 +66,6 @@ export function resolver(doc, estado) {
     "UPDATE autorizaciones SET estado = ? WHERE dni = ? AND estado = 'Pendiente'"
   ).run(estado, dni);
   if (!r.changes) throw error('No hay un pedido pendiente para el documento ' + dni + '.', 404);
-  tocar();
+  tocar('app');
   return { dni, estado };
 }

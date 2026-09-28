@@ -16,7 +16,7 @@ import { handleApi } from './almacen/src/routes/api.js';
 import { sendError } from './almacen/src/lib/http.js';
 
 /**
- * Servidor de PLANSA Delivery.
+ * Servidor de Plataforma EA.
  *
  * Sirve dos cosas: la API en /api y la aplicación del navegador. Está pensado
  * para correr en la red interna de la planta o por Tailscale, no expuesto a
@@ -38,6 +38,27 @@ export function crearApp() {
   app.set('trust proxy', 'loopback');
 
   app.use(cabeceras);
+
+  // Blindaje contra un desajuste de decodificación entre cómo Express hace
+  // calzar `app.use('/modules', ...)` / `app.use('/almacen', ...)` (compara
+  // el path tal cual llega, sin decodificar "%XX") y cómo `express.static`
+  // resuelve el archivo en disco más abajo (sí decodifica antes de buscarlo).
+  // Sin esto, "/%6dodules/almacen-los-olivos/layout...html" no calza con el
+  // prefijo "/modules" -así que se salta exigirSesionAlmacen por completo-,
+  // pero de todos modos el estático general de la línea de abajo lo decodifica
+  // a "/modules/..." y lo sirve sin sesión. Se rechaza cualquier pedido cuyo
+  // PRIMER segmento decodificado sea "modules" o "almacen" pero no venga ya
+  // escrito así -lo demás del path (p.ej. espacios en el nombre de archivo)
+  // sigue codificándose normal, no se toca-.
+  app.use((req, res, next) => {
+    const primerSegmento = req.path.split('/')[1] || '';
+    let decodificado;
+    try { decodificado = decodeURIComponent(primerSegmento); } catch { return res.status(400).end('Ruta inválida'); }
+    if (decodificado !== primerSegmento && (decodificado === 'modules' || decodificado === 'almacen')) {
+      return res.status(400).json({ error: 'Ruta inválida' });
+    }
+    next();
+  });
 
   // El estado completo ronda el megabyte con el histórico cargado, y se pide
   // cada vez que alguien abre la pantalla. Comprimido viaja una fracción de
@@ -78,6 +99,12 @@ export function crearApp() {
   app.use('/modules', exigirSesionAlmacen);
 
   // --- estáticos ---
+  // Librerías de terceros (Leaflet): no cambian entre versiones de la app,
+  // así que se cachean una semana en vez de revalidarse en cada carga -con 50
+  // navegadores abriendo el mapa, son decenas de peticiones menos por
+  // pantalla-. Lo propio (js/, css/) sigue revalidando por ETag, porque cambia
+  // con cada actualización y no lleva la versión en el nombre.
+  app.use('/vendor', express.static(path.join(CONFIG.estaticos.frontend, 'vendor'), { maxAge: '7d' }));
   // frontend/ es la raíz: lo que pida el navegador sale de ahí.
   app.use(express.static(CONFIG.estaticos.frontend, { index: 'index.html' }));
 
@@ -118,6 +145,14 @@ function direccionesDeRed(puerto) {
 }
 
 export function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, silencioso = false } = {}) {
+  // Un error de programación en una sola petición no debe tumbar el servidor
+  // para las otras 49 personas conectadas: Express ya atrapa lo síncrono y
+  // asinc() lo asíncrono; esto es la última red para lo que se escape (un
+  // callback de un flujo, una promesa olvidada), que queda en el log.
+  if (!process.listenerCount('unhandledRejection')) {
+    process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
+  }
+
   abrir();
   fs.mkdirSync(CONFIG.subidas, { recursive: true });
   sembrar({ silencioso });
@@ -126,20 +161,33 @@ export function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, silencioso
   const servidor = app.listen(puerto, host, () => {
     if (silencioso) return;
     const dir = servidor.address();
-    console.log('\n  PLANSA Delivery');
+    console.log('\n  Plataforma EA');
     console.log('  en esta PC   http://localhost:' + dir.port);
     for (const url of direccionesDeRed(dir.port)) console.log('  en la red    ' + url);
     console.log('  base         ' + CONFIG.baseDatos);
     console.log('  subidas      ' + CONFIG.subidas + '\n');
   });
 
-  const apagar = () => {
-    servidor.close(() => { cerrar(); process.exit(0); });
-    // Si alguna conexión se resiste, no dejamos el proceso colgado.
-    setTimeout(() => process.exit(0), 3000).unref();
+  // Apagado ordenado: dejar de aceptar, cerrar las conexiones keep-alive
+  // ociosas (sin esto, el sondeo de cada navegador mantenía el servidor
+  // abierto y SIEMPRE se llegaba al exit forzado del timeout, que salía sin
+  // cerrar la base ni volcar el WAL) y cerrar SQLite. El timeout sigue como
+  // red de seguridad, pero ahora también cierra la base.
+  let apagando = false;
+  const apagar = senal => {
+    if (apagando) return;
+    apagando = true;
+    if (!silencioso) console.log('\n  ' + senal + ': cerrando…');
+    const salir = codigo => { try { cerrar(); } catch (_) { /* ya cerrada */ } process.exit(codigo); };
+    servidor.close(() => salir(0));
+    servidor.closeIdleConnections?.();
+    setTimeout(() => { servidor.closeAllConnections?.(); salir(0); }, 3000).unref();
   };
-  process.on('SIGINT', apagar);
-  process.on('SIGTERM', apagar);
+  process.on('SIGINT', () => apagar('SIGINT'));
+  process.on('SIGTERM', () => apagar('SIGTERM'));
+  // En Windows, cerrar la ventana de consola del .bat llega como SIGHUP: sin
+  // esto el proceso moría sin cerrar la base.
+  process.on('SIGHUP', () => apagar('SIGHUP'));
 
   return servidor;
 }

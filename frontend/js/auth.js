@@ -300,10 +300,11 @@ function abrirVista(tipo) {
     $('viewAdmin').classList.add('on');
     $('viewUser').classList.remove('on');
     aplicarPermisosAdmin();
-    // Al entrar, lo primero que ve admin son sus indicadores -no la bandeja
-    // vacía-: es el panorama completo antes de ponerse a trabajar un ticket
-    // puntual.
-    tabAdmin('kpi');
+    // Al entrar, lo primero que ve admin es el Dashboard -no la bandeja
+    // vacía-: el panorama de todos los módulos antes de ponerse a trabajar un
+    // ticket puntual. Si la sesión es de "seguimiento" (no admin), tabAdmin()
+    // igual la manda a la bandeja -Dashboard es solo de admin-.
+    tabAdmin('dashboard');
     renderTodo();
   }
 }

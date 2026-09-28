@@ -89,6 +89,7 @@ export function renderWarehouseDetail(container, item, origin, ctx) {
       <button type="button" class="btn btn-primary" data-act="route" ${d && origin.ubicacion ? '' : 'disabled'}>Ver ruta</button>
       <button type="button" class="btn" data-act="locate" ${d ? '' : 'disabled'}>Ver ubicación</button>
       <button type="button" class="btn" data-act="ficha">Abrir ficha</button>
+      <button type="button" class="btn" data-act="add-stop" ${d ? '' : 'disabled'} title="Agregar este almacén a las paradas del planificador de rutas">＋ Parada</button>
     </div>
 
     ${routeBlock(item, origin, ctx)}

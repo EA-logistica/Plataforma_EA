@@ -1,6 +1,8 @@
 import { $ } from '../utils/dom.js';
 import { sesion } from '../state/sessionState.js';
+import { setSubtabHistoricoActual } from '../state/historicoSubtab.js';
 import { renderMis, consultarTicket } from './tickets.js';
+import { renderDashboard } from './dashboard.js';
 import { renderKpi } from './kpi.js';
 import { renderHistorico } from './history.js';
 import { renderPadron } from './roster.js';
@@ -8,7 +10,11 @@ import { renderPayback } from './payback/vista.js';
 import { renderUsuarios } from './usuarios.js';
 import { renderCredencialesArea } from './credencialesArea.js';
 import { renderExportaciones } from './exportaciones.js';
-import { renderRequerimientos } from './requerimientosCompra.js';
+import { renderRequerimientos, renderRequerimientosHistorico } from './requerimientosCompra.js';
+import { renderOrdenesCompra, renderOC } from './ordenesCompra.js';
+import { renderProductos } from './productos.js';
+import { renderMateriaPrima } from './materiaPrima.js';
+import { renderProveedores } from './proveedores.js';
 import { renderServiciosLogistica } from './serviciosLogistica.js';
 import { abrirAlmacen } from './almacen.js';
 import { cerrarMenu } from '../ui/sidebar.js';
@@ -24,10 +30,10 @@ export function tabUser(k) {
   if (k === 'seguimiento' && $('qTicket').value) consultarTicket();
 }
 
-/** Pestañas reservadas a rol admin: indicadores, payback, padrón, usuarios y el grupo de compras/logística. */
+/** Pestañas reservadas a rol admin: dashboard, payback, padrón, usuarios y el grupo de compras/logística. */
 const TABS_SOLO_ADMIN = [
-  'kpi', 'payback', 'padron', 'usuarios',
-  'almacen', 'exportaciones', 'requerimientos', 'servicios'
+  'dashboard', 'payback', 'padron', 'usuarios',
+  'almacen', 'exportaciones', 'productos', 'materiaPrima', 'requerimientos', 'ordenesCompra', 'proveedores', 'servicios'
 ];
 
 /**
@@ -44,8 +50,23 @@ export function aplicarPermisosAdmin() {
   $('btnMenuPadron').style.display = esAdmin ? '' : 'none';
   $('btnMenuUsuarios').style.display = esAdmin ? '' : 'none';
   $('navCompras').style.display = esAdmin ? '' : 'none';
-  document.querySelectorAll('[data-atab="kpi"], [data-atab="payback"]')
+  document.querySelectorAll('[data-atab="dashboard"], [data-atab="payback"]')
     .forEach(b => { b.style.display = esAdmin ? '' : 'none'; });
+  // "Indicadores" ya no es una pestaña aparte -es una sub-pestaña dentro de
+  // Histórico, que sí ve seguimiento- así que el permiso se aplica al botón
+  // del sub-tab, no a toda la sección.
+  $('histSubIndicadores').style.display = esAdmin ? '' : 'none';
+}
+
+/** Sub-pestañas dentro de "Histórico": Listado (la tabla) e Indicadores (los gráficos). */
+export function subtabHistorico(k) {
+  setSubtabHistoricoActual(k);
+  $('histSubListado').classList.toggle('on', k === 'listado');
+  $('histSubIndicadores').classList.toggle('on', k === 'indicadores');
+  $('histPanelListado').style.display = k === 'listado' ? '' : 'none';
+  $('histPanelIndicadores').style.display = k === 'indicadores' ? '' : 'none';
+  $('histBtnExportar').style.display = k === 'listado' ? '' : 'none';
+  if (k === 'listado') renderHistorico(); else renderKpi();
 }
 
 /**
@@ -60,26 +81,36 @@ export function tabAdmin(k) {
   if (TABS_SOLO_ADMIN.includes(k) && sesion && sesion.rol !== 'admin') k = 'bandeja';
 
   document.querySelectorAll('[data-atab]').forEach(b => b.classList.toggle('on', b.dataset.atab === k));
+  $('aDashboard').classList.toggle('on', k === 'dashboard');
   $('aBandeja').classList.toggle('on', k === 'bandeja');
   $('aHistorico').classList.toggle('on', k === 'historico');
-  $('aKpi').classList.toggle('on', k === 'kpi');
   $('aPadron').classList.toggle('on', k === 'padron');
   $('aUsuarios').classList.toggle('on', k === 'usuarios');
   $('aPayback').classList.toggle('on', k === 'payback');
   $('aAlmacen').classList.toggle('on', k === 'almacen');
   $('aExportaciones').classList.toggle('on', k === 'exportaciones');
+  $('aProductos').classList.toggle('on', k === 'productos');
+  $('aMateriaPrima').classList.toggle('on', k === 'materiaPrima');
   $('aRequerimientos').classList.toggle('on', k === 'requerimientos');
+  $('aOrdenesCompra').classList.toggle('on', k === 'ordenesCompra');
+  $('aProveedores').classList.toggle('on', k === 'proveedores');
   $('aServiciosLogistica').classList.toggle('on', k === 'servicios');
   // El botón de payback vive fuera de la fila de pestañas, así que se marca aparte.
   $('btnPayback').classList.toggle('on', k === 'payback');
-  if (k === 'kpi') renderKpi();
-  if (k === 'historico') renderHistorico();
+  if (k === 'dashboard') renderDashboard();
+  // Al entrar a Histórico siempre se ve el Listado primero -Indicadores es un
+  // clic aparte-, sin importar en cuál sub-pestaña se había quedado antes.
+  if (k === 'historico') subtabHistorico('listado');
   if (k === 'padron') renderPadron();
   if (k === 'usuarios') { renderUsuarios(); renderCredencialesArea(); }
   if (k === 'payback') renderPayback();
   if (k === 'almacen') abrirAlmacen();
   if (k === 'exportaciones') renderExportaciones();
-  if (k === 'requerimientos') renderRequerimientos();
+  if (k === 'productos') renderProductos();
+  if (k === 'materiaPrima') renderMateriaPrima();
+  if (k === 'requerimientos') { renderRequerimientos(); renderRequerimientosHistorico(); }
+  if (k === 'ordenesCompra') { renderOrdenesCompra(); renderOC(); }
+  if (k === 'proveedores') renderProveedores();
   if (k === 'servicios') renderServiciosLogistica();
   cerrarMenu();
   cerrarMenuCuenta();

@@ -50,7 +50,7 @@ export function crear({ area, usuario, claveHash, creadoPor }) {
   db().prepare(
     'INSERT INTO credenciales_area (area, usuario, clave_hash, creado_por, creado_en) VALUES (?, ?, ?, ?, ?)'
   ).run(a, nombre, claveHash, String(creadoPor || ''), new Date().toISOString());
-  tocar();
+  tocar('app');
   return sinClave(porArea(a));
 }
 
@@ -59,12 +59,12 @@ export function cambiarClave(area, claveHash, { debeCambiar }) {
     'UPDATE credenciales_area SET clave_hash = ?, debe_cambiar_clave = ? WHERE area = ?'
   ).run(claveHash, debeCambiar ? 1 : 0, String(area));
   if (!r.changes) throw error('No existe credencial para el área "' + area + '".', 404);
-  tocar();
+  tocar('app');
 }
 
 export function cambiarEstado(area, activo) {
   const r = db().prepare('UPDATE credenciales_area SET activo = ? WHERE area = ?').run(activo ? 1 : 0, String(area));
   if (!r.changes) throw error('No existe credencial para el área "' + area + '".', 404);
-  tocar();
+  tocar('app');
   return sinClave(porArea(area));
 }

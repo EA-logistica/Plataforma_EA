@@ -456,10 +456,13 @@ try {
   ok(delTicket.datos.length === 2, 'con sesión, se listan los adjuntos de un ticket');
 
   ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id)).status === 401, 'borrar uno sí exige sesión');
-  ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id, undefined, tokenAdmin)).status === 200, 'se puede borrar un adjunto');
+  ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id, {}, tokenAdmin)).status === 400,
+     'y sin motivo, sesión de logística no basta: lo exige también el servidor');
+  ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id, { motivo: 'Guía duplicada' }, tokenAdmin)).status === 200,
+     'con motivo, se puede borrar un adjunto');
   ok(!fs.existsSync(path.join(process.env.PLANSA_UPLOADS, subido.datos.archivo)),
      'y el archivo desaparece del disco, no solo de la base');
-  ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id, undefined, tokenAdmin)).status === 404,
+  ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id, { motivo: 'Guía duplicada' }, tokenAdmin)).status === 404,
      'borrarlo dos veces responde 404');
 
   // ------------------------------------------------------------- payback
@@ -854,8 +857,10 @@ try {
      'admin actualiza el estado y la fecha de llegada al proveedor');
   ok((await api('DELETE', '/api/exportaciones/' + expCreada.datos.id, undefined, tokenSeg)).status === 403,
      'borrarla tampoco es de seguimiento');
-  ok((await api('DELETE', '/api/exportaciones/' + expCreada.datos.id, undefined, tokenAdmin)).status === 200,
-     'admin sí puede borrarla');
+  ok((await api('DELETE', '/api/exportaciones/' + expCreada.datos.id, { motivo: 'no' }, tokenAdmin)).status === 400,
+     'y sin un motivo de al menos 3 caracteres, tampoco se borra');
+  ok((await api('DELETE', '/api/exportaciones/' + expCreada.datos.id, { motivo: 'Envío cancelado por el cliente' }, tokenAdmin)).status === 200,
+     'con motivo, admin sí puede borrarla');
   ok((await api('PATCH', '/api/exportaciones/' + expCreada.datos.id, { estado: 'Perdido' }, tokenAdmin)).status === 404,
      'y ya no existe para actualizar');
 
@@ -881,8 +886,10 @@ try {
     { ...nuevoReq, estado: 'OC emitida', numeroOc: 'OC-2026-050', costoEstimado: 45000, moneda: 'USD' }, tokenAdmin);
   ok(reqActualizado.datos.estado === 'OC emitida' && reqActualizado.datos.numeroOc === 'OC-2026-050'
      && reqActualizado.datos.moneda === 'USD', 'admin avanza el estado y liga el número de OC');
-  ok((await api('DELETE', '/api/requerimientos-compra/' + reqCreado.datos.id, undefined, tokenAdmin)).status === 200,
-     'admin puede borrarlo');
+  ok((await api('DELETE', '/api/requerimientos-compra/' + reqCreado.datos.id, undefined, tokenAdmin)).status === 400,
+     'y sin motivo, tampoco se borra');
+  ok((await api('DELETE', '/api/requerimientos-compra/' + reqCreado.datos.id, { motivo: 'Ya no se necesita' }, tokenAdmin)).status === 200,
+     'con motivo, admin puede borrarlo');
 
   console.log('\n-- servicios de logística --');
   const nuevoServ = {
@@ -901,8 +908,10 @@ try {
      'admin cierra el servicio con sus fechas');
   ok((await api('GET', '/api/servicios-logistica', undefined, tokenAdmin)).datos.some(s => s.id === servCreado.datos.id),
      'y aparece en el listado');
-  ok((await api('DELETE', '/api/servicios-logistica/' + servCreado.datos.id, undefined, tokenAdmin)).status === 200,
-     'admin puede borrarlo');
+  ok((await api('DELETE', '/api/servicios-logistica/' + servCreado.datos.id, undefined, tokenAdmin)).status === 400,
+     'y sin motivo, tampoco se borra');
+  ok((await api('DELETE', '/api/servicios-logistica/' + servCreado.datos.id, { motivo: 'Servicio duplicado' }, tokenAdmin)).status === 200,
+     'con motivo, admin puede borrarlo');
 
   console.log('\n-- módulo de Almacén (ticket + cookie propia) --');
   ok((await api('POST', '/api/almacen/ticket')).status === 401, 'sin sesión, no se emite ticket');

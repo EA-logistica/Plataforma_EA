@@ -56,8 +56,8 @@ export async function subir(ticketId, archivo, subidoPor) {
   return adjunto.id;
 }
 
-export async function eliminar(id) {
-  await borrar('/adjuntos/' + encodeURIComponent(id));
+export async function eliminar(id, motivo) {
+  await borrar('/adjuntos/' + encodeURIComponent(id), { motivo });
   DB.adjuntos = DB.adjuntos.filter(a => a.id !== id);
 }
 

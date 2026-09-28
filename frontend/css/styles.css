@@ -827,6 +827,12 @@ svg{display:block;max-width:100%}
   -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
   animation:scaleIn .22s var(--ease) both;
 }
+/* Variante ancha: para tablas de datos (Código/Producto/Stock/Valorizado y
+   similares) que con los 600px de siempre fuerzan scroll horizontal. Se pide
+   con abrirModal(titulo, html, { ancho: 'wide' }) solo donde hace falta -las
+   demás vistas (formularios, listas cortas) se quedan con el ancho de
+   siempre-. El min() cubre también el viewport de un teléfono.*/
+.modal.wide{max-width:min(960px,94vw)}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 22px;border-bottom:1px solid var(--line)}
 .modal-head h3{margin:0;font-size:16.5px;font-weight:700}
 .x{background:none;border:none;color:var(--muted);font-size:22px;line-height:1;padding:3px 7px;border-radius:7px;transition:color .15s var(--ease),background-color .15s var(--ease)}
@@ -1332,3 +1338,125 @@ svg{display:block;max-width:100%}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   :root[data-theme="black"] .admin-sidebar{background:#1E1E22}
 }
+
+/* =====================================================================
+   Compras y Logística: Proveedores (.prov-*) y Materia Prima (.mp-*)
+   Todo con tokens del tema (--surface*, --line, --muted, --chart-*), así
+   que se ve igual de bien en claro, oscuro y negro.
+   ===================================================================== */
+
+/* ---- Proveedores: buscador compacto con sugerencias ---- */
+.prov-buscador{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.prov-search{position:relative;width:100%;max-width:360px}
+.prov-search .input{padding-left:36px}
+.prov-search-ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted2);pointer-events:none}
+.prov-sug{
+  display:none;position:absolute;left:0;top:calc(100% + 6px);z-index:40;width:min(520px,calc(100vw - 32px));
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--shadow-lg);
+  max-height:420px;overflow:auto;padding:4px;
+}
+.prov-sug.on{display:block}
+.prov-sug-cab,.prov-sug-pie{font-size:11.5px;color:var(--muted2);padding:6px 10px}
+.prov-sug-cab{text-transform:uppercase;letter-spacing:.5px;font-weight:650}
+.prov-sug-vacio{padding:14px 12px;font-size:13px;color:var(--muted)}
+.prov-sug-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;cursor:pointer}
+.prov-sug-item:hover,.prov-sug-item.on{background:var(--primary-soft)}
+.prov-sug-nombre{min-width:0;font-size:13px;font-weight:600;line-height:1.3}
+.prov-sug-nombre span,.prov-sug-monto span{display:block;font-size:11.5px;color:var(--muted2);font-weight:400}
+.prov-sug-monto{font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+.prov-sug mark{background:transparent;color:var(--primary);font-weight:750}
+
+/* ---- Proveedores: panorama ---- */
+.prov-explica{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:18px}
+.prov-explica>div{border:1px dashed var(--line);border-radius:var(--r-sm);padding:11px 14px;background:var(--surface2);font-size:12.5px;color:var(--muted);line-height:1.45}
+.prov-explica b{display:block;color:var(--text);font-weight:650;margin-bottom:2px}
+.prov-explica em{font-style:normal;color:var(--text);font-weight:600}
+.prov-periodo{margin:-8px 0 16px;font-size:12.5px;color:var(--muted)}
+.prov-periodo b{color:var(--text)}
+.prov-grid{align-items:start}
+.prov-empty{padding:24px 0}
+.prov-rank{display:flex;flex-direction:column;gap:2px}
+.prov-rank-row{
+  display:grid;grid-template-columns:24px minmax(0,1fr) auto;grid-template-areas:"n nom val" ". bar bar";gap:3px 10px;align-items:center;
+  width:100%;text-align:left;background:transparent;border:0;border-radius:8px;padding:8px 8px 9px;color:inherit;font:inherit;cursor:pointer;
+  transition:background-color .12s var(--ease);
+}
+.prov-rank-row:hover,.prov-rank-row:focus-visible{background:var(--surface2);outline:none}
+.prov-rank-n{grid-area:n;font-family:var(--mono);font-size:12px;color:var(--muted2);text-align:right}
+.prov-rank-nom{grid-area:nom;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prov-rank-nom small,.prov-rank-val small{display:block;font-size:11.5px;color:var(--muted2);font-weight:400;overflow:hidden;text-overflow:ellipsis}
+.prov-rank-val{grid-area:val;font-family:var(--mono);font-size:12.5px;text-align:right;white-space:nowrap}
+.prov-rank-bar{grid-area:bar;height:6px;background:var(--surface3);border-radius:4px;overflow:hidden}
+.prov-rank-bar i{display:block;height:100%;border-radius:4px;background:var(--chart-1)}
+
+/* ---- Proveedores: ficha ---- */
+.prov-migas{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.prov-hero{margin-bottom:16px}
+.prov-hero-cab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.prov-avatar{
+  width:48px;height:48px;border-radius:12px;display:grid;place-items:center;flex:none;
+  background:var(--primary-soft);color:var(--primary);font-weight:750;font-size:16px;letter-spacing:.5px;
+}
+.prov-hero-nom{flex:1;min-width:220px}
+.prov-hero-nom h3{margin:0 0 6px;font-size:18px;line-height:1.25}
+.prov-hero-acc{display:flex;gap:8px;flex-wrap:wrap}
+.prov-tags{display:flex;gap:6px;flex-wrap:wrap}
+.prov-tag{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--surface2);font-family:var(--mono)}
+.prov-tag.ok{color:var(--ok);border-color:currentColor;background:transparent}
+.prov-tag.off{color:var(--muted2)}
+.prov-datos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:var(--r-sm);overflow:hidden}
+@media(max-width:900px){.prov-datos{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.prov-graficos{margin-bottom:16px}.prov-graficos>.panel{margin-bottom:0}
+.prov-dato{background:var(--surface);padding:11px 14px;min-width:0}
+.prov-dato span{display:block;font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.prov-dato b{display:block;font-family:var(--mono);font-size:16.5px;font-weight:650;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.prov-dato small{display:block;font-size:11.5px;color:var(--muted2);margin-top:1px}
+.prov-chart{overflow-x:auto}
+.prov-chart svg{height:auto}
+.prov-axis{fill:var(--chart-label);font-size:10px;font-family:var(--mono)}
+.prov-col-bar{fill:var(--chart-1);transition:opacity .12s var(--ease)}
+.prov-col-v{fill:var(--chart-value);font-size:10px;font-family:var(--mono);font-weight:600;opacity:0;transition:opacity .12s var(--ease);pointer-events:none}
+.prov-col.fijo .prov-col-v,.prov-col:hover .prov-col-v{opacity:1}
+.prov-col:hover .prov-col-v{fill:var(--text)}
+.prov-chart svg:hover .prov-col-bar{opacity:.55}
+.prov-chart svg:hover .prov-col:hover .prov-col-bar{opacity:1}
+.prov-tabla table{min-width:860px}
+.prov-rango{display:block;font-size:11px;color:var(--muted2)}
+.prov-sube{color:var(--danger)}
+.prov-baja{color:var(--ok)}
+.prov-spark{display:block}
+
+/* ---- Materia Prima ---- */
+.mp-intro{margin:-6px 0 14px;font-size:12.5px;color:var(--muted);max-width:820px;line-height:1.5}
+.mp-intro b{color:var(--text);font-weight:600}
+.mp-filtros{align-items:flex-end}
+.mp-campo{display:flex;flex-direction:column;gap:4px;width:250px}
+.mp-campo-q{width:300px}
+.mp-campo>span{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+@media(max-width:640px){.mp-campo,.mp-campo-q{width:100%}}
+.mp-migas{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.mp-miga{background:transparent;border:0;padding:4px 8px;border-radius:6px;font:inherit;font-size:13.5px;color:var(--primary);font-weight:600;cursor:pointer}
+.mp-miga:hover{background:var(--primary-soft)}
+.mp-miga.on{color:var(--text);cursor:default;font-weight:700}
+.mp-miga.on:hover{background:transparent}
+.mp-sep{color:var(--muted2)}
+.mp-ayuda{margin:2px 8px 14px;font-size:12px;color:var(--muted2)}
+.mp-empty{padding:26px 0}
+.mp-tabla table{min-width:760px}
+.mp-th button{background:transparent;border:0;padding:0;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.mp-th button:hover,.mp-th.on button{color:var(--text)}
+.mp-flecha{font-size:9px;opacity:.5}
+.mp-th.on .mp-flecha{opacity:1;color:var(--primary)}
+.mp-fila{cursor:pointer}
+.mp-fila:hover .mp-ver{color:var(--primary)}
+.mp-ver{font-size:12px;color:var(--muted2);white-space:nowrap;font-weight:600}
+.mp-um{font-size:11px;color:var(--muted2)}
+.mp-share{display:flex;align-items:center;gap:8px;min-width:130px}
+.mp-track{display:block;width:72px;height:6px;border-radius:4px;background:var(--surface3);overflow:hidden;flex:none}
+.mp-track i{display:block;height:100%;border-radius:4px;background:var(--chart-1)}
+.mp-share span{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.mp-pie{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.mp-pie .tools{align-items:center}
+#mpMetrics .kpi .v{font-size:23px;letter-spacing:-.8px}
+#aMateriaPrima .panel + .panel{margin-top:16px}
+/* ===================== fin Proveedores / Materia Prima ===================== */

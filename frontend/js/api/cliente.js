@@ -53,7 +53,9 @@ export const obtener  = (ruta, op)        => pedir('GET', ruta, undefined, op);
 export const crear    = (ruta, cuerpo)    => pedir('POST', ruta, cuerpo);
 export const modificar = (ruta, cuerpo)   => pedir('PATCH', ruta, cuerpo);
 export const reemplazar = (ruta, cuerpo)  => pedir('PUT', ruta, cuerpo);
-export const borrar   = ruta              => pedir('DELETE', ruta);
+// `cuerpo` es opcional: lo usan los borrados que exigen motivo (exportaciones,
+// requerimientos, servicios, adjuntos); el resto lo sigue llamando sin nada.
+export const borrar   = (ruta, cuerpo)    => pedir('DELETE', ruta, cuerpo);
 
 /** URL directa de un archivo adjunto, para abrirlo en otra pestaña. */
 export const urlAdjunto = id => BASE + '/adjuntos/' + encodeURIComponent(id) + '/archivo';

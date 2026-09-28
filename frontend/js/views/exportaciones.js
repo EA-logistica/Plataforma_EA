@@ -2,7 +2,7 @@ import { $, esc } from '../utils/dom.js';
 import { soles, fechaCorta, hoyISO } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import * as api from '../api/estado.js';
-import { abrirModal, cerrarModal } from './dispatch.js';
+import { abrirModal, cerrarModal, confirmarEliminacion } from './dispatch.js';
 
 /**
  * Exportaciones: muestras enviadas a proveedores en el exterior, con
@@ -129,14 +129,14 @@ export async function guardarExportacion(id) {
   toast(id ? 'Envío actualizado' : 'Envío registrado');
 }
 
-export async function borrarExportacionVista(id) {
-  if (!confirm('¿Borrar este registro de exportación? No se puede deshacer.')) return;
-  try {
-    await api.borrarExportacion(id);
-  } catch (e) {
-    toast('No se pudo borrar', e.message, 'bad');
-    return;
-  }
-  renderExportaciones();
-  toast('Registro borrado', '', 'warn');
+export function borrarExportacionVista(id) {
+  confirmarEliminacion({
+    titulo: 'Eliminar envío',
+    mensaje: 'Se va a eliminar este registro de exportación. No se puede deshacer.',
+    onConfirmar: async motivo => {
+      await api.borrarExportacion(id, motivo);
+      renderExportaciones();
+      toast('Registro borrado', '', 'warn');
+    }
+  });
 }

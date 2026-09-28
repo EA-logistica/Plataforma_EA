@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo.
-echo   PLANSA Delivery
+echo   Plataforma EA
 echo   ===============
 echo.
 

@@ -1,4 +1,4 @@
--- Esquema de la base de PLANSA Delivery (SQLite).
+-- Esquema de la base de Plataforma EA (SQLite).
 --
 -- Es la fuente de verdad de la estructura: backend/db/conexion.js lo ejecuta al
 -- arrancar y SQLite ignora lo que ya existe gracias a IF NOT EXISTS. Para
@@ -304,3 +304,291 @@ CREATE TABLE IF NOT EXISTS servicios_logistica (
 
 CREATE INDEX IF NOT EXISTS idx_servicios_logistica_estado ON servicios_logistica (estado);
 CREATE INDEX IF NOT EXISTS idx_servicios_logistica_tipo ON servicios_logistica (tipo_servicio);
+
+-- ------------------------------------------------------------ metraje_almacen
+-- Alquiler del almacén Los Olivos (CO LOGISTIC PERU): metraje ocupado y costo,
+-- por semana ('semanal') o como renta base fija del mes ('mensual', una fila
+-- por mes con `mes_label` p.ej. "ENERO"). Se siembra una vez con el histórico
+-- de METRAJE ALMACEN LOS OLIVOS.xlsx (data/metrajeAlmacen.js) y de ahí en
+-- adelante admin agrega las semanas nuevas a mano -por eso tiene CRUD
+-- completo y no es de solo lectura como `ordenes_compra`-.
+-- `pendiente_validar` marca filas con datos incompletos en el Excel original
+-- (la fila de MARZO sin metraje/precio y la semana 2026-03-02/03-08, que no
+-- existía en el archivo): quedan visibles en la tabla pero fuera de los
+-- indicadores hasta que alguien las confirme con la factura real.
+CREATE TABLE IF NOT EXISTS metraje_almacen (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo              TEXT NOT NULL DEFAULT 'semanal' CHECK (tipo IN ('semanal', 'mensual')),
+  fecha_desde       TEXT NOT NULL,
+  fecha_hasta       TEXT NOT NULL,
+  mes_label         TEXT NOT NULL DEFAULT '',
+  precio_m2         REAL NOT NULL DEFAULT 0,
+  metraje           REAL,
+  precio_sin_igv    REAL,
+  total_con_igv     REAL,
+  factura           TEXT NOT NULL DEFAULT '',
+  pendiente_validar INTEGER NOT NULL DEFAULT 0 CHECK (pendiente_validar IN (0, 1)),
+  observaciones     TEXT NOT NULL DEFAULT '',
+  creado_por        TEXT NOT NULL DEFAULT '',
+  creado_en         TEXT NOT NULL DEFAULT (datetime('now')),
+  actualizado_en    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (tipo, fecha_desde, fecha_hasta)
+);
+
+CREATE INDEX IF NOT EXISTS idx_metraje_almacen_fecha ON metraje_almacen (fecha_desde);
+
+-- ------------------------------------------------------------- ordenes_compra
+-- Registro de compras de SUNAT (data/compras.js, cargado una sola vez por
+-- sembrar.js): cada fila es un comprobante ya emitido y contabilizado, no un
+-- flujo de aprobación como `requerimientos_compra`. `numero_registro` es la
+-- columna "Comprobante" del registro SUNAT y es única por comprobante: sirve
+-- de clave natural para no duplicar en una recarga.
+CREATE TABLE IF NOT EXISTS ordenes_compra (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha_emision     TEXT NOT NULL,
+  codigo_sunat      TEXT NOT NULL DEFAULT '',
+  tipo_comprobante  TEXT NOT NULL DEFAULT '',
+  serie             TEXT NOT NULL DEFAULT '',
+  numero_doc        TEXT NOT NULL DEFAULT '',
+  numero_registro   TEXT NOT NULL UNIQUE,
+  ruc               TEXT NOT NULL DEFAULT '',
+  tipo_cambio       REAL NOT NULL DEFAULT 0,
+  proveedor         TEXT NOT NULL DEFAULT '',
+  moneda            TEXT NOT NULL DEFAULT 'PEN' CHECK (moneda IN ('PEN', 'USD')),
+  monto_me          REAL NOT NULL DEFAULT 0,
+  base_gravada      REAL NOT NULL DEFAULT 0,
+  base_no_gravada   REAL NOT NULL DEFAULT 0,
+  igv               REAL NOT NULL DEFAULT 0,
+  igv_no_gravado    REAL NOT NULL DEFAULT 0,
+  otros             REAL NOT NULL DEFAULT 0,
+  percepcion        REAL NOT NULL DEFAULT 0,
+  total             REAL NOT NULL DEFAULT 0,
+  glosa             TEXT NOT NULL DEFAULT '',
+  creado_en         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ordenes_compra_proveedor ON ordenes_compra (proveedor);
+CREATE INDEX IF NOT EXISTS idx_ordenes_compra_fecha ON ordenes_compra (fecha_emision);
+
+-- ------------------------------------------------------------------ productos
+-- Catálogo de productos (SKU) del ERP (data/productos.js, "REPORTE DE
+-- PRODUCTOS" de SUNAT/ERP). `codigo` es la clave del ERP: la usa
+-- `requerimientos_compra_detalle.codigo_producto` para enlazar cada
+-- requerimiento con su producto (ver ese bloque). A diferencia de
+-- ordenes_compra, esto SÍ se refresca en cada recarga -el stock cambia todo
+-- el tiempo-, así que cargarInicial() hace UPSERT, no ON CONFLICT DO NOTHING.
+CREATE TABLE IF NOT EXISTS productos (
+  codigo               TEXT PRIMARY KEY,
+  codigo_alterno       TEXT NOT NULL DEFAULT '',
+  descripcion          TEXT NOT NULL DEFAULT '',
+  unidad_medida        TEXT NOT NULL DEFAULT '',
+  familia              TEXT NOT NULL DEFAULT '',
+  linea                TEXT NOT NULL DEFAULT '',
+  marca                TEXT NOT NULL DEFAULT '',
+  modelo               TEXT NOT NULL DEFAULT '',
+  peso                 REAL NOT NULL DEFAULT 0,
+  origen               TEXT NOT NULL DEFAULT '',
+  tipo_producto         TEXT NOT NULL DEFAULT '',
+  estado               TEXT NOT NULL DEFAULT '',
+  ubicacion            TEXT NOT NULL DEFAULT '',
+  stock_minimo         REAL NOT NULL DEFAULT 0,
+  lead_time            REAL NOT NULL DEFAULT 0,
+  stock                REAL NOT NULL DEFAULT 0,
+  tiene_ficha_tecnica  TEXT NOT NULL DEFAULT 'NO',
+  tiene_materia_prima  TEXT NOT NULL DEFAULT 'NO',
+  actualizado_en       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_productos_descripcion ON productos (descripcion);
+CREATE INDEX IF NOT EXISTS idx_productos_familia ON productos (familia);
+CREATE INDEX IF NOT EXISTS idx_productos_estado ON productos (estado);
+
+-- ------------------------------------------------- requerimientos_compra_detalle
+-- Historial de requerimientos de compra ya resuelto por el ERP (data/
+-- requerimientosCompraHistorico.js, ".csv/data_rqc.csv"). Es la contraparte
+-- de solo lectura de `requerimientos_compra` (la tabla que administra admin
+-- desde la app): cada fila es una línea de requerimiento, o una atención
+-- parcial de esa línea si se entregó en más de una vez -por eso puede haber
+-- varias filas con el mismo (numero_requerimiento, item)-. `clave` es
+-- sintética (numero_requerimiento + item + un contador de atención) y sirve
+-- para no duplicar en una recarga.
+--
+-- `codigo_producto` enlaza con `productos.codigo` -no es una FOREIGN KEY
+-- porque el ERP a veces trae un código que el catálogo ya dio de baja-, y
+-- `proveedor` es el mismo texto de razón social que `ordenes_compra.proveedor`:
+-- es la llave con el registro de compras (que no trae número de requerimiento
+-- ni código de producto). Con la propia Orden de Compra el enlace es más
+-- fino: (ref1_tipo, ref1_serie, ref1_numero) es la misma referencia que
+-- (ref_tipo, ref_serie, ref_numero) en `ordenes_compra_detalle` -ver ese
+-- bloque más abajo-.
+CREATE TABLE IF NOT EXISTS requerimientos_compra_detalle (
+  id                            INTEGER PRIMARY KEY AUTOINCREMENT,
+  clave                         TEXT NOT NULL UNIQUE,
+  fecha_emision                 TEXT NOT NULL,
+  numero_requerimiento_cabecera TEXT NOT NULL DEFAULT '',
+  numero_requerimiento          TEXT NOT NULL,
+  item                          INTEGER NOT NULL DEFAULT 0,
+  codigo_producto               TEXT NOT NULL DEFAULT '',
+  nombre_producto               TEXT NOT NULL DEFAULT '',
+  unidad_medida                 TEXT NOT NULL DEFAULT '',
+  cantidad                      REAL NOT NULL DEFAULT 0,
+  atendida                      REAL NOT NULL DEFAULT 0,
+  saldo                         REAL NOT NULL DEFAULT 0,
+  fecha_entrega_comprometida    TEXT NOT NULL DEFAULT '',
+  estado                        TEXT NOT NULL DEFAULT '',
+  numero_oc                     TEXT NOT NULL DEFAULT '',
+  proveedor                     TEXT NOT NULL DEFAULT '',
+  ref1_tipo                     TEXT NOT NULL DEFAULT '',
+  ref1_serie                    TEXT NOT NULL DEFAULT '',
+  ref1_numero                   TEXT NOT NULL DEFAULT '',
+  ref2_tipo                     TEXT NOT NULL DEFAULT '',
+  ref2_serie                    TEXT NOT NULL DEFAULT '',
+  ref2_numero                   TEXT NOT NULL DEFAULT '',
+  fecha_atencion                TEXT NOT NULL DEFAULT '',
+  cantidad_atendida             REAL NOT NULL DEFAULT 0,
+  glosa                         TEXT NOT NULL DEFAULT '',
+  creado_en                     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rcd_requerimiento ON requerimientos_compra_detalle (numero_requerimiento, item);
+CREATE INDEX IF NOT EXISTS idx_rcd_codigo_producto ON requerimientos_compra_detalle (codigo_producto);
+CREATE INDEX IF NOT EXISTS idx_rcd_proveedor ON requerimientos_compra_detalle (proveedor);
+CREATE INDEX IF NOT EXISTS idx_rcd_estado ON requerimientos_compra_detalle (estado);
+
+-- ------------------------------------------------------- ordenes_compra_detalle
+-- Historial de Órdenes de Compra del ERP (data/ordenesCompraDetalle.js,
+-- ".csv/OC 2025.csv" y ".csv/OC 2026.csv"). Una OC (numero_oc = doc_serie +
+-- '-' + doc_numero) tiene una fila por ítem, así que puede repetirse -por eso
+-- `clave` es sintética, igual criterio que requerimientos_compra_detalle-.
+--
+-- Es un documento DISTINTO del registro de compras SUNAT (ordenes_compra /
+-- data/compras.js): la OC es lo que se le da al proveedor, la
+-- factura/comprobante es lo que el proveedor entrega después. No comparten
+-- número; solo el proveedor (texto y RUC) es exactamente el mismo en ambos.
+-- Con requerimientos_compra_detalle el enlace sí es exacto: (ref_tipo,
+-- ref_serie, ref_numero) es la misma referencia que (ref1_tipo, ref1_serie,
+-- ref1_numero) de ese requerimiento. `codigo_producto` enlaza con
+-- productos.codigo, igual que en requerimientos_compra_detalle.
+CREATE TABLE IF NOT EXISTS ordenes_compra_detalle (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  clave                 TEXT NOT NULL UNIQUE,
+  codigo_area           TEXT NOT NULL DEFAULT '',
+  area                  TEXT NOT NULL DEFAULT '',
+  fecha_entrega         TEXT NOT NULL DEFAULT '',
+  doc_serie             TEXT NOT NULL DEFAULT '',
+  doc_numero            TEXT NOT NULL DEFAULT '',
+  numero_oc             TEXT NOT NULL,
+  fecha_emision         TEXT NOT NULL DEFAULT '',
+  ruc_proveedor         TEXT NOT NULL DEFAULT '',
+  proveedor             TEXT NOT NULL DEFAULT '',
+  tipo_orden            TEXT NOT NULL DEFAULT '',
+  ref_tipo              TEXT NOT NULL DEFAULT '',
+  ref_serie             TEXT NOT NULL DEFAULT '',
+  ref_numero            TEXT NOT NULL DEFAULT '',
+  estado                TEXT NOT NULL DEFAULT '',
+  tipo_cambio           REAL NOT NULL DEFAULT 0,
+  codigo_producto       TEXT NOT NULL DEFAULT '',
+  descripcion_producto  TEXT NOT NULL DEFAULT '',
+  vencimiento           TEXT NOT NULL DEFAULT '',
+  cantidad              REAL NOT NULL DEFAULT 0,
+  saldo                 REAL NOT NULL DEFAULT 0,
+  moneda                TEXT NOT NULL DEFAULT 'PEN' CHECK (moneda IN ('PEN', 'USD')),
+  costo_unitario        REAL NOT NULL DEFAULT 0,
+  valor_compra          REAL NOT NULL DEFAULT 0,
+  proc_descuento        REAL NOT NULL DEFAULT 0,
+  monto_igv             REAL NOT NULL DEFAULT 0,
+  monto_neto            REAL NOT NULL DEFAULT 0,
+  monto_saldo           REAL NOT NULL DEFAULT 0,
+  valor_compra_mn       REAL NOT NULL DEFAULT 0,
+  valor_compra_me       REAL NOT NULL DEFAULT 0,
+  cod_molde             TEXT NOT NULL DEFAULT '',
+  nombre_molde          TEXT NOT NULL DEFAULT '',
+  glosa_cab_req_compra  TEXT NOT NULL DEFAULT '',
+  glosa_det_req_compra  TEXT NOT NULL DEFAULT '',
+  incoterm              TEXT NOT NULL DEFAULT '',
+  tipo_transporte       TEXT NOT NULL DEFAULT '',
+  agente_aduana         TEXT NOT NULL DEFAULT '',
+  numero_contrato       TEXT NOT NULL DEFAULT '',
+  usuario               TEXT NOT NULL DEFAULT '',
+  creado_en             TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocd_numero_oc ON ordenes_compra_detalle (numero_oc);
+CREATE INDEX IF NOT EXISTS idx_ocd_proveedor ON ordenes_compra_detalle (proveedor);
+CREATE INDEX IF NOT EXISTS idx_ocd_codigo_producto ON ordenes_compra_detalle (codigo_producto);
+CREATE INDEX IF NOT EXISTS idx_ocd_ref ON ordenes_compra_detalle (ref_tipo, ref_serie, ref_numero);
+CREATE INDEX IF NOT EXISTS idx_ocd_estado ON ordenes_compra_detalle (estado);
+CREATE INDEX IF NOT EXISTS idx_ocd_fecha ON ordenes_compra_detalle (fecha_emision);
+-- Cubre el CTE de rotación ABC de productos (GROUP BY codigo_producto con
+-- MAX/filtro por fecha_emision) sin ir a la tabla: la mitad del tiempo.
+CREATE INDEX IF NOT EXISTS idx_ocd_producto_fecha ON ordenes_compra_detalle (codigo_producto, fecha_emision);
+
+-- --------------------------------------------------------- materia_prima_stock
+-- Stock valorizado de materia prima (data/materiaPrimaStock.js, ".xlsx
+-- REPORTE DE STOCK VALORIZADO ACUMULADO", solo el tipo de producto "07
+-- MATERIAS PRIMAS"). Es una FOTO del stock a la fecha del reporte -no un
+-- histórico como ordenes_compra-: cada recarga BORRA todo y vuelve a
+-- insertar (ver backend/db/repos/materiaPrimaStock.js → cargarInicial), no
+-- hay ON CONFLICT porque no tiene sentido acumular fotos viejas con la
+-- nueva.
+--
+-- Un mismo `codigo` puede repetirse varias veces -una fila por almacén en el
+-- que tiene stock-, así que no hay clave única por producto. `categoria`
+-- (SOPLADO/INYECCION/ADITIVOS/MASTERBATCH/FORMULADOS/OTROS) es una
+-- clasificación propia derivada de `familia` por palabra clave -el ERP no
+-- trae esa columna-, pensada para la navegación Categoría → Línea → Producto
+-- del módulo de Materia Prima.
+CREATE TABLE IF NOT EXISTS materia_prima_stock (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  almacen_codigo      TEXT NOT NULL DEFAULT '',
+  almacen             TEXT NOT NULL DEFAULT '',
+  categoria_nivel3    TEXT NOT NULL DEFAULT '',
+  familia             TEXT NOT NULL DEFAULT '',
+  categoria           TEXT NOT NULL DEFAULT 'OTROS',
+  codigo              TEXT NOT NULL DEFAULT '',
+  codigo_alterno      TEXT NOT NULL DEFAULT '',
+  descripcion         TEXT NOT NULL DEFAULT '',
+  unidad_medida       TEXT NOT NULL DEFAULT '',
+  ubicacion           TEXT NOT NULL DEFAULT '',
+  stock               REAL NOT NULL DEFAULT 0,
+  costo_promedio_usd  REAL NOT NULL DEFAULT 0,
+  valorizado_usd      REAL NOT NULL DEFAULT 0,
+  actualizado_en      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mps_categoria ON materia_prima_stock (categoria);
+CREATE INDEX IF NOT EXISTS idx_mps_familia ON materia_prima_stock (familia);
+CREATE INDEX IF NOT EXISTS idx_mps_codigo ON materia_prima_stock (codigo);
+CREATE INDEX IF NOT EXISTS idx_mps_almacen ON materia_prima_stock (almacen);
+
+-- ------------------------------------------------------------- stock_valorizado
+-- Stock valorizado COMPLETO del ERP (data/stockValorizado.js): superconjunto
+-- de materia_prima_stock -este trae TODOS los tipos de producto (Producto
+-- Terminado/APT, Materia Prima/MP, envases, activo fijo, etc.), no solo
+-- "07 MATERIAS PRIMAS"-. Sirve para preguntas que cruzan cualquier almacén
+-- sin importar el tipo, como "qué SKU y cuánto valorizado tiene el almacén
+-- 151" (Control de Almacenes → Plano y Control lo consume vía
+-- backend/almacen/src/services/stockAlmacen.js). Misma naturaleza que
+-- materia_prima_stock: es una FOTO, se reemplaza entera en cada recarga.
+CREATE TABLE IF NOT EXISTS stock_valorizado (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo_codigo         TEXT NOT NULL DEFAULT '',
+  tipo_producto       TEXT NOT NULL DEFAULT '',
+  almacen_codigo      TEXT NOT NULL DEFAULT '',
+  almacen             TEXT NOT NULL DEFAULT '',
+  categoria_nivel3    TEXT NOT NULL DEFAULT '',
+  familia             TEXT NOT NULL DEFAULT '',
+  codigo              TEXT NOT NULL DEFAULT '',
+  codigo_alterno      TEXT NOT NULL DEFAULT '',
+  descripcion         TEXT NOT NULL DEFAULT '',
+  unidad_medida       TEXT NOT NULL DEFAULT '',
+  ubicacion           TEXT NOT NULL DEFAULT '',
+  stock               REAL NOT NULL DEFAULT 0,
+  costo_promedio_usd  REAL NOT NULL DEFAULT 0,
+  valorizado_usd      REAL NOT NULL DEFAULT 0,
+  actualizado_en       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sv_almacen ON stock_valorizado (almacen_codigo);
+CREATE INDEX IF NOT EXISTS idx_sv_codigo ON stock_valorizado (codigo);
+CREATE INDEX IF NOT EXISTS idx_sv_tipo ON stock_valorizado (tipo_codigo);

@@ -17,8 +17,18 @@ const DURACION_MS = 12 * 60 * 60 * 1000; // 12 horas de jornada, de sobra para u
 // miran requiereSesion/requiereSesionArea antes de confiar en el token.
 const sesiones = new Map(); // token -> { tipo, ..., expira }
 
+// Tope duro: purgar() solo quita las vencidas, así que alguien con una clave
+// válida ingresando en bucle podía hacer crecer el mapa sin límite durante
+// 12 horas. 50 personas con varias pestañas y dispositivos no llegan ni cerca;
+// si se cruza, se descartan las más viejas (el Map guarda orden de alta).
+const MAX_SESIONES = 5000;
+
 function purgar(ahora) {
   for (const [token, s] of sesiones) if (s.expira <= ahora) sesiones.delete(token);
+  for (const token of sesiones.keys()) {
+    if (sesiones.size < MAX_SESIONES) break;
+    sesiones.delete(token);
+  }
 }
 
 export function crear(usuarioRow) {

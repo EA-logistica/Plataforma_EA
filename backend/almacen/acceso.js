@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
  * tokens al azar en memoria, no una tabla ni una clave nueva que gestionar.
  *
  * Flujo:
- *   1. El admin ya autenticado en PLANSA_DELIVERY pide un ticket
+ *   1. El admin ya autenticado en Plataforma_EA pide un ticket
  *      (POST /api/almacen/ticket, protegido por requiereSesion+admin).
  *   2. El ticket es de un solo uso y vence en 60s: solo sirve para canjearlo
  *      por una sesión de Almacén, nunca para repetir la entrada.

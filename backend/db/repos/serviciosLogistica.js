@@ -68,7 +68,7 @@ export function crear(datos, creadoPor) {
     + 'estado, fecha_inicio, fecha_termino, responsable, observaciones, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(f.fecha_solicitud, f.tipo_servicio, f.proveedor, f.descripcion, f.costo, f.moneda, f.estado,
         f.fecha_inicio, f.fecha_termino, f.responsable, f.observaciones, String(creadoPor || ''));
-  tocar();
+  tocar('app');
   return porId(r.lastInsertRowid);
 }
 
@@ -81,13 +81,13 @@ export function actualizar(id, datos) {
     + 'moneda=?, estado=?, fecha_inicio=?, fecha_termino=?, responsable=?, observaciones=? WHERE id=?'
   ).run(f.fecha_solicitud, f.tipo_servicio, f.proveedor, f.descripcion, f.costo, f.moneda, f.estado,
         f.fecha_inicio, f.fecha_termino, f.responsable, f.observaciones, Number(id));
-  tocar();
+  tocar('app');
   return porId(id);
 }
 
 export function eliminar(id) {
   const r = db().prepare('DELETE FROM servicios_logistica WHERE id = ?').run(Number(id));
   if (!r.changes) throw error('No existe el servicio ' + id + '.', 404);
-  tocar();
+  tocar('app');
   return { id: Number(id) };
 }

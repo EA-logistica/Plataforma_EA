@@ -33,6 +33,14 @@
       <div class="brand-sub">Logística</div>
     </div>
   </div>
+  <div class="mongo-estado" id="mongoEstado" role="status" hidden>
+    <svg class="mongo-hoja" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2c3.2 3.6 5 7 5 10.4 0 3.7-2.2 6.2-4.4 7.2L12 22l-.6-2.4C9.2 18.6 7 16.1 7 12.4 7 9 8.8 5.6 12 2Z" fill="currentColor" opacity=".9"/>
+      <path d="M12 5v17" stroke="var(--surface)" stroke-width="1" stroke-linecap="round"/>
+    </svg>
+    <span class="mongo-punto" aria-hidden="true"></span>
+    <span class="mongo-texto"><span id="mongoEstadoTexto">Conectado a MongoDB</span><span id="mongoEstadoFecha"></span></span>
+  </div>
   <div class="topbar-spacer"></div>
   <div class="topbar-actions">
     <div class="theme-switch" id="themeSwitch">
@@ -102,6 +110,9 @@
     </div>
   </div>
 </header>
+
+<!-- Actualización instalada sin aplicar: solo la ve admin (ui/actualizacion.js). -->
+<div class="aviso-actualizacion" id="avisoActualizacion" role="status" hidden></div>
 
 <main class="login-stage" id="loginStage">
   <div class="login-inner">
@@ -178,7 +189,6 @@
 <main class="wrap view" id="viewUser">
   <div class="tabs">
     <button class="tab on" data-utab="nueva" onclick="tabUser('nueva')">Nueva solicitud</button>
-    <button class="tab" data-utab="seguimiento" onclick="tabUser('seguimiento')">Seguimiento</button>
     <button class="tab" data-utab="mis" onclick="tabUser('mis')">Mis servicios <span class="count" id="cntMis">0</span></button>
   </div>
 
@@ -186,6 +196,7 @@
     <div class="section-head">
       <div>
         <h2>Nueva solicitud de servicio</h2>
+        <p>Elige con un clic. Solo escribes si el destino es nuevo, quién recibe y el motivo.</p>
       </div>
     </div>
 
@@ -197,63 +208,84 @@
       </div>
     </div>
 
-    <div class="grid2" style="align-items:start">
+    <!-- Un solo recorrido de arriba hacia abajo: 1 → 6 y el botón al final.
+         Antes el paso 5 (fecha y hora) y el botón estaban en una columna aparte,
+         arriba a la derecha: había que bajar hasta el 4 y volver a subir. -->
+    <div class="form-flujo">
       <div class="waybill card-pad">
+        <!-- 1. Qué: modalidad, acción y tipo de servicio (views/requestForm.js los pinta). -->
+        <div class="paso"><span class="paso-n">1</span><h3>¿Qué necesitas?</h3></div>
         <div class="field">
-          <label>Acción <span class="req">*</span></label>
+          <div class="paso-sub">Modalidad <span class="req">*</span></div>
+          <div class="modalidades" id="fModalidad" role="radiogroup" aria-label="Modalidad del servicio"></div>
+        </div>
+        <div class="field">
+          <div class="paso-sub">Acción <span class="req">*</span></div>
           <div class="toggle" id="fAccion">
             <button type="button" class="tg" data-val="Recoger" onclick="setAccion('Recoger')">Recoger</button>
             <button type="button" class="tg" data-val="Entregar" onclick="setAccion('Entregar')">Entregar</button>
           </div>
           <div class="err" id="eAccion">Elige si el mensajero va a recoger o a entregar.</div>
         </div>
-
-        <div class="row">
-          <div class="field">
-            <label for="fServicio">Tipo de servicio <span class="req">*</span></label>
-            <input class="input" id="fServicio" list="dlServicios" autocomplete="off" placeholder="¿Qué se va a mover?">
-            <datalist id="dlServicios">
-              <option>Envío de documentos</option>
-              <option>Recojo de paquete</option>
-              <option>Muestras de producto</option>
-              <option>Repuestos</option>
-              <option>Cheques y valores</option>
-              <option>Trámite notarial</option>
-              <option>Trámite municipal o estatal</option>
-              <option>Materiales de almacén</option>
-            </datalist>
-            <div class="err" id="eServicio">Indica qué se va a mover.</div>
-          </div>
-          <div class="field">
-            <label for="fOrigen">Punto de origen <span class="req">*</span></label>
-            <select class="select" id="fOrigen" onchange="toggleOrigen()">
-              <option value="">Selecciona…</option>
-              <option>Plásticos Nacionales - Talleres</option>
-              <option>Plásticos Nacionales - Fraguas</option>
-              <option>Otros</option>
-            </select>
-            <div class="err" id="eOrigen">Elige desde dónde sale el servicio.</div>
-          </div>
+        <div class="field">
+          <div class="paso-sub">Tipo de servicio <span class="req">*</span></div>
+          <div class="chips-servicio" id="chipsServicio"><div class="chips-vacio">Primero elige la acción.</div></div>
+          <input type="hidden" id="fServicio">
+          <div class="err" id="eServicio">Elige el tipo de servicio.</div>
         </div>
 
+        <!-- 2. Desde dónde. -->
+        <div class="paso"><span class="paso-n">2</span><h3>Punto de origen</h3></div>
+        <div class="field">
+          <div class="chips-opcion" id="chipsOrigen" role="radiogroup" aria-label="Punto de origen"></div>
+          <input type="hidden" id="fOrigen">
+          <div class="err" id="eOrigen">Elige desde dónde sale el servicio.</div>
+        </div>
         <div class="field" id="wrapOtro" style="display:none">
-          <label for="fOrigenOtro">Especifica el punto de inicio <span class="req">*</span></label>
-          <input class="input" id="fOrigenOtro" placeholder="Dirección o referencia del punto de partida">
+          <label for="fOrigenOtro">Dirección del punto de partida <span class="req">*</span></label>
+          <div class="input-mapa">
+            <div class="campo-sug">
+              <input class="input" id="fOrigenOtro" placeholder="Clic para ver lugares frecuentes, o escribe: mastercol, life, av…" oninput="olvidarPunto('origen')">
+              <div class="sugerencias" id="sugOrigen" role="listbox" hidden></div>
+            </div>
+            <button type="button" class="btn-mapa" onclick="abrirMapa('origen')" title="Elegir en el mapa" aria-label="Elegir el punto de partida en el mapa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.6"/></svg><span>Mapa</span></button>
+          </div>
+          <div class="hint" id="hOrigenPunto">Elige un lugar frecuente, escribe la dirección o márcala en el mapa.</div>
           <div class="err" id="eOrigenOtro">Escribe la dirección exacta del punto de inicio.</div>
         </div>
 
+        <!-- 3. A dónde. -->
+        <div class="paso"><span class="paso-n">3</span><h3>Destino</h3></div>
         <div class="field">
-          <label for="fMotivo">Motivo del servicio <span class="req">*</span></label>
-          <textarea class="textarea" id="fMotivo" placeholder="Ej.: entrega de facturas del mes a contabilidad del cliente"></textarea>
-          <div class="err" id="eMotivo">Describe brevemente el motivo del servicio.</div>
+          <div class="paso-sub">Destinos frecuentes</div>
+          <div class="chips-opcion chips-destino" id="chipsDestino"></div>
         </div>
-
         <div class="field">
           <label for="fDestino">Dirección de destino <span class="req">*</span></label>
-          <input class="input" id="fDestino" list="dlDestinos" autocomplete="off" placeholder="Empieza a escribir el cliente o la dirección">
+          <div class="input-mapa">
+            <div class="campo-sug">
+              <input class="input" id="fDestino" autocomplete="off" placeholder="Clic para ver frecuentes, o escribe: mastercol, life, av…"
+                     oninput="olvidarPunto('destino'); revisarDestino()" onchange="revisarDestino()">
+              <div class="sugerencias" id="sugDestino" role="listbox" hidden></div>
+            </div>
+            <button type="button" class="btn-mapa" onclick="abrirMapa('destino')" title="Elegir en el mapa" aria-label="Elegir el destino en el mapa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.6"/></svg><span>Mapa</span></button>
+          </div>
           <datalist id="dlDestinos"></datalist>
-          <div class="hint">Los destinos habituales aparecen al escribir. Si no está en la lista, escribe la dirección completa.</div>
+          <div class="hint" id="hDestinoPunto">Si no está en la lista, escribe la dirección completa o márcala en el mapa.</div>
           <div class="err" id="eDestino">Escribe la dirección exacta de destino.</div>
+          <!-- Canaliza redacciones nuevas hacia un destino ya registrado (shared/servicios.js: destinosParecidos). -->
+          <div class="destino-parecidos" id="wrapParecidos" hidden>
+            <div class="paso-sub">¿Es alguna de estas direcciones ya registradas?</div>
+            <div id="listaParecidos"></div>
+          </div>
+          <div class="destino-nuevo" id="wrapDestinoTipo" hidden>
+            <label>Destino nuevo: ¿es un cliente o un proveedor? <span class="req">*</span></label>
+            <div class="toggle" id="fDestinoTipo">
+              <button type="button" class="tg" data-val="Cliente" onclick="setDestinoTipo('Cliente')">Cliente</button>
+              <button type="button" class="tg" data-val="Proveedor" onclick="setDestinoTipo('Proveedor')">Proveedor</button>
+            </div>
+            <div class="err" id="eDestinoTipo">Indica si el destino es un cliente o un proveedor.</div>
+          </div>
         </div>
 
         <div class="row">
@@ -274,77 +306,71 @@
           <div id="listaParadas"></div>
           <button type="button" class="btn btn-sm btn-ghost" onclick="agregarParada()">+ Agregar otra parada</button>
         </div>
-      </div>
 
-      <div>
-        <div class="card card-pad" style="margin-bottom:16px">
-          <h3 class="card-title">Programación</h3>
+        <!-- 4. Por qué. -->
+        <div class="paso"><span class="paso-n">4</span><h3>Motivo del servicio</h3></div>
+        <div class="field">
+          <textarea class="textarea" id="fMotivo" aria-label="Motivo del servicio" placeholder="Ej.: entrega de facturas del mes a contabilidad del cliente"></textarea>
+          <div class="err" id="eMotivo">Describe brevemente el motivo del servicio.</div>
+        </div>
+
+        <!-- 5. Cuándo. -->
+          <div class="paso"><span class="paso-n">5</span><h3>¿Cuándo?</h3></div>
           <p class="card-note" id="minHoraNota">—</p>
-          <div class="row">
-            <div class="field">
-              <label for="fFecha">Fecha <span class="req">*</span></label>
-              <input class="input" id="fFecha" type="date" onchange="refrescarHoras()">
-              <div class="err" id="eFecha">Elige una fecha desde hoy en adelante.</div>
-            </div>
-            <div class="field">
-              <label for="fHora">Hora <span class="req">*</span></label>
-              <input class="input" id="fHora" type="time" step="900" onchange="validarHoraViva()" oninput="validarHoraViva()">
-              <div class="err" id="eHora">El margen de solicitud para el mismo día debe ser mayor a 4 horas.</div>
-            </div>
+          <div class="field">
+            <div class="paso-sub">Fecha <span class="req">*</span></div>
+            <div class="chips-opcion" id="chipsFecha"></div>
+            <input class="input input-otra" id="fFecha" type="date" onchange="refrescarHoras()" aria-label="Otra fecha">
+            <div class="err" id="eFecha">Elige una fecha desde hoy en adelante.</div>
+          </div>
+          <div class="field">
+            <div class="paso-sub">Hora <span class="req">*</span></div>
+            <div class="chips-hora" id="chipsHora"></div>
+            <input type="hidden" id="fHora">
+            <div class="err" id="eHora">Elige la hora del servicio.</div>
           </div>
           <div class="banner" style="margin:4px 0 0">
-            <div>Para el mismo día el margen mínimo es de 4 horas. Si necesitas un servicio urgente, coordínalo directamente con logística por anexo.</div>
+            <div>Para el mismo día el margen mínimo es de <span id="margenHorasTexto">2</span> horas. Si necesitas un servicio urgente, coordínalo directamente con logística por anexo.</div>
           </div>
-        </div>
 
-        <div class="card card-pad">
-          <h3 class="card-title">Solicitante</h3>
-          <div class="ticket-facts" style="border-top:none;padding-top:8px">
-            <div class="fact">Nombre <b id="miNombre">—</b></div>
-            <div class="fact mono">DNI <b id="miDni">—</b></div>
-            <div class="fact">Cargo <b id="miCargo">—</b></div>
-            <div class="fact">Área <b id="miArea">—</b></div>
-          </div>
+        <!-- 6. Revisar y registrar: resumen vivo de lo elegido (views/requestForm.js: pintarResumen). -->
+        <div class="paso"><span class="paso-n">6</span><h3>Revisa y registra</h3></div>
+        <div class="resumen-solicitud" id="resumenSolicitud"></div>
+        <div class="ticket-facts solicitante-linea">
+          <div class="fact">Solicitante <b id="miNombre">—</b></div>
+          <div class="fact mono">DNI <b id="miDni">—</b></div>
+          <div class="fact">Cargo <b id="miCargo">—</b></div>
+          <div class="fact">Área <b id="miArea">—</b></div>
         </div>
-
-        <button class="btn btn-wide" style="margin-top:16px" onclick="enviarSolicitud()">Registrar solicitud</button>
+        <button class="btn btn-wide btn-registrar" onclick="enviarSolicitud()">Registrar solicitud</button>
       </div>
     </div>
-  </section>
-
-  <section class="view" id="uSeguimiento">
-    <div class="section-head">
-      <div>
-        <h2>Seguimiento de un ticket</h2>
-      </div>
-    </div>
-    <div class="card card-pad trace-box">
-      <div class="trace-row">
-        <div class="field" style="margin:0">
-          <label for="qTicket">Número de ticket</label>
-          <div class="prefijado">
-            <span class="prefijo">REQ-</span>
-            <input class="input" id="qTicket" inputmode="numeric" maxlength="6" placeholder="001" autocomplete="off">
-          </div>
-        </div>
-        <button class="btn" onclick="consultarTicket()">Consultar</button>
-      </div>
-      <div class="err" id="eTicket">No encontramos ese correlativo entre tus servicios.</div>
-    </div>
-    <div class="tickets" id="resTicket"></div>
   </section>
 
   <section class="view" id="uMis">
     <div class="section-head">
       <div>
         <h2>Servicios de mi área</h2>
-        <p>Los 5 más recientes de <strong id="misArea">tu área</strong>. Para ver uno más antiguo o el histórico completo, pídeselo a logística.</p>
+        <p>Los 10 más recientes de <strong id="misArea">tu área</strong>. Para uno anterior, búscalo por ticket, solicitante o destino.</p>
       </div>
       <div class="tools">
         <button class="btn btn-ghost btn-sm" onclick="pedirHistoricoCompleto()">Pedir historial completo</button>
         <button class="btn btn-ghost btn-sm" onclick="renderMis()">Actualizar</button>
       </div>
     </div>
+    <div class="card card-pad trace-box">
+      <div class="trace-row">
+        <div class="field" style="margin:0;flex:1">
+          <label for="qMis">Buscar en los servicios del área</label>
+          <input class="input" id="qMis" autocomplete="off" placeholder="N.º de ticket (1603), nombre del solicitante o destino"
+                 onkeydown="if(event.key==='Enter')buscarMisServicios()">
+        </div>
+        <button class="btn" onclick="buscarMisServicios()">Buscar</button>
+        <button class="btn btn-ghost" id="btnLimpiarMis" onclick="limpiarBusquedaMis()" hidden>Ver últimos 10</button>
+      </div>
+      <div class="err" id="eMis"></div>
+    </div>
+    <p class="muted small" id="misResumen"></p>
     <div class="tickets" id="misTickets"></div>
   </section>
 </main>
@@ -417,13 +443,24 @@
     <div class="section-head">
       <div>
         <h2>Bandeja de despacho</h2>
+        <p id="bandejaResumen">Servicios de hoy y pendientes.</p>
       </div>
       <div class="tools">
         <button class="btn btn-ghost btn-sm" onclick="renderBandeja()">Actualizar</button>
       </div>
     </div>
-    <div class="filters" id="fBandeja"></div>
-    <div class="table-wrap" id="tBandeja"></div>
+
+    <!-- Una sola barra: estado (qué hacer), acción (envío o recojo), modalidad y búsqueda. Ver views/dispatch.js. -->
+    <div class="bandeja-barra">
+      <div class="seg" id="fBandeja" role="tablist" aria-label="Estado"></div>
+      <div class="seg" id="fBandejaAccion" role="group" aria-label="Envíos o recojos"></div>
+      <select class="select bandeja-mod" id="fBandejaModalidad" onchange="setFiltroModalidadBandeja(this.value)" aria-label="Modalidad"></select>
+      <div class="bandeja-buscar">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input class="input" id="bBuscar" type="search" placeholder="Buscar REQ, solicitante o destino" autocomplete="off" oninput="buscarEnBandeja(this.value)">
+      </div>
+    </div>
+    <div class="bandeja-lista" id="tBandeja"></div>
   </section>
 
   <section class="view" id="aHistorico">
@@ -680,9 +717,15 @@
         <h2>Materia Prima</h2>
       </div>
       <div class="tools">
-        <button class="btn btn-ghost btn-sm" onclick="renderMateriaPrima()">Actualizar</button>
+        <button class="btn btn-ghost btn-sm" onclick="subtabMateriaPrima()">Actualizar</button>
       </div>
     </div>
+    <div class="filters">
+      <button class="fchip on" id="mpSubStock" onclick="subtabMateriaPrima('stock')">Stock</button>
+      <button class="fchip" id="mpSubMuestras" onclick="subtabMateriaPrima('muestras')">Muestras</button>
+    </div>
+
+    <div id="mpPanelStock">
     <p class="mp-intro">Foto del stock según el último reporte del ERP (no es un histórico). <b>Valorizado</b> = cantidad en stock × costo promedio en US$. Elige el tipo y baja de <b>Categoría</b> a <b>Línea</b> y a <b>Producto</b>, o busca directo por código.</p>
     <div class="filters mp-filtros">
       <label class="mp-campo"><span>Tipo</span><select class="select" id="mpTipo" onchange="cambiarTipoMateriaPrima()"></select></label>
@@ -697,6 +740,52 @@
       <h3>Almacenes</h3>
       <p class="sub">Dónde está físicamente el stock de este tipo. Clic en un almacén para ver sus productos.</p>
       <div id="mpAlmacenes"></div>
+    </div>
+    </div>
+
+    <!-- Muestras de materia prima que llegan al almacén. Ver views/muestras.js. -->
+    <div id="mpPanelMuestras" style="display:none">
+      <div class="filters mu-barra">
+        <label class="mp-campo"><span>Mes</span><input class="input" id="muMes" type="month" onchange="renderMuestras()"></label>
+        <div class="mu-acciones">
+          <button class="btn" onclick="abrirNuevaMuestra()">+ Registrar muestra</button>
+          <button class="btn btn-ghost" onclick="abrirPegarMuestras()">Pegar desde Excel</button>
+        </div>
+      </div>
+      <div class="kpis" id="muMetrics"></div>
+      <div class="grid2">
+        <div class="panel">
+          <h3>Muestras e inversión por mes</h3>
+          <p class="sub">Últimos 12 meses hasta el elegido. Clic en un mes para verlo.</p>
+          <div id="muMeses"></div>
+        </div>
+        <div class="panel">
+          <h3>Evaluación</h3>
+          <p class="sub">En qué quedaron las muestras del año y cuáles siguen esperando resultado.</p>
+          <div id="muEmbudo"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Precio de la muestra frente al costo actual en stock</h3>
+        <p class="sub">Por familia, en el año. Si la muestra es más barata que lo que hoy tienes en almacén, es una alternativa de ahorro que vale evaluar.</p>
+        <div class="table-wrap" id="muFamilias"></div>
+      </div>
+      <div class="panel">
+        <h3>Proveedores</h3>
+        <p class="sub">Quién envía más muestras en el año y cuántas terminaron aprobadas.</p>
+        <div id="muProveedores"></div>
+      </div>
+      <div class="panel">
+        <h3>Registro de muestras</h3>
+        <div class="filters">
+          <input class="input" id="muQ" type="search" placeholder="Buscar descripción, familia, proveedor o RUC" style="flex:1;min-width:220px" oninput="filtrarMuestras()">
+          <select class="select" id="muEstado" style="width:180px" onchange="filtrarMuestras()">
+            <option value="">Todos los estados</option><option>Recibida</option><option>En evaluación</option><option>Aprobada</option><option>Rechazada</option>
+          </select>
+          <label class="muted small"><input type="checkbox" id="muSoloMes" onchange="filtrarMuestras()"> Solo el mes elegido</label>
+        </div>
+        <div class="table-wrap" id="muTabla"></div>
+      </div>
     </div>
   </section>
 
@@ -738,12 +827,21 @@
   <section class="view" id="aOrdenesCompra">
     <div class="section-head">
       <div>
-        <h2>Registro de compras (SUNAT)</h2>
+        <h2>Compras</h2>
+        <p>Órdenes de compra del ERP (vía MongoDB) y registro de facturas SUNAT, cada uno con sus indicadores.</p>
       </div>
       <div class="tools">
-        <button class="btn btn-ghost btn-sm" onclick="renderOrdenesCompra()">Actualizar</button>
+        <button class="btn btn-ghost btn-sm" onclick="subtabCompras()">Actualizar</button>
       </div>
     </div>
+    <div class="filters subtabs-compras">
+      <button class="fchip on" id="ocSubOC" onclick="subtabCompras('oc')">Órdenes de compra (ERP)</button>
+      <button class="fchip" id="ocSubSunat" onclick="subtabCompras('sunat')">Facturas SUNAT</button>
+    </div>
+
+    <div id="ocPanelSunat" style="display:none">
+    <div id="ocSunatVacio"></div>
+    <div id="ocSunatContenido">
     <div class="filters">
       <input class="input" id="ocQ" placeholder="Proveedor, glosa, documento o RUC" style="width:260px" oninput="setFiltroOrdenesCompra()">
       <select class="select" id="ocProveedor" style="width:220px" onchange="setFiltroOrdenesCompra()"><option value="">Todos los proveedores</option></select>
@@ -775,12 +873,10 @@
     </div>
     <div class="table-wrap" id="tOrdenesCompra"></div>
     <div class="tools" id="ocPaginacion" style="justify-content:center;margin-top:10px"></div>
-
-    <div class="section-head" style="margin-top:26px">
-      <div>
-        <h3 id="ocdTitulo">Historial de Órdenes de Compra (OC)</h3>
-      </div>
     </div>
+    </div>
+
+    <div id="ocPanelOC">
     <div class="filters">
       <select class="select" id="ocdProveedor" style="width:260px" onchange="setFiltroOC()"><option value="">Todos los proveedores</option></select>
       <input class="input" id="ocdDesde" type="date" title="Desde" style="width:150px" onchange="setFiltroOC()">
@@ -790,6 +886,7 @@
       </select>
       <button class="btn btn-sm btn-ghost" onclick="limpiarFiltroOC()">Limpiar filtros</button>
     </div>
+    <p class="muted small" id="ocdRango" style="margin:-4px 0 10px"></p>
     <div class="kpis" id="ocdMetrics"></div>
 
     <div class="grid2">
@@ -810,6 +907,7 @@
 
     <div class="table-wrap" id="tOC"></div>
     <div class="tools" id="ocdPaginacion" style="justify-content:center;margin-top:10px"></div>
+    </div>
   </section>
 
   <section class="view" id="aProveedores">
@@ -846,6 +944,29 @@
   </section>
   </div>
 </main>
+
+<div class="overlay" id="overlayMapa" onclick="if(event.target===this)cerrarMapa()">
+  <div class="modal wide mapa-modal" role="dialog" aria-modal="true" aria-labelledby="mapaTitulo">
+    <div class="modal-head"><h3 id="mapaTitulo">Elige la ubicación</h3><button class="x" onclick="cerrarMapa()" aria-label="Cerrar">×</button></div>
+    <div class="mapa-busqueda">
+      <input class="input" id="mapaBuscar" placeholder="Busca una dirección, distrito o lugar" autocomplete="off"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();buscarEnMapa()}">
+      <button type="button" class="btn btn-ghost" onclick="buscarEnMapa()">Buscar</button>
+      <button type="button" class="btn btn-ghost" onclick="miUbicacion()" title="Usar mi ubicación actual">Mi ubicación</button>
+    </div>
+    <div class="mapa-resultados" id="mapaResultados"></div>
+    <div class="mapa-lienzo">
+      <div id="mapaLienzo"></div>
+      <div class="mapa-aviso" id="mapaAviso" hidden>No se pudo cargar el mapa. Busca la dirección arriba o escríbela en el formulario; si persiste, avisa a logística (el servidor debe reiniciarse o no tiene internet).</div>
+      <!-- Pin fijo al centro, como en las apps de taxi: se mueve el mapa, no el pin. -->
+      <div class="mapa-pin" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.6"/></svg></div>
+    </div>
+    <div class="mapa-pie">
+      <div class="mapa-direccion"><span>Ubicación elegida</span><b id="mapaDireccion">Mueve el mapa para ubicar el pin</b></div>
+      <button type="button" class="btn" id="mapaConfirmar" onclick="confirmarMapa()" disabled>Usar esta ubicación</button>
+    </div>
+  </div>
+</div>
 
 <div class="overlay" id="overlay" onclick="if(event.target===this)cerrarModal()">
   <div class="modal" id="modal">

@@ -1,4 +1,4 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, ejecutar, insertarLote, aCamel, enTransaccion } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -10,6 +10,10 @@ import { tocar } from './ajustes.js';
  */
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
+
+// Código de PostgreSQL para "unique_violation" (antes se reconocía por el
+// texto 'UNIQUE' del mensaje de SQLite).
+const esDuplicado = e => e && e.code === '23505';
 
 const TIPOS = ['semanal', 'mensual'];
 const LARGO_MAX = { mesLabel: 20, factura: 30, observaciones: 1000 };
@@ -63,16 +67,16 @@ function normalizar(d) {
   return fila;
 }
 
-export function total() {
-  return db().prepare('SELECT COUNT(*) AS n FROM metraje_almacen').get().n;
+export async function total() {
+  return (await uno('SELECT COUNT(*) AS n FROM metraje_almacen')).n;
 }
 
-export function listar() {
-  return db().prepare('SELECT * FROM metraje_almacen ORDER BY fecha_desde ASC, (tipo = \'mensual\') DESC, id ASC').all().map(aCamel);
+export async function listar() {
+  return (await todos('SELECT * FROM metraje_almacen ORDER BY fecha_desde ASC, (tipo = \'mensual\') DESC, id ASC')).map(aCamel);
 }
 
-export function porId(id) {
-  return aCamel(db().prepare('SELECT * FROM metraje_almacen WHERE id = ?').get(Number(id)));
+export async function porId(id) {
+  return aCamel(await uno('SELECT * FROM metraje_almacen WHERE id = ?', [Number(id)]));
 }
 
 /**
@@ -81,67 +85,59 @@ export function porId(id) {
  * con el mismo archivo no duplica nada (ON CONFLICT DO NOTHING). No pisa
  * filas que admin ya haya editado a mano.
  */
-export function cargarInicial(filas) {
-  const insertar = db().prepare(
-    'INSERT INTO metraje_almacen (tipo, fecha_desde, fecha_hasta, mes_label, precio_m2, metraje, precio_sin_igv, '
-    + 'total_con_igv, factura, pendiente_validar, observaciones, creado_por) '
-    + 'VALUES (@tipo, @fechaDesde, @fechaHasta, @mesLabel, @precioM2, @metraje, @precioSinIgv, @totalConIgv, @factura, @pendienteValidar, @observaciones, \'siembra\') '
-    + 'ON CONFLICT(tipo, fecha_desde, fecha_hasta) DO NOTHING'
-  );
-  let nuevas = 0;
-  enTransaccion(() => {
-    for (const f of filas) {
-      const r = insertar.run({
-        tipo: f.tipo, fechaDesde: f.fechaDesde, fechaHasta: f.fechaHasta, mesLabel: f.mesLabel || '',
-        precioM2: f.precioM2, metraje: f.metraje ?? null, precioSinIgv: f.precioSinIgv ?? null,
-        totalConIgv: f.totalConIgv ?? null, factura: f.factura || '', pendienteValidar: f.pendienteValidar ? 1 : 0,
-        observaciones: f.observaciones || '',
-      });
-      if (r.changes) nuevas++;
-    }
-  });
-  return nuevas;
+export async function cargarInicial(filas) {
+  const columnas = ['tipo', 'fecha_desde', 'fecha_hasta', 'mes_label', 'precio_m2', 'metraje', 'precio_sin_igv',
+    'total_con_igv', 'factura', 'pendiente_validar', 'observaciones', 'creado_por'];
+  return enTransaccion(() => insertarLote('metraje_almacen', columnas, filas.map(f => ({
+    tipo: f.tipo, fecha_desde: f.fechaDesde, fecha_hasta: f.fechaHasta, mes_label: f.mesLabel || '',
+    precio_m2: f.precioM2, metraje: f.metraje ?? null, precio_sin_igv: f.precioSinIgv ?? null,
+    total_con_igv: f.totalConIgv ?? null, factura: f.factura || '', pendiente_validar: f.pendienteValidar ? 1 : 0,
+    observaciones: f.observaciones || '', creado_por: 'siembra',
+  })), 'ON CONFLICT (tipo, fecha_desde, fecha_hasta) DO NOTHING'));
 }
 
-export function crear(datos, creadoPor) {
+export async function crear(datos, creadoPor) {
   const f = normalizar(datos);
   let r;
   try {
-    r = db().prepare(
+    r = await ejecutar(
       'INSERT INTO metraje_almacen (tipo, fecha_desde, fecha_hasta, mes_label, precio_m2, metraje, precio_sin_igv, '
-      + 'total_con_igv, factura, pendiente_validar, observaciones, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(f.tipo, f.fecha_desde, f.fecha_hasta, f.mes_label, f.precio_m2, f.metraje, f.precio_sin_igv,
-          f.total_con_igv, f.factura, f.pendiente_validar, f.observaciones, String(creadoPor || ''));
+      + 'total_con_igv, factura, pendiente_validar, observaciones, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+      + 'RETURNING id',
+      [f.tipo, f.fecha_desde, f.fecha_hasta, f.mes_label, f.precio_m2, f.metraje, f.precio_sin_igv,
+        f.total_con_igv, f.factura, f.pendiente_validar, f.observaciones, String(creadoPor || '')]
+    );
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) throw error('Ya existe una fila ' + f.tipo + ' con ese rango de fechas.');
+    if (esDuplicado(e)) throw error('Ya existe una fila ' + f.tipo + ' con ese rango de fechas.');
     throw e;
   }
-  tocar();
-  return porId(r.lastInsertRowid);
+  await tocar();
+  return porId(r.filas[0].id);
 }
 
-export function actualizar(id, datos) {
-  const actual = porId(id);
+export async function actualizar(id, datos) {
+  const actual = await porId(id);
   if (!actual) throw error('No existe la fila ' + id + '.', 404);
   const f = normalizar({ ...actual, ...datos });
   try {
-    db().prepare(
+    await ejecutar(
       'UPDATE metraje_almacen SET tipo=?, fecha_desde=?, fecha_hasta=?, mes_label=?, precio_m2=?, metraje=?, '
-      + 'precio_sin_igv=?, total_con_igv=?, factura=?, pendiente_validar=?, observaciones=?, actualizado_en=datetime(\'now\') WHERE id=?'
-    ).run(f.tipo, f.fecha_desde, f.fecha_hasta, f.mes_label, f.precio_m2, f.metraje, f.precio_sin_igv,
-          f.total_con_igv, f.factura, f.pendiente_validar, f.observaciones, Number(id));
+      + 'precio_sin_igv=?, total_con_igv=?, factura=?, pendiente_validar=?, observaciones=?, actualizado_en=ahora_txt() WHERE id=?',
+      [f.tipo, f.fecha_desde, f.fecha_hasta, f.mes_label, f.precio_m2, f.metraje, f.precio_sin_igv,
+        f.total_con_igv, f.factura, f.pendiente_validar, f.observaciones, Number(id)]
+    );
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) throw error('Ya existe una fila ' + f.tipo + ' con ese rango de fechas.');
+    if (esDuplicado(e)) throw error('Ya existe una fila ' + f.tipo + ' con ese rango de fechas.');
     throw e;
   }
-  tocar();
+  await tocar();
   return porId(id);
 }
 
-export function eliminar(id) {
-  const r = db().prepare('DELETE FROM metraje_almacen WHERE id = ?').run(Number(id));
+export async function eliminar(id) {
+  const r = await ejecutar('DELETE FROM metraje_almacen WHERE id = ?', [Number(id)]);
   if (!r.changes) throw error('No existe la fila ' + id + '.', 404);
-  tocar();
+  await tocar();
   return { id: Number(id) };
 }
 
@@ -153,8 +149,8 @@ export function eliminar(id) {
  * que la empresa ya paga por sus ventas), no un costo real -mismo criterio
  * que payback, ver frontend/js/views/payback/vista.js-.
  */
-export function resumen() {
-  const filas = listar();
+export async function resumen() {
+  const filas = await listar();
   const semanas = filas.filter(f => f.tipo === 'semanal' && !f.pendienteValidar);
   const meses = filas.filter(f => f.tipo === 'mensual' && !f.pendienteValidar);
   const pendientes = filas.filter(f => f.pendienteValidar);

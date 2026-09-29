@@ -1,5 +1,4 @@
 import { $ } from './utils/dom.js';
-import { hoyISO } from './utils/format.js';
 import { toast } from './utils/toast.js';
 import { pedirAutorizacion as apiPedirAutorizacion, ingresarLogistica, salirLogistica,
          cambiarMiClave, buscarEnPadron, cargar, cargarMiArea, limpiarDatosPrivados,
@@ -7,8 +6,8 @@ import { pedirAutorizacion as apiPedirAutorizacion, ingresarLogistica, salirLogi
 import { setSesion, sesion, leerSesionGuardada } from './state/sessionState.js';
 import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tabUser, tabAdmin, aplicarPermisosAdmin } from './views/tabs.js';
-import { toggleOrigen, refrescarHoras, resetAccion, limpiarParadas } from './views/requestForm.js';
-import { renderMis } from './views/tickets.js';
+import { prepararFormulario } from './views/requestForm.js';
+import { limpiarBusquedaMis } from './views/tickets.js';
 import { abrirModal, cerrarModal } from './views/dispatch.js';
 import { cerrarAccesoLogistica } from './ui/logisticaPopover.js';
 import { renderTodo } from './render.js';
@@ -286,16 +285,9 @@ function abrirVista(tipo) {
     $('miDni').textContent = sesion.dni;
     $('miArea').textContent = sesion.area;
     $('miCargo').textContent = sesion.cargo || '—';
-    $('fOrigen').value = '';
-    toggleOrigen();
-    resetAccion();
-    limpiarParadas();
-    $('resTicket').innerHTML = ''; $('qTicket').value = ''; $('eTicket').classList.remove('on');
-    $('fFecha').min = hoyISO();
-    if (!$('fFecha').value) $('fFecha').value = hoyISO();
-    refrescarHoras();
+    prepararFormulario();
+    limpiarBusquedaMis();
     tabUser('nueva');
-    renderMis();
   } else {
     $('viewAdmin').classList.add('on');
     $('viewUser').classList.remove('on');

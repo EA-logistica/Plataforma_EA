@@ -1,13 +1,16 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, ejecutar, insertarLote, aCamel, enTransaccion } from '../conexion.js';
 import { tocar } from './ajustes.js';
 import * as paradas from './paradas.js';
+import * as destinos from './destinos.js';
+import { contradiccionServicio, IDS_MODALIDAD, VEHICULOS, coordsDeEnlace } from '#shared/servicios.js';
 
 /**
  * Solicitudes de servicio: el corazón de la aplicación.
  *
  * El correlativo lo asigna el servidor, nunca el navegador. Con dos personas
  * registrando a la vez, dejar que el cliente proponga el número garantiza
- * choques; aquí se toma el máximo dentro de la misma transacción que inserta.
+ * choques; aquí se toma el máximo dentro de la misma transacción que inserta
+ * (con un candado consultivo, ver crear()).
  */
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
@@ -19,16 +22,21 @@ const COLUMNAS = [
   'ts_espera', 'ts_transito', 'ts_concluido', 'fuente'
 ];
 
-export function listar() {
-  const filas = db().prepare('SELECT * FROM solicitudes ORDER BY correlativo').all().map(aCamel);
-  const porTicket = paradas.todasAgrupadas();
+// Columnas de la versión 4 (ver db/migrar.js): solo las llena el formulario
+// actual. El histórico no las trae, así que cargarHistorico() sigue con
+// COLUMNAS y estas quedan en su valor por defecto.
+const COLUMNAS_NUEVAS = ['origen_lat', 'origen_lng', 'destino_lat', 'destino_lng', 'destino_tipo', 'modalidad'];
+
+export async function listar() {
+  const filas = (await todos('SELECT * FROM solicitudes ORDER BY correlativo')).map(aCamel);
+  const porTicket = await paradas.todasAgrupadas();
   return filas.map(s => ({ ...s, paradas: porTicket.get(s.id) || [] }));
 }
 
-export function porId(id) {
-  const fila = aCamel(db().prepare('SELECT * FROM solicitudes WHERE id = ?').get(String(id)));
+export async function porId(id) {
+  const fila = aCamel(await uno('SELECT * FROM solicitudes WHERE id = ?', [String(id)]));
   if (!fila) return null;
-  fila.paradas = paradas.deTicket(fila.id);
+  fila.paradas = await paradas.deTicket(fila.id);
   return fila;
 }
 
@@ -40,24 +48,68 @@ export function porId(id) {
  * `GET /api/estado` y `GET /api/solicitudes` completos siguen siendo cosa de
  * logística (ver backend/rutas/index.js).
  */
-export function deArea(area, limite = 5) {
-  const filas = db().prepare('SELECT * FROM solicitudes WHERE area = ? ORDER BY creado DESC LIMIT ?')
-    .all(String(area), Number(limite)).map(aCamel);
-  return filas.map(s => ({ ...s, paradas: paradas.deTicket(s.id) }));
+export async function deArea(area, limite = 5) {
+  const filas = (await todos(
+    'SELECT * FROM solicitudes WHERE area = ? ORDER BY creado DESC LIMIT ?',
+    [String(area), Number(limite)]
+  )).map(aCamel);
+  const salida = [];
+  for (const s of filas) salida.push({ ...s, paradas: await paradas.deTicket(s.id) });
+  return salida;
 }
 
-export function total() {
-  return db().prepare('SELECT COUNT(*) AS n FROM solicitudes').get().n;
+/**
+ * Búsqueda en TODOS los servicios de un área (no solo los últimos): por
+ * número de ticket, por quien lo pidió o por destino. Siempre acotada al área
+ * de la sesión -el área sale del token, no de la consulta-.
+ */
+export async function buscarEnArea(area, q, limite = 20) {
+  const texto = String(q || '').trim().slice(0, 100);
+  if (texto.length < 2) return [];
+  const numero = texto.replace(/[^0-9]/g, '');
+  const filas = (await todos(
+    'SELECT * FROM solicitudes WHERE area = @area AND ('
+    + 'nombre ILIKE @q OR destino ILIKE @q OR id ILIKE @q OR motivo ILIKE @q OR servicio ILIKE @q'
+    + (numero ? ' OR correlativo = @numero' : '') + ') ORDER BY creado DESC LIMIT @limite',
+    { area: String(area), q: '%' + texto + '%', numero: numero ? Number(numero) : null, limite: Number(limite) }
+  )).map(aCamel);
+  const salida = [];
+  for (const s of filas) salida.push({ ...s, paradas: await paradas.deTicket(s.id) });
+  return salida;
+}
+
+export async function total() {
+  return (await uno('SELECT COUNT(*) AS n FROM solicitudes')).n;
 }
 
 const pad = n => String(n).padStart(3, '0');
 
 /** Crea una solicitud nueva. Devuelve la fila ya guardada, con su correlativo. */
-export function crear(datos) {
+export async function crear(datos) {
   validar(datos);
 
-  return enTransaccion(base => {
-    const max = base.prepare('SELECT COALESCE(MAX(correlativo), 0) AS n FROM solicitudes').get().n;
+  // Un destino que la plataforma no conoce tiene que venir clasificado: así
+  // logística sabe si va a un cliente o a un proveedor, y la dirección queda
+  // registrada para la próxima vez.
+  const conocido = await destinos.esConocido(datos.destino);
+  const destinoTipo = destinos.TIPOS_DESTINO.includes(datos.destinoTipo) ? datos.destinoTipo : '';
+  if (!conocido && !destinoTipo) {
+    throw error('Este destino no está registrado: indica si es un cliente o un proveedor.');
+  }
+  const origenPunto = punto(datos.origenLat, datos.origenLng, 'del origen');
+  const destinoPunto = punto(datos.destinoLat, datos.destinoLng, 'del destino');
+  if (destinoPunto.lat == null) {
+    const delEnlace = coordsDeEnlace(datos.destino);
+    if (delEnlace) Object.assign(destinoPunto, punto(delEnlace.lat, delEnlace.lng, 'del enlace de Google Maps'));
+  }
+
+  return enTransaccion(async () => {
+    // En PostgreSQL (READ COMMITTED) dos transacciones simultáneas verían el
+    // mismo MAX y sacarían el mismo número. El candado consultivo de
+    // transacción las pone en fila: la segunda espera al COMMIT de la primera
+    // y recién entonces lee el MAX, que ya incluye la fila nueva.
+    await ejecutar('SELECT pg_advisory_xact_lock(4201)');
+    const max = (await uno('SELECT COALESCE(MAX(correlativo), 0) AS n FROM solicitudes')).n;
     const correlativo = max + 1;
     const ahora = new Date().toISOString();
 
@@ -66,7 +118,7 @@ export function crear(datos) {
       correlativo,
       creado: ahora,
       // texto() y no el valor crudo: la ruta es pública, y un objeto o un
-      // arreglo en cualquiera de estos campos hacía que SQLite rechazara el
+      // arreglo en cualquiera de estos campos hacía que la base rechazara el
       // parámetro y la petición saliera como 500 en vez de guardarse.
       dni: texto(datos.dni, 20),
       nombre: texto(datos.nombre, 200),
@@ -88,19 +140,37 @@ export function crear(datos) {
       ts_espera: ahora,
       ts_transito: null,
       ts_concluido: null,
-      fuente: 'app'
+      fuente: 'app',
+      origen_lat: datos.origen === 'Otros' ? origenPunto.lat : null,
+      origen_lng: datos.origen === 'Otros' ? origenPunto.lng : null,
+      destino_lat: destinoPunto.lat,
+      destino_lng: destinoPunto.lng,
+      destino_tipo: destinoTipo,
+      // Sin modalidad (una llamada a la API de antes del formulario nuevo) es
+      // un envío/recojo, que es lo que era todo hasta entonces.
+      modalidad: datos.modalidad || 'Envíos'
     };
 
-    base.prepare(
-      'INSERT INTO solicitudes (' + COLUMNAS.join(', ') + ') VALUES (' +
-      COLUMNAS.map(c => '@' + c).join(', ') + ')'
-    ).run(fila);
+    const columnas = [...COLUMNAS, ...COLUMNAS_NUEVAS];
+    await ejecutar(
+      'INSERT INTO solicitudes (' + columnas.join(', ') + ') VALUES (' +
+      columnas.map(c => '@' + c).join(', ') + ')',
+      fila
+    );
+
+    if (conocido) await destinos.usar(fila.destino);
+    if (!conocido) {
+      await destinos.registrar({
+        direccion: fila.destino, tipo: destinoTipo, lat: destinoPunto.lat, lng: destinoPunto.lng,
+        area: fila.area, creadoPor: fila.dni
+      });
+    }
 
     // Paradas de más, cuando el servicio tiene dos o más rutas en la misma
     // programación. El primer destino ya quedó en la fila de arriba.
-    paradas.guardar(fila.id, datos.paradas);
+    await paradas.guardar(fila.id, datos.paradas);
 
-    tocar('app');
+    await tocar('app');
     return porId(fila.id);
   });
 }
@@ -118,17 +188,36 @@ function tope(campo, valor) {
   }
 }
 
+/**
+ * Coordenadas de un punto elegido en el mapa: las dos o ninguna, y dentro
+ * del Perú (con holgura). Un par fuera de ese recuadro es un error de
+ * captura, no un servicio real de la mensajería.
+ */
+function punto(lat, lng, cual) {
+  const vacio = v => v == null || v === '';
+  if (vacio(lat) && vacio(lng)) return { lat: null, lng: null };
+  const la = Number(lat), lo = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(lo) || la < -19 || la > 1 || lo < -82 || lo > -68) {
+    throw error('La ubicación ' + cual + ' elegida en el mapa no es válida.');
+  }
+  return { lat: Math.round(la * 1e6) / 1e6, lng: Math.round(lo * 1e6) / 1e6 };
+}
+
 const texto = (v, max = Infinity) => (v == null || typeof v === 'object' ? '' : String(v)).slice(0, max);
 
 const CAMPOS_TEXTO = ['dni', 'nombre', 'cargo', 'area', 'tipo', 'servicio', 'motivo', 'origen', 'origenDetalle',
-  'destino', 'contacto', 'telefono', 'fechaProg', 'horaProg', 'vehiculo'];
+  'destino', 'contacto', 'telefono', 'fechaProg', 'horaProg', 'vehiculo', 'destinoTipo', 'modalidad',
+  'origenLat', 'origenLng', 'destinoLat', 'destinoLng'];
 
 function validar(d) {
   for (const campo of CAMPOS_TEXTO) {
     if (d[campo] != null && typeof d[campo] === 'object') throw error('El campo "' + campo + '" no es válido.');
   }
   if (!['Recoger', 'Entregar'].includes(d.tipo)) throw error('Indica si el mensajero va a recoger o a entregar.');
+  if (d.modalidad && !IDS_MODALIDAD.includes(d.modalidad)) throw error('Elige la modalidad: Envíos, Transporte o Cargo.');
   if (String(d.servicio || '').trim().length < 3) throw error('Indica qué se va a mover.');
+  const contradiccion = contradiccionServicio(d.tipo, d.servicio);
+  if (contradiccion) throw error(contradiccion);
   if (!String(d.origen || '').trim()) throw error('Elige desde dónde sale el servicio.');
   if (String(d.motivo || '').trim().length < 5) throw error('Describe el motivo del servicio.');
   if (String(d.destino || '').trim().length < 6) throw error('Escribe la dirección exacta de destino.');
@@ -146,15 +235,15 @@ function validar(d) {
   // Transporte y tarifa los fija logística después, pero si vienen al crear
   // tienen que ser válidos: antes un costo 'abc' entraba como NaN y un
   // vehículo cualquiera se guardaba tal cual, y los dos alimentan los KPI.
-  if (d.vehiculo && !['Motorizado', 'Carro'].includes(d.vehiculo)) throw error('El transporte debe ser Motorizado o Carro.');
+  if (d.vehiculo && !VEHICULOS.includes(d.vehiculo)) throw error('El transporte debe ser ' + VEHICULOS.join(', ') + '.');
   if (d.costo != null && d.costo !== '' && (!isFinite(Number(d.costo)) || Number(d.costo) < 0)) {
     throw error('La tarifa debe ser un número positivo.');
   }
 }
 
 /** Cambia el transporte o la tarifa. Un ticket concluido o cancelado ya no se toca. */
-export function actualizar(id, cambios) {
-  const s = porId(id);
+export async function actualizar(id, cambios) {
+  const s = await porId(id);
   if (!s) throw error('No existe el ticket ' + id + '.', 404);
   if (s.estado === 'Concluido' || s.estado === 'Cancelado') {
     throw error('El ticket ' + id + ' está ' + s.estado.toLowerCase() + ' y ya no se modifica.', 409);
@@ -163,7 +252,7 @@ export function actualizar(id, cambios) {
   const sets = [], valores = {};
   if ('vehiculo' in cambios) {
     const v = cambios.vehiculo || null;
-    if (v && !['Motorizado', 'Carro'].includes(v)) throw error('El transporte debe ser Motorizado o Carro.');
+    if (v && !VEHICULOS.includes(v)) throw error('El transporte debe ser ' + VEHICULOS.join(', ') + '.');
     sets.push('vehiculo = @vehiculo'); valores.vehiculo = v;
   }
   if ('costo' in cambios) {
@@ -171,37 +260,54 @@ export function actualizar(id, cambios) {
     if (n !== null && (!isFinite(n) || n < 0)) throw error('La tarifa debe ser un número positivo.');
     sets.push('costo = @costo'); valores.costo = n === null ? null : Math.round(n * 100) / 100;
   }
+  // El gestor puede corregir QUÉ se pidió (el solicitante eligió mal la
+  // modalidad o la acción). Se valida el par resultante, no cada campo
+  // suelto: cambiar solo la acción de un "Recojo de paquete" a Entregar
+  // dejaría el ticket contradictorio.
+  if ('modalidad' in cambios || 'tipo' in cambios || 'servicio' in cambios) {
+    const modalidad = 'modalidad' in cambios ? cambios.modalidad : s.modalidad;
+    const tipo = 'tipo' in cambios ? cambios.tipo : s.tipo;
+    const servicio = 'servicio' in cambios ? texto(cambios.servicio, 200).trim() : s.servicio;
+    if (modalidad && !IDS_MODALIDAD.includes(modalidad)) throw error('Elige la modalidad: Envíos, Transporte o Cargo.');
+    if (!['Recoger', 'Entregar'].includes(tipo)) throw error('La acción debe ser Recoger o Entregar.');
+    if (String(servicio || '').length < 3) throw error('Indica el tipo de servicio.');
+    const contradiccion = contradiccionServicio(tipo, servicio);
+    if (contradiccion) throw error(contradiccion);
+    sets.push('modalidad = @modalidad', 'tipo = @tipo', 'servicio = @servicio');
+    Object.assign(valores, { modalidad: modalidad || 'Envíos', tipo, servicio });
+  }
   if (!sets.length) return s;
 
   valores.id = String(id);
-  db().prepare('UPDATE solicitudes SET ' + sets.join(', ') + ' WHERE id = @id').run(valores);
-  tocar('app');
+  await ejecutar('UPDATE solicitudes SET ' + sets.join(', ') + ' WHERE id = @id', valores);
+  await tocar('app');
   return porId(id);
 }
 
 /**
  * Mueve el ticket al siguiente estado del flujo.
  *
- * Las condiciones se comprueban aquí y no solo en la pantalla: sin transporte
- * no hay salida, y sin tarifa no hay cierre. Confiar en que el navegador lo
+ * Las condiciones se comprueban aquí y no solo en la pantalla: sin tarifa no
+ * hay cierre. (Antes también se exigía asignar Carro o Motorizado para salir;
+ * desde que el solicitante elige la modalidad -Envíos, Transporte, Cargo- la
+ * unidad ya viene dada y la bandeja dejó de pedirla.) Confiar en que el navegador lo
  * valide deja la puerta abierta a que un ticket se cierre sin costo y los
  * indicadores mientan.
  */
-export function avanzar(id) {
-  const s = porId(id);
+export async function avanzar(id) {
+  const s = await porId(id);
   if (!s) throw error('No existe el ticket ' + id + '.', 404);
 
   const ahora = new Date().toISOString();
   if (s.estado === 'En espera') {
-    if (!s.vehiculo) throw error('Asigna Carro o Motorizado antes de mover ' + id + ' a tránsito.', 409);
-    db().prepare("UPDATE solicitudes SET estado = 'En tránsito', ts_transito = ? WHERE id = ?").run(ahora, id);
+    await ejecutar("UPDATE solicitudes SET estado = 'En tránsito', ts_transito = ? WHERE id = ?", [ahora, String(id)]);
   } else if (s.estado === 'En tránsito') {
     if (s.costo == null) throw error('Ingresa el costo de ' + id + ' para cerrarlo.', 409);
-    db().prepare("UPDATE solicitudes SET estado = 'Concluido', ts_concluido = ? WHERE id = ?").run(ahora, id);
+    await ejecutar("UPDATE solicitudes SET estado = 'Concluido', ts_concluido = ? WHERE id = ?", [ahora, String(id)]);
   } else {
     throw error('El ticket ' + id + ' ya está ' + s.estado.toLowerCase() + ' y no se puede avanzar.', 409);
   }
-  tocar('app');
+  await tocar('app');
   return porId(id);
 }
 
@@ -212,8 +318,8 @@ export function avanzar(id) {
  * en tránsito (por ejemplo, si el motivo es que la persona no estaba
  * autorizada y recién se descubre después de despachado).
  */
-export function cancelar(id, { motivo, detalle, canceladoPor, soloDesdeEspera = false }) {
-  const s = porId(id);
+export async function cancelar(id, { motivo, detalle, canceladoPor, soloDesdeEspera = false }) {
+  const s = await porId(id);
   if (!s) throw error('No existe el ticket ' + id + '.', 404);
   if (s.estado === 'Concluido' || s.estado === 'Cancelado') {
     throw error('El ticket ' + id + ' ya está ' + s.estado.toLowerCase() + ' y no se puede cancelar.', 409);
@@ -222,40 +328,35 @@ export function cancelar(id, { motivo, detalle, canceladoPor, soloDesdeEspera = 
     throw error('El servicio ya salió; pide a logística que lo cancele.', 409);
   }
 
-  db().prepare(
+  await ejecutar(
     "UPDATE solicitudes SET estado = 'Cancelado', motivo_cancelacion = ?, "
-    + 'motivo_cancelacion_detalle = ?, cancelado_por = ?, ts_cancelado = ? WHERE id = ?'
-  ).run(motivo, detalle || '', canceladoPor || '', new Date().toISOString(), id);
-  tocar('app');
+    + 'motivo_cancelacion_detalle = ?, cancelado_por = ?, ts_cancelado = ? WHERE id = ?',
+    [motivo, detalle || '', canceladoPor || '', new Date().toISOString(), String(id)]
+  );
+  await tocar('app');
   return porId(id);
 }
 
 /** Carga masiva del histórico. Solo se usa al sembrar una base vacía. */
-export function cargarHistorico(filas) {
-  return enTransaccion(base => {
-    const insertar = base.prepare(
-      'INSERT INTO solicitudes (' + COLUMNAS.join(', ') + ') VALUES (' +
-      COLUMNAS.map(c => '@' + c).join(', ') + ') ON CONFLICT (id) DO NOTHING'
-    );
-    let n = 0;
-    filas.forEach((s, i) => {
-      n += insertar.run({
-        id: s.id,
-        correlativo: i + 1,
-        creado: s.creado,
-        dni: s.dni || '', nombre: s.nombre || '', cargo: s.cargo || '', area: s.area || '',
-        tipo: s.tipo, servicio: s.servicio || '', motivo: s.motivo || '',
-        origen: s.origen || '', origen_detalle: s.origenDetalle || '', destino: s.destino || '',
-        contacto: s.contacto || '', telefono: s.telefono || '',
-        fecha_prog: s.fechaProg || '', hora_prog: s.horaProg || '',
-        vehiculo: s.vehiculo || null,
-        costo: s.costo != null ? s.costo : null,
-        estado: s.estado,
-        ts_espera: s.tsEspera || null, ts_transito: s.tsTransito || null, ts_concluido: s.tsConcluido || null,
-        fuente: s.fuente || 'historico'
-      }).changes;
-    });
-    tocar('app');
+export async function cargarHistorico(filas) {
+  return enTransaccion(async () => {
+    const lote = filas.map((s, i) => ({
+      id: s.id,
+      correlativo: i + 1,
+      creado: s.creado,
+      dni: s.dni || '', nombre: s.nombre || '', cargo: s.cargo || '', area: s.area || '',
+      tipo: s.tipo, servicio: s.servicio || '', motivo: s.motivo || '',
+      origen: s.origen || '', origen_detalle: s.origenDetalle || '', destino: s.destino || '',
+      contacto: s.contacto || '', telefono: s.telefono || '',
+      fecha_prog: s.fechaProg || '', hora_prog: s.horaProg || '',
+      vehiculo: s.vehiculo || null,
+      costo: s.costo != null ? s.costo : null,
+      estado: s.estado,
+      ts_espera: s.tsEspera || null, ts_transito: s.tsTransito || null, ts_concluido: s.tsConcluido || null,
+      fuente: s.fuente || 'historico'
+    }));
+    const n = await insertarLote('solicitudes', COLUMNAS, lote, 'ON CONFLICT (id) DO NOTHING');
+    await tocar('app');
     return n;
   });
 }

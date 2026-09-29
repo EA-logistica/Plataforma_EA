@@ -1,4 +1,4 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, aCamel, enTransaccion, insertarLote } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -26,46 +26,39 @@ const COLUMNAS = [
 ];
 
 export function cargarInicial(filas) {
-  return enTransaccion(base => {
-    const insertar = base.prepare(
-      'INSERT INTO ordenes_compra_detalle (' + COLUMNAS.join(', ') + ') VALUES (' +
-      COLUMNAS.map(c => '@' + c).join(', ') + ') ON CONFLICT (clave) DO NOTHING'
-    );
-    let n = 0;
-    filas.forEach(d => {
-      n += insertar.run({
-        clave: d.clave,
-        codigo_area: d.codigoArea || '', area: d.area || '',
-        fecha_entrega: d.fechaEntrega || '',
-        doc_serie: d.docSerie || '', doc_numero: d.docNumero || '', numero_oc: d.numeroOc,
-        fecha_emision: d.fechaEmision || '',
-        ruc_proveedor: d.rucProveedor || '', proveedor: d.proveedor || '',
-        tipo_orden: d.tipoOrden || '',
-        ref_tipo: d.refTipo || '', ref_serie: d.refSerie || '', ref_numero: d.refNumero || '',
-        estado: d.estado || '',
-        tipo_cambio: d.tipoCambio || 0,
-        codigo_producto: d.codigoProducto || '', descripcion_producto: d.descripcionProducto || '',
-        vencimiento: d.vencimiento || '',
-        cantidad: d.cantidad || 0, saldo: d.saldo || 0,
-        moneda: d.moneda === 'USD' ? 'USD' : 'PEN',
-        costo_unitario: d.costoUnitario || 0, valor_compra: d.valorCompra || 0,
-        proc_descuento: d.procDescuento || 0, monto_igv: d.montoIgv || 0,
-        monto_neto: d.montoNeto || 0, monto_saldo: d.montoSaldo || 0,
-        valor_compra_mn: d.valorCompraMn || 0, valor_compra_me: d.valorCompraMe || 0,
-        cod_molde: d.codMolde || '', nombre_molde: d.nombreMolde || '',
-        glosa_cab_req_compra: d.glosaCabReqCompra || '', glosa_det_req_compra: d.glosaDetReqCompra || '',
-        incoterm: d.incoterm || '', tipo_transporte: d.tipoTransporte || '',
-        agente_aduana: d.agenteAduana || '', numero_contrato: d.numeroContrato || '',
-        usuario: d.usuario || ''
-      }).changes;
-    });
-    tocar();
+  return enTransaccion(async () => {
+    const n = await insertarLote('ordenes_compra_detalle', COLUMNAS, filas.map(d => ({
+      clave: d.clave,
+      codigo_area: d.codigoArea || '', area: d.area || '',
+      fecha_entrega: d.fechaEntrega || '',
+      doc_serie: d.docSerie || '', doc_numero: d.docNumero || '', numero_oc: d.numeroOc,
+      fecha_emision: d.fechaEmision || '',
+      ruc_proveedor: d.rucProveedor || '', proveedor: d.proveedor || '',
+      tipo_orden: d.tipoOrden || '',
+      ref_tipo: d.refTipo || '', ref_serie: d.refSerie || '', ref_numero: d.refNumero || '',
+      estado: d.estado || '',
+      tipo_cambio: d.tipoCambio || 0,
+      codigo_producto: d.codigoProducto || '', descripcion_producto: d.descripcionProducto || '',
+      vencimiento: d.vencimiento || '',
+      cantidad: d.cantidad || 0, saldo: d.saldo || 0,
+      moneda: d.moneda === 'USD' ? 'USD' : 'PEN',
+      costo_unitario: d.costoUnitario || 0, valor_compra: d.valorCompra || 0,
+      proc_descuento: d.procDescuento || 0, monto_igv: d.montoIgv || 0,
+      monto_neto: d.montoNeto || 0, monto_saldo: d.montoSaldo || 0,
+      valor_compra_mn: d.valorCompraMn || 0, valor_compra_me: d.valorCompraMe || 0,
+      cod_molde: d.codMolde || '', nombre_molde: d.nombreMolde || '',
+      glosa_cab_req_compra: d.glosaCabReqCompra || '', glosa_det_req_compra: d.glosaDetReqCompra || '',
+      incoterm: d.incoterm || '', tipo_transporte: d.tipoTransporte || '',
+      agente_aduana: d.agenteAduana || '', numero_contrato: d.numeroContrato || '',
+      usuario: d.usuario || ''
+    })), 'ON CONFLICT (clave) DO NOTHING');
+    await tocar();
     return n;
   });
 }
 
-export function total() {
-  return db().prepare('SELECT COUNT(*) AS n FROM ordenes_compra_detalle').get().n;
+export async function total() {
+  return (await uno('SELECT COUNT(*) AS n FROM ordenes_compra_detalle')).n;
 }
 
 function condiciones(f = {}) {
@@ -79,7 +72,7 @@ function condiciones(f = {}) {
   if (f.estado) { where.push('estado = @estado'); params.estado = f.estado; }
   if (f.codigoProducto) { where.push('codigo_producto = @codigoProducto'); params.codigoProducto = f.codigoProducto; }
   if (f.q) {
-    where.push('(numero_oc LIKE @q OR proveedor LIKE @q OR descripcion_producto LIKE @q OR codigo_producto LIKE @q)');
+    where.push('(numero_oc ILIKE @q OR proveedor ILIKE @q OR descripcion_producto ILIKE @q OR codigo_producto ILIKE @q)');
     params.q = '%' + f.q + '%';
   }
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
@@ -91,35 +84,42 @@ function condiciones(f = {}) {
  * más área y estado. `estado` de la cabecera es el de su primer ítem: en la
  * práctica todos los ítems de una misma OC comparten estado (verificado:
  * ninguna OC mezcla estado, moneda, proveedor ni fecha entre sus líneas).
+ * Por eso proveedor, RUC, área y moneda se toman con MIN(): PostgreSQL no
+ * admite columnas sueltas fuera del GROUP BY y, siendo iguales en todas las
+ * líneas, da lo mismo cuál se elija.
  */
-export function resumenPorOC(f = {}) {
+export async function resumenPorOC(f = {}) {
   const { sql, params } = condiciones(f);
   const pagina = Math.max(1, Number(f.pagina) || 1);
   const porPagina = Math.min(200, Math.max(1, Number(f.porPagina) || 30));
 
-  const totalOC = db().prepare(
-    'SELECT COUNT(*) AS n FROM (SELECT numero_oc FROM ordenes_compra_detalle ' + sql + ' GROUP BY numero_oc)'
-  ).get(params).n;
+  const totalOC = (await uno(
+    'SELECT COUNT(*) AS n FROM (SELECT numero_oc FROM ordenes_compra_detalle ' + sql + ' GROUP BY numero_oc) t',
+    params
+  )).n;
 
-  const filas = db().prepare(
-    'SELECT numero_oc, MIN(fecha_emision) AS fecha_emision, proveedor, ruc_proveedor, area, '
-    + 'MIN(estado) AS estado, moneda, COUNT(*) AS items, '
-    + 'COALESCE(SUM(monto_neto), 0) AS valorizado, COALESCE(SUM(valor_compra_mn), 0) AS valorizadoEquivalente '
+  const filas = (await todos(
+    'SELECT numero_oc, MIN(fecha_emision) AS fecha_emision, MIN(proveedor) AS proveedor, '
+    + 'MIN(ruc_proveedor) AS ruc_proveedor, MIN(area) AS area, '
+    + 'MIN(estado) AS estado, MIN(moneda) AS moneda, COUNT(*) AS items, '
+    + 'COALESCE(SUM(monto_neto), 0) AS valorizado, COALESCE(SUM(valor_compra_mn), 0) AS "valorizadoEquivalente" '
     + 'FROM ordenes_compra_detalle ' + sql
-    + ' GROUP BY numero_oc ORDER BY fecha_emision DESC, numero_oc DESC LIMIT @limite OFFSET @offset'
-  ).all({ ...params, limite: porPagina, offset: (pagina - 1) * porPagina }).map(aCamel);
+    + ' GROUP BY numero_oc ORDER BY fecha_emision DESC, numero_oc DESC LIMIT @limite OFFSET @offset',
+    { ...params, limite: porPagina, offset: (pagina - 1) * porPagina }
+  )).map(aCamel);
 
   return { filas, total: totalOC, pagina, porPagina };
 }
 
-function agregadoPorMoneda(sql, params) {
-  const f = db().prepare(
-    "SELECT COUNT(DISTINCT CASE WHEN moneda = 'PEN' THEN numero_oc END) AS ordenesPen, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN monto_neto ELSE 0 END), 0) AS totalPen, "
-    + "COUNT(DISTINCT CASE WHEN moneda = 'USD' THEN numero_oc END) AS ordenesUsd, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN monto_neto ELSE 0 END), 0) AS totalUsd "
-    + 'FROM ordenes_compra_detalle ' + sql
-  ).get(params);
+async function agregadoPorMoneda(sql, params) {
+  const f = await uno(
+    `SELECT COUNT(DISTINCT CASE WHEN moneda = 'PEN' THEN numero_oc END) AS "ordenesPen", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN monto_neto ELSE 0 END), 0) AS "totalPen", `
+    + `COUNT(DISTINCT CASE WHEN moneda = 'USD' THEN numero_oc END) AS "ordenesUsd", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'USD' THEN monto_neto ELSE 0 END), 0) AS "totalUsd" `
+    + 'FROM ordenes_compra_detalle ' + sql,
+    params
+  );
   return {
     pen: { ordenes: f.ordenesPen || 0, total: f.totalPen },
     usd: { ordenes: f.ordenesUsd || 0, total: f.totalUsd }
@@ -127,27 +127,43 @@ function agregadoPorMoneda(sql, params) {
 }
 
 /** Tarjetas: número de OC, ítems, proveedores, y valorizado separado en soles y dólares (más el equivalente para el ranking). */
-export function resumen(f = {}) {
+export async function resumen(f = {}) {
   const { sql, params } = condiciones(f);
-  const totales = db().prepare(
+  const totales = await uno(
     'SELECT COUNT(DISTINCT numero_oc) AS ordenes, COUNT(*) AS items, COUNT(DISTINCT proveedor) AS proveedores, '
-    + 'COALESCE(SUM(valor_compra_mn), 0) AS valorizadoEquivalente '
-    + 'FROM ordenes_compra_detalle ' + sql
-  ).get(params);
-  const porMoneda = agregadoPorMoneda(sql, params);
-  return { ...aCamel(totales), pen: porMoneda.pen, usd: porMoneda.usd };
+    + 'COALESCE(SUM(valor_compra_mn), 0) AS "valorizadoEquivalente" '
+    + 'FROM ordenes_compra_detalle ' + sql,
+    params
+  );
+  const porMoneda = await agregadoPorMoneda(sql, params);
+  // Lo que sigue abierto: OC aprobadas o recién registradas que todavía no se
+  // atendieron del todo. Es lo accionable -lo atendido ya es historia-.
+  const y = sql ? sql + ' AND ' : 'WHERE ';
+  const pend = await uno(
+    "SELECT COUNT(DISTINCT numero_oc) AS ordenes, "
+    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN monto_saldo ELSE 0 END), 0) AS \"saldoPen\", "
+    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN monto_saldo ELSE 0 END), 0) AS \"saldoUsd\" "
+    + 'FROM ordenes_compra_detalle ' + y + "estado IN ('APROBADA', 'REGISTRA') AND saldo > 0",
+    params
+  );
+  const rango = await uno('SELECT MIN(fecha_emision) AS desde, MAX(fecha_emision) AS hasta FROM ordenes_compra_detalle ' + sql, params);
+  return {
+    ...aCamel(totales), pen: porMoneda.pen, usd: porMoneda.usd,
+    pendientes: { ordenes: pend.ordenes || 0, saldoPen: pend.saldoPen, saldoUsd: pend.saldoUsd },
+    desde: rango.desde || '', hasta: rango.hasta || ''
+  };
 }
 
 /** Los ítems de una sola OC, para el detalle. */
-export function porOC(numeroOc) {
-  return db().prepare('SELECT * FROM ordenes_compra_detalle WHERE numero_oc = ? ORDER BY id').all(numeroOc).map(aCamel);
+export async function porOC(numeroOc) {
+  return (await todos('SELECT * FROM ordenes_compra_detalle WHERE numero_oc = ? ORDER BY id', [numeroOc])).map(aCamel);
 }
 
-export function opciones() {
-  const distintos = campo => db().prepare(
-    'SELECT DISTINCT ' + campo + ' AS v FROM ordenes_compra_detalle WHERE ' + campo + " != '' ORDER BY " + campo
-  ).all().map(r => r.v);
-  return { areas: distintos('area'), estados: distintos('estado') };
+export async function opciones() {
+  const distintos = async campo => (await todos(
+    'SELECT DISTINCT ' + campo + ' AS v FROM ordenes_compra_detalle WHERE ' + campo + " != '' ORDER BY v"
+  )).map(r => r.v);
+  return { areas: await distintos('area'), estados: await distintos('estado') };
 }
 
 /**
@@ -156,26 +172,27 @@ export function opciones() {
  * que el llamador solo lo pide sin proveedor). Ordenado por el equivalente en
  * soles, igual criterio que ordenes_compra.js.
  */
-export function proveedores(f = {}) {
+export async function proveedores(f = {}) {
   const { sql, params } = condiciones(f);
-  return db().prepare(
+  return (await todos(
     'SELECT proveedor, COUNT(DISTINCT numero_oc) AS ordenes, COUNT(*) AS items, '
-    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN monto_neto ELSE 0 END), 0) AS totalPen, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN monto_neto ELSE 0 END), 0) AS totalUsd, "
-    + 'COALESCE(SUM(valor_compra_mn), 0) AS totalEquivalente '
+    + `COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN monto_neto ELSE 0 END), 0) AS "totalPen", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'USD' THEN monto_neto ELSE 0 END), 0) AS "totalUsd", `
+    + 'COALESCE(SUM(valor_compra_mn), 0) AS "totalEquivalente" '
     + 'FROM ordenes_compra_detalle ' + (sql ? sql + " AND proveedor != ''" : "WHERE proveedor != ''")
-    + ' GROUP BY proveedor ORDER BY totalEquivalente DESC'
-  ).all(params).map(aCamel);
+    + ' GROUP BY proveedor ORDER BY "totalEquivalente" DESC',
+    params
+  )).map(aCamel);
 }
 
 /** Todos los proveedores sin filtrar, solo para poblar el selector del filtro (con su conteo global de OC). */
-export function todosLosProveedores() {
-  return db().prepare(
-    "SELECT proveedor, MAX(ruc_proveedor) AS ruc, COUNT(DISTINCT numero_oc) AS ordenes, "
-    + 'COALESCE(SUM(valor_compra_mn), 0) AS totalEquivalente, MAX(fecha_emision) AS ultima '
+export async function todosLosProveedores() {
+  return (await todos(
+    'SELECT proveedor, MAX(ruc_proveedor) AS ruc, COUNT(DISTINCT numero_oc) AS ordenes, '
+    + 'COALESCE(SUM(valor_compra_mn), 0) AS "totalEquivalente", MAX(fecha_emision) AS ultima '
     + "FROM ordenes_compra_detalle WHERE proveedor != '' "
     + 'GROUP BY proveedor ORDER BY ordenes DESC'
-  ).all().map(aCamel);
+  )).map(aCamel);
 }
 
 /**
@@ -185,53 +202,61 @@ export function todosLosProveedores() {
  * máximo y último, más su costo unitario mes a mes
  * (la "evolución de precio" de verdad, a nivel de producto).
  */
-export function perfilProveedor(proveedor) {
-  const base = db();
-  const cab = base.prepare(
+export async function perfilProveedor(proveedor) {
+  const cab = await uno(
     'SELECT MAX(ruc_proveedor) AS ruc, COUNT(DISTINCT numero_oc) AS ordenes, COUNT(*) AS items, '
     + 'MIN(fecha_emision) AS primera, MAX(fecha_emision) AS ultima, '
-    + 'COUNT(DISTINCT substr(fecha_emision, 1, 7)) AS mesesActivos, COUNT(DISTINCT codigo_producto) AS productos '
-    + 'FROM ordenes_compra_detalle WHERE proveedor = ?'
-  ).get(proveedor);
-  const productos = base.prepare(
+    + 'COUNT(DISTINCT substr(fecha_emision, 1, 7)) AS "mesesActivos", COUNT(DISTINCT codigo_producto) AS productos '
+    + 'FROM ordenes_compra_detalle WHERE proveedor = ?',
+    [proveedor]
+  );
+  const productos = await todos(
     'SELECT codigo_producto AS codigo, MAX(descripcion_producto) AS descripcion, moneda, '
     + 'COUNT(DISTINCT numero_oc) AS ordenes, COALESCE(SUM(cantidad), 0) AS cantidad, '
-    + 'COALESCE(SUM(monto_neto), 0) AS total, COALESCE(SUM(valor_compra_mn), 0) AS totalEquivalente, '
-    + 'CASE WHEN SUM(cantidad) > 0 THEN SUM(costo_unitario * cantidad) / SUM(cantidad) ELSE AVG(costo_unitario) END AS costoPromedio, '
-    + 'MIN(costo_unitario) AS costoMin, MAX(costo_unitario) AS costoMax, '
+    + 'COALESCE(SUM(monto_neto), 0) AS total, COALESCE(SUM(valor_compra_mn), 0) AS "totalEquivalente", '
+    + 'CASE WHEN SUM(cantidad) > 0 THEN SUM(costo_unitario * cantidad) / SUM(cantidad) ELSE AVG(costo_unitario) END AS "costoPromedio", '
+    + 'MIN(costo_unitario) AS "costoMin", MAX(costo_unitario) AS "costoMax", '
     + 'MIN(fecha_emision) AS primera, MAX(fecha_emision) AS ultima '
     + "FROM ordenes_compra_detalle WHERE proveedor = ? AND estado != 'ANULADA' "
-    + 'GROUP BY codigo_producto, moneda ORDER BY totalEquivalente DESC LIMIT 12'
-  ).all(proveedor);
-  const ultimoCosto = base.prepare(
-    'SELECT costo_unitario FROM ordenes_compra_detalle WHERE proveedor = ? AND codigo_producto = ? AND moneda = ? '
-    + "AND estado != 'ANULADA' ORDER BY fecha_emision DESC, id DESC LIMIT 1"
+    + 'GROUP BY codigo_producto, moneda ORDER BY "totalEquivalente" DESC LIMIT 12',
+    [proveedor]
   );
-  const serie = base.prepare(
+  const SQL_ULTIMO_COSTO =
+    'SELECT costo_unitario FROM ordenes_compra_detalle WHERE proveedor = ? AND codigo_producto = ? AND moneda = ? '
+    + "AND estado != 'ANULADA' ORDER BY fecha_emision DESC, id DESC LIMIT 1";
+  const SQL_SERIE =
     'SELECT substr(fecha_emision, 1, 7) AS mes, '
     + 'CASE WHEN SUM(cantidad) > 0 THEN SUM(costo_unitario * cantidad) / SUM(cantidad) ELSE AVG(costo_unitario) END AS costo, '
     + 'COALESCE(SUM(cantidad), 0) AS cantidad '
     + 'FROM ordenes_compra_detalle WHERE proveedor = ? AND codigo_producto = ? AND moneda = ? '
-    + "AND estado != 'ANULADA' GROUP BY mes ORDER BY mes"
-  );
+    + "AND estado != 'ANULADA' GROUP BY mes ORDER BY mes";
+
+  // En serie y no con Promise.all: si esto corre dentro de una transacción,
+  // todas las consultas van por un mismo cliente de pg, que no admite dos a
+  // la vez. Son como mucho 12 productos × 2 consultas.
+  const topProductos = [];
+  for (const p of productos) {
+    const claves = [proveedor, p.codigo, p.moneda];
+    const ultimo = await uno(SQL_ULTIMO_COSTO, claves);
+    const serie = await todos(SQL_SERIE, claves);
+    topProductos.push({ ...p, ultimoCosto: (ultimo || {}).costo_unitario ?? null, serie });
+  }
+
   return {
     ruc: cab.ruc || '', ordenes: cab.ordenes || 0, items: cab.items || 0, productos: cab.productos || 0,
     primera: cab.primera || null, ultima: cab.ultima || null, mesesActivos: cab.mesesActivos || 0,
-    topProductos: productos.map(p => ({
-      ...p,
-      ultimoCosto: (ultimoCosto.get(proveedor, p.codigo, p.moneda) || {}).costo_unitario ?? null,
-      serie: serie.all(proveedor, p.codigo, p.moneda)
-    }))
+    topProductos
   };
 }
 
 /** Evolución mensual (soles y dólares por separado) según el filtro activo: la pregunta "cómo cambia esto en el tiempo". */
-export function porMes(f = {}) {
+export async function porMes(f = {}) {
   const { sql, params } = condiciones(f);
-  return db().prepare(
+  return (await todos(
     'SELECT substr(fecha_emision, 1, 7) AS mes, COUNT(DISTINCT numero_oc) AS ordenes, '
-    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN monto_neto ELSE 0 END), 0) AS totalPen, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN monto_neto ELSE 0 END), 0) AS totalUsd "
-    + 'FROM ordenes_compra_detalle ' + sql + ' GROUP BY mes ORDER BY mes'
-  ).all(params).map(aCamel);
+    + `COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN monto_neto ELSE 0 END), 0) AS "totalPen", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'USD' THEN monto_neto ELSE 0 END), 0) AS "totalUsd" `
+    + 'FROM ordenes_compra_detalle ' + sql + ' GROUP BY mes ORDER BY mes',
+    params
+  )).map(aCamel);
 }

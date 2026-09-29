@@ -116,15 +116,15 @@ export async function handleApi(req, res, url) {
   // con escritura -ver services/metrajeAlmacen.js-, así que no entra en el
   // mapa `getRoutes` de solo GET de más abajo.
   if (pathname === '/api/metraje-almacen') {
-    if (req.method === 'POST') return sendJson(req, res, 201, metrajeAlmacen.crear(await readJson(req)));
+    if (req.method === 'POST') return sendJson(req, res, 201, await metrajeAlmacen.crear(await readJson(req)));
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Método no permitido');
   }
   const metrajeItem = pathname.match(/^\/api\/metraje-almacen\/(\d+)$/);
   if (metrajeItem) {
-    if (req.method === 'PATCH') return sendJson(req, res, 200, metrajeAlmacen.actualizar(metrajeItem[1], await readJson(req)));
+    if (req.method === 'PATCH') return sendJson(req, res, 200, await metrajeAlmacen.actualizar(metrajeItem[1], await readJson(req)));
     // DELETE exige motivo en el cuerpo (auditoría, ver services/metrajeAlmacen.js) -no se confía
     // en que el frontend ya lo haya validado, se vuelve a exigir acá.
-    if (req.method === 'DELETE') return sendJson(req, res, 200, metrajeAlmacen.eliminar(metrajeItem[1], (await readJson(req))?.motivo));
+    if (req.method === 'DELETE') return sendJson(req, res, 200, await metrajeAlmacen.eliminar(metrajeItem[1], (await readJson(req))?.motivo));
     throw new HttpError(405, 'Método no permitido');
   }
 

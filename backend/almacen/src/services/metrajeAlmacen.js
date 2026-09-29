@@ -14,9 +14,11 @@ import { HttpError } from '../lib/http.js';
 // es), así que todo lo que se crea/edita desde acá queda con este autor fijo.
 const AUTOR = 'almacen-los-olivos';
 
-function traducir(fn) {
+// El repositorio es asíncrono: el await va DENTRO del try para que un rechazo
+// también se traduzca a HttpError, no solo un throw síncrono.
+async function traducir(fn) {
   try {
-    return fn();
+    return await fn();
   } catch (e) {
     throw new HttpError(e.status || 400, e.message);
   }
@@ -47,15 +49,15 @@ function registrarAuditoria(accion, id, filaEliminada, motivo) {
   }
 }
 
-export const listar = () => repo.listar();
-export const resumen = () => repo.resumen();
+export const listar = async () => repo.listar();
+export const resumen = async () => repo.resumen();
 export const crear = (datos) => traducir(() => repo.crear(datos, AUTOR));
 export const actualizar = (id, datos) => traducir(() => repo.actualizar(id, datos));
 
-export function eliminar(id, motivo) {
+export async function eliminar(id, motivo) {
   const motivoValido = validarMotivo(motivo);
-  const fila = repo.porId(id);
-  const resultado = traducir(() => repo.eliminar(id));
+  const fila = await repo.porId(id);
+  const resultado = await traducir(() => repo.eliminar(id));
   registrarAuditoria('eliminar', id, fila, motivoValido);
   return resultado;
 }

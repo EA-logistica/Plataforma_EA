@@ -1,4 +1,4 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, ejecutar, insertarLote, aCamel, enTransaccion } from '../conexion.js';
 import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tocar } from './ajustes.js';
 
@@ -12,29 +12,29 @@ import { tocar } from './ajustes.js';
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
 
-export function listar() {
-  return db().prepare('SELECT * FROM personal ORDER BY nombre').all().map(aCamel);
+export async function listar() {
+  return (await todos('SELECT * FROM personal ORDER BY nombre')).map(aCamel);
 }
 
-export function total() {
-  return db().prepare('SELECT COUNT(*) AS n FROM personal').get().n;
+export async function total() {
+  return (await uno('SELECT COUNT(*) AS n FROM personal')).n;
 }
 
-export function porDocumento(doc) {
+export async function porDocumento(doc) {
   const d = normalizarDoc(doc);
   if (!d) return null;
-  return aCamel(db().prepare('SELECT * FROM personal WHERE dni = ?').get(d));
+  return aCamel(await uno('SELECT * FROM personal WHERE dni = ?', [d]));
 }
 
 /** Áreas distintas con al menos una persona: para sembrar credenciales de área y para validar altas. */
-export function areas() {
-  return db().prepare("SELECT DISTINCT area FROM personal WHERE area != '' ORDER BY area").all().map(r => r.area);
+export async function areas() {
+  return (await todos("SELECT DISTINCT area FROM personal WHERE area != '' ORDER BY area")).map(r => r.area);
 }
 
 /** Evita crear una credencial para un área que no existe en el padrón, por un simple error de tipeo. */
-export function existeArea(area) {
+export async function existeArea(area) {
   const a = String(area || '').trim();
-  return !!a && !!db().prepare('SELECT 1 FROM personal WHERE area = ? LIMIT 1').get(a);
+  return !!a && !!(await uno('SELECT 1 FROM personal WHERE area = ? LIMIT 1', [a]));
 }
 
 /**
@@ -43,13 +43,14 @@ export function existeArea(area) {
  * 'DEYNA LOPEZ ABARRANCA' igual que 'deyna lopez'.
  *
  * El filtrado por palabras se hace en JavaScript y no en SQL a propósito: son
- * ~200 filas y hay que ignorar tildes, algo que SQLite sin ICU no sabe hacer.
+ * ~200 filas y hay que ignorar tildes, algo que la base no hace sin la
+ * extensión unaccent.
  */
-export function buscar(texto) {
+export async function buscar(texto) {
   const q = sinTildes(String(texto || '')).trim().toLowerCase();
   if (q.length < 2) return [];
   const palabras = q.split(/\s+/);
-  return listar().filter(p => {
+  return (await listar()).filter(p => {
     const t = sinTildes([p.dni, normalizarDoc(p.dni), p.nombre, p.cargo, p.area].join(' ')).toLowerCase();
     return palabras.every(w => t.includes(w));
   });
@@ -57,30 +58,31 @@ export function buscar(texto) {
 
 const sinTildes = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-export function agregar({ dni, nombre, cargo, area }) {
+export async function agregar({ dni, nombre, cargo, area }) {
   const doc = normalizarDoc(dni);
   if (!DOC_VALIDO.test(doc)) throw error('El documento debe tener 8 dígitos, o 9 si es carné de extranjería.');
   if (String(nombre || '').trim().length < 3) throw error('Escribe el nombre completo.');
-  if (porDocumento(doc)) throw error('El documento ' + doc + ' ya figura en el padrón.', 409);
+  if (await porDocumento(doc)) throw error('El documento ' + doc + ' ya figura en el padrón.', 409);
 
-  return enTransaccion(base => {
-    base.prepare(
-      'INSERT INTO personal (dni, nombre, cargo, area, origen, creado_en) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(doc, String(nombre).trim(), String(cargo || '').trim() || 'Sin cargo',
-          String(area || '').trim() || 'Sin área', 'manual', new Date().toISOString());
+  return enTransaccion(async () => {
+    await ejecutar(
+      'INSERT INTO personal (dni, nombre, cargo, area, origen, creado_en) VALUES (?, ?, ?, ?, ?, ?)',
+      [doc, String(nombre).trim(), String(cargo || '').trim() || 'Sin cargo',
+       String(area || '').trim() || 'Sin área', 'manual', new Date().toISOString()]
+    );
 
     // Dar de alta a alguien aprueba de paso su pedido de autorización.
-    base.prepare("UPDATE autorizaciones SET estado = 'Aprobada' WHERE dni = ? AND estado = 'Pendiente'").run(doc);
-    tocar('app');
+    await ejecutar("UPDATE autorizaciones SET estado = 'Aprobada' WHERE dni = ? AND estado = 'Pendiente'", [doc]);
+    await tocar('app');
     return porDocumento(doc);
   });
 }
 
-export function quitar(doc) {
+export async function quitar(doc) {
   const d = normalizarDoc(doc);
-  const r = db().prepare('DELETE FROM personal WHERE dni = ?').run(d);
+  const r = await ejecutar('DELETE FROM personal WHERE dni = ?', [d]);
   if (!r.changes) throw error('No hay nadie con el documento ' + d + ' en el padrón.', 404);
-  tocar('app');
+  await tocar('app');
   return { dni: d };
 }
 
@@ -88,20 +90,19 @@ export function quitar(doc) {
  * Carga el padrón oficial de RR.HH. Lo que logística agregó a mano (origen
  * 'manual') se conserva; el resto se reemplaza.
  */
-export function cargarPadronOficial(personas) {
-  return enTransaccion(base => {
-    base.prepare("DELETE FROM personal WHERE origen = 'padron'").run();
-    const insertar = base.prepare(
-      'INSERT INTO personal (dni, nombre, cargo, area, origen, creado_en) VALUES (?, ?, ?, ?, ?, ?) ' +
-      'ON CONFLICT (dni) DO NOTHING'
-    );
+export async function cargarPadronOficial(personas) {
+  return enTransaccion(async () => {
+    await ejecutar("DELETE FROM personal WHERE origen = 'padron'");
     const ahora = new Date().toISOString();
-    let n = 0;
-    for (const p of personas) {
-      const r = insertar.run(normalizarDoc(p.dni), p.nombre, p.cargo || '', p.area || '', 'padron', ahora);
-      n += r.changes;
-    }
-    tocar('app');
+    const filas = personas.map(p => ({
+      dni: normalizarDoc(p.dni), nombre: p.nombre, cargo: p.cargo || '', area: p.area || '',
+      origen: 'padron', creado_en: ahora
+    }));
+    // DO NOTHING (no DO UPDATE): un DNI repetido en el listado o uno que ya
+    // está como 'manual' se salta igual que antes, sin chocar en el lote.
+    const n = await insertarLote('personal', ['dni', 'nombre', 'cargo', 'area', 'origen', 'creado_en'], filas,
+      'ON CONFLICT (dni) DO NOTHING');
+    await tocar('app');
     return n;
   });
 }

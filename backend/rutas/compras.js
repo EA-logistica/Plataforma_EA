@@ -8,9 +8,11 @@ import * as productos from '../db/repos/productos.js';
 import * as requerimientosHistorico from '../db/repos/requerimientosCompraHistorico.js';
 import * as materiaPrima from '../db/repos/materiaPrimaStock.js';
 import * as stockValorizado from '../db/repos/stockValorizado.js';
+import * as muestras from '../db/repos/muestrasMp.js';
 import { requiereSesion, requiereRol } from '../usuarios/middleware.js';
 import { log } from '../seguridad/log.js';
 import { cachearGet } from '../middleware/cache.js';
+import { asinc } from '../middleware/errores.js';
 
 /**
  * Compras y Logística: exportaciones (muestras al exterior), requerimientos
@@ -42,118 +44,118 @@ function exigirMotivo(req) {
 }
 
 // ------------------------------------------------------------ exportaciones
-compras.get('/exportaciones', ...soloAdmin, (req, res) => res.json(exportaciones.listar()));
-compras.post('/exportaciones', ...soloAdmin, (req, res) => {
-  const f = exportaciones.crear(req.body || {}, req.usuario.usuario);
-  log('exportacion_creada', req, f.paisDestino + ' · ' + f.descripcion);
+compras.get('/exportaciones', ...soloAdmin, asinc(async (req, res) => res.json(await exportaciones.listar())));
+compras.post('/exportaciones', ...soloAdmin, asinc(async (req, res) => {
+  const f = await exportaciones.crear(req.body || {}, req.usuario.usuario);
+  await log('exportacion_creada', req, f.paisDestino + ' · ' + f.descripcion);
   res.status(201).json(f);
-});
-compras.patch('/exportaciones/:id', ...soloAdmin, (req, res) => {
-  const f = exportaciones.actualizar(req.params.id, req.body || {});
-  log('exportacion_actualizada', req, 'id ' + req.params.id + ' → ' + f.estado);
+}));
+compras.patch('/exportaciones/:id', ...soloAdmin, asinc(async (req, res) => {
+  const f = await exportaciones.actualizar(req.params.id, req.body || {});
+  await log('exportacion_actualizada', req, 'id ' + req.params.id + ' → ' + f.estado);
   res.json(f);
-});
-compras.delete('/exportaciones/:id', ...soloAdmin, (req, res) => {
+}));
+compras.delete('/exportaciones/:id', ...soloAdmin, asinc(async (req, res) => {
   const motivo = exigirMotivo(req);
-  const r = exportaciones.eliminar(req.params.id);
-  log('exportacion_eliminada', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
+  const r = await exportaciones.eliminar(req.params.id);
+  await log('exportacion_eliminada', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
   res.json(r);
-});
+}));
 
 // ------------------------------------------------------ requerimientos de compra
-compras.get('/requerimientos-compra', ...soloAdmin, (req, res) => res.json(requerimientos.listar()));
-compras.post('/requerimientos-compra', ...soloAdmin, (req, res) => {
-  const f = requerimientos.crear(req.body || {}, req.usuario.usuario);
-  log('requerimiento_creado', req, 'REQ-C' + f.correlativo + ' · ' + f.descripcion);
+compras.get('/requerimientos-compra', ...soloAdmin, asinc(async (req, res) => res.json(await requerimientos.listar())));
+compras.post('/requerimientos-compra', ...soloAdmin, asinc(async (req, res) => {
+  const f = await requerimientos.crear(req.body || {}, req.usuario.usuario);
+  await log('requerimiento_creado', req, 'REQ-C' + f.correlativo + ' · ' + f.descripcion);
   res.status(201).json(f);
-});
-compras.patch('/requerimientos-compra/:id', ...soloAdmin, (req, res) => {
-  const f = requerimientos.actualizar(req.params.id, req.body || {});
-  log('requerimiento_actualizado', req, 'id ' + req.params.id + ' → ' + f.estado);
+}));
+compras.patch('/requerimientos-compra/:id', ...soloAdmin, asinc(async (req, res) => {
+  const f = await requerimientos.actualizar(req.params.id, req.body || {});
+  await log('requerimiento_actualizado', req, 'id ' + req.params.id + ' → ' + f.estado);
   res.json(f);
-});
-compras.delete('/requerimientos-compra/:id', ...soloAdmin, (req, res) => {
+}));
+compras.delete('/requerimientos-compra/:id', ...soloAdmin, asinc(async (req, res) => {
   const motivo = exigirMotivo(req);
-  const r = requerimientos.eliminar(req.params.id);
-  log('requerimiento_eliminado', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
+  const r = await requerimientos.eliminar(req.params.id);
+  await log('requerimiento_eliminado', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
   res.json(r);
-});
+}));
 
 // ------------------------------------------------------------ servicios de logística
-compras.get('/servicios-logistica', ...soloAdmin, (req, res) => res.json(servicios.listar()));
-compras.post('/servicios-logistica', ...soloAdmin, (req, res) => {
-  const f = servicios.crear(req.body || {}, req.usuario.usuario);
-  log('servicio_logistica_creado', req, f.tipoServicio + ' · ' + f.descripcion);
+compras.get('/servicios-logistica', ...soloAdmin, asinc(async (req, res) => res.json(await servicios.listar())));
+compras.post('/servicios-logistica', ...soloAdmin, asinc(async (req, res) => {
+  const f = await servicios.crear(req.body || {}, req.usuario.usuario);
+  await log('servicio_logistica_creado', req, f.tipoServicio + ' · ' + f.descripcion);
   res.status(201).json(f);
-});
-compras.patch('/servicios-logistica/:id', ...soloAdmin, (req, res) => {
-  const f = servicios.actualizar(req.params.id, req.body || {});
-  log('servicio_logistica_actualizado', req, 'id ' + req.params.id + ' → ' + f.estado);
+}));
+compras.patch('/servicios-logistica/:id', ...soloAdmin, asinc(async (req, res) => {
+  const f = await servicios.actualizar(req.params.id, req.body || {});
+  await log('servicio_logistica_actualizado', req, 'id ' + req.params.id + ' → ' + f.estado);
   res.json(f);
-});
-compras.delete('/servicios-logistica/:id', ...soloAdmin, (req, res) => {
+}));
+compras.delete('/servicios-logistica/:id', ...soloAdmin, asinc(async (req, res) => {
   const motivo = exigirMotivo(req);
-  const r = servicios.eliminar(req.params.id);
-  log('servicio_logistica_eliminado', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
+  const r = await servicios.eliminar(req.params.id);
+  await log('servicio_logistica_eliminado', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
   res.json(r);
-});
+}));
 
 // -------------------------------------------------------------- órdenes de compra
 // Registro de compras de SUNAT, cargado una sola vez (ver backend/db/sembrar.js
 // y data/compras.js). Es de solo lectura: no hay POST/PATCH/DELETE porque la
 // fuente de verdad es la contabilidad, no la app.
-compras.get('/ordenes-compra', ...soloAdmin, (req, res) => res.json(ordenesCompra.listar(req.query)));
-compras.get('/ordenes-compra/resumen', ...soloAdmin, (req, res) => res.json(ordenesCompra.resumen(req.query)));
-compras.get('/ordenes-compra/proveedores', ...soloAdmin, (req, res) => res.json(ordenesCompra.proveedores()));
-compras.get('/ordenes-compra/evolucion', ...soloAdmin, (req, res) => {
+compras.get('/ordenes-compra', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompra.listar(req.query))));
+compras.get('/ordenes-compra/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompra.resumen(req.query))));
+compras.get('/ordenes-compra/proveedores', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompra.proveedores())));
+compras.get('/ordenes-compra/evolucion', ...soloAdmin, asinc(async (req, res) => {
   if (!req.query.proveedor) throw Object.assign(new Error('Indica el proveedor.'), { status: 400 });
-  res.json(ordenesCompra.evolucionProveedor(req.query.proveedor));
-});
+  res.json(await ordenesCompra.evolucionProveedor(req.query.proveedor));
+}));
 
 // -------------------------------------------------------------------- productos
 // Catálogo de productos (SKU) del ERP, cargado en cada arranque (ver
 // backend/db/sembrar.js y data/productos.js). Solo lectura.
-compras.get('/productos', ...soloAdmin, (req, res) => res.json(productos.listar(req.query)));
-compras.get('/productos/resumen', ...soloAdmin, (req, res) => res.json(productos.resumen(req.query)));
-compras.get('/productos/resumen-rotacion', ...soloAdmin, (req, res) => res.json(productos.resumenRotacion(req.query)));
-compras.get('/productos/resumen-rotacion-por-familia', ...soloAdmin, (req, res) => res.json(productos.resumenRotacionPorFamilia(req.query)));
-compras.get('/productos/opciones', ...soloAdmin, (req, res) => res.json(productos.opciones()));
-compras.get('/productos/:codigo/requerimientos', ...soloAdmin, (req, res) =>
-  res.json(requerimientosHistorico.porProducto(req.params.codigo)));
+compras.get('/productos', ...soloAdmin, asinc(async (req, res) => res.json(await productos.listar(req.query))));
+compras.get('/productos/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await productos.resumen(req.query))));
+compras.get('/productos/resumen-rotacion', ...soloAdmin, asinc(async (req, res) => res.json(await productos.resumenRotacion(req.query))));
+compras.get('/productos/resumen-rotacion-por-familia', ...soloAdmin, asinc(async (req, res) => res.json(await productos.resumenRotacionPorFamilia(req.query))));
+compras.get('/productos/opciones', ...soloAdmin, asinc(async (req, res) => res.json(await productos.opciones())));
+compras.get('/productos/:codigo/requerimientos', ...soloAdmin, asinc(async (req, res) =>
+  res.json(await requerimientosHistorico.porProducto(req.params.codigo))));
 
 // -------------------------------------------------- requerimientos de compra (histórico ERP)
 // Contraparte de solo lectura de /requerimientos-compra: lo que el ERP ya
 // resolvió, no lo que admin registra a mano en la app (ver data/
 // requerimientosCompraHistorico.js).
-compras.get('/requerimientos-compra-historico', ...soloAdmin, (req, res) => res.json(requerimientosHistorico.listar(req.query)));
-compras.get('/requerimientos-compra-historico/resumen', ...soloAdmin, (req, res) => res.json(requerimientosHistorico.resumen(req.query)));
-compras.get('/requerimientos-compra-historico/proveedores', ...soloAdmin, (req, res) => res.json(requerimientosHistorico.proveedores()));
-compras.get('/requerimientos-compra-historico/opciones', ...soloAdmin, (req, res) => res.json(requerimientosHistorico.opciones()));
+compras.get('/requerimientos-compra-historico', ...soloAdmin, asinc(async (req, res) => res.json(await requerimientosHistorico.listar(req.query))));
+compras.get('/requerimientos-compra-historico/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await requerimientosHistorico.resumen(req.query))));
+compras.get('/requerimientos-compra-historico/proveedores', ...soloAdmin, asinc(async (req, res) => res.json(await requerimientosHistorico.proveedores())));
+compras.get('/requerimientos-compra-historico/opciones', ...soloAdmin, asinc(async (req, res) => res.json(await requerimientosHistorico.opciones())));
 
 // ------------------------------------------------------ historial de órdenes de compra (OC)
 // Reporte de OC del ERP, cargado una sola vez (ver backend/db/sembrar.js y
 // data/ordenesCompraDetalle.js). Solo lectura. Es un documento distinto del
 // registro de compras SUNAT (/ordenes-compra de arriba): la OC es la orden
 // al proveedor, no la factura.
-compras.get('/oc', ...soloAdmin, (req, res) => res.json(ordenesCompraDetalle.resumenPorOC(req.query)));
-compras.get('/oc/resumen', ...soloAdmin, (req, res) => res.json(ordenesCompraDetalle.resumen(req.query)));
-compras.get('/oc/meses', ...soloAdmin, (req, res) => res.json(ordenesCompraDetalle.porMes(req.query)));
-compras.get('/oc/opciones', ...soloAdmin, (req, res) => res.json(ordenesCompraDetalle.opciones()));
+compras.get('/oc', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompraDetalle.resumenPorOC(req.query))));
+compras.get('/oc/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompraDetalle.resumen(req.query))));
+compras.get('/oc/meses', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompraDetalle.porMes(req.query))));
+compras.get('/oc/opciones', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompraDetalle.opciones())));
 // Ranking de proveedores SEGÚN EL FILTRO activo (fecha/moneda); /todos es la
 // lista completa sin filtrar, solo para poblar el selector.
-compras.get('/oc/proveedores', ...soloAdmin, (req, res) => res.json(ordenesCompraDetalle.proveedores(req.query)));
-compras.get('/oc/proveedores/todos', ...soloAdmin, (req, res) => res.json(ordenesCompraDetalle.todosLosProveedores()));
+compras.get('/oc/proveedores', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompraDetalle.proveedores(req.query))));
+compras.get('/oc/proveedores/todos', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompraDetalle.todosLosProveedores())));
 // Ficha de un proveedor para la sección Proveedores: lo que el registro SUNAT
 // y el historial de OC saben de él (RUC, primera/última compra, lo que más se
 // le compra y a qué costo). Va antes de /oc/:numeroOc para no confundirse.
-compras.get('/proveedores/perfil', ...soloAdmin, (req, res) => {
+compras.get('/proveedores/perfil', ...soloAdmin, asinc(async (req, res) => {
   if (!req.query.proveedor) throw Object.assign(new Error('Indica el proveedor.'), { status: 400 });
   res.json({
-    sunat: ordenesCompra.perfilProveedor(req.query.proveedor),
-    oc: ordenesCompraDetalle.perfilProveedor(req.query.proveedor)
+    sunat: await ordenesCompra.perfilProveedor(req.query.proveedor),
+    oc: await ordenesCompraDetalle.perfilProveedor(req.query.proveedor)
   });
-});
-compras.get('/oc/:numeroOc/items', ...soloAdmin, (req, res) => res.json(ordenesCompraDetalle.porOC(req.params.numeroOc)));
+}));
+compras.get('/oc/:numeroOc/items', ...soloAdmin, asinc(async (req, res) => res.json(await ordenesCompraDetalle.porOC(req.params.numeroOc))));
 
 // -------------------------------------------------------------------- materia prima
 // Stock valorizado de materia prima, cargado en cada arranque desde el
@@ -161,30 +163,57 @@ compras.get('/oc/:numeroOc/items', ...soloAdmin, (req, res) => res.json(ordenesC
 // Solo lectura. Navegación en cuatro niveles: Tipo (Materia Prima / Materia
 // Prima - Tintas) -> Categoría -> Línea -> Producto, más el corte por
 // almacén (con drill-down directo).
-compras.get('/materia-prima/tipos', ...soloAdmin, (req, res) => res.json(materiaPrima.tipos()));
-compras.get('/materia-prima/resumen', ...soloAdmin, (req, res) => res.json(materiaPrima.resumen(req.query.tipo)));
-compras.get('/materia-prima/categorias', ...soloAdmin, (req, res) => res.json(materiaPrima.categorias(req.query.tipo)));
-compras.get('/materia-prima/almacenes', ...soloAdmin, (req, res) => res.json(materiaPrima.almacenes(req.query.tipo)));
-compras.get('/materia-prima/buscar', ...soloAdmin, (req, res) => res.json(materiaPrima.buscarProductos(req.query.q || '')));
-compras.get('/materia-prima/categorias/:categoria/lineas', ...soloAdmin, (req, res) =>
-  res.json(materiaPrima.lineasDeCategoria(req.params.categoria, req.query.tipo)));
+compras.get('/materia-prima/tipos', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.tipos())));
+compras.get('/materia-prima/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.resumen(req.query.tipo))));
+compras.get('/materia-prima/categorias', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.categorias(req.query.tipo))));
+compras.get('/materia-prima/almacenes', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.almacenes(req.query.tipo))));
+compras.get('/materia-prima/buscar', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.buscarProductos(req.query.q || ''))));
+compras.get('/materia-prima/categorias/:categoria/lineas', ...soloAdmin, asinc(async (req, res) =>
+  res.json(await materiaPrima.lineasDeCategoria(req.params.categoria, req.query.tipo))));
 // almacén va en query por el mismo motivo que familia: nombres como "ALMACEN
 // DE  MEZCLA MP" son seguros, pero no vale la pena arriesgarse con :almacen.
-compras.get('/materia-prima/almacenes/productos', ...soloAdmin, (req, res) => {
+compras.get('/materia-prima/almacenes/productos', ...soloAdmin, asinc(async (req, res) => {
   if (!req.query.almacen) throw Object.assign(new Error('Indica el almacén.'), { status: 400 });
-  res.json(materiaPrima.productosDeAlmacen(req.query.almacen, req.query.tipo));
-});
+  res.json(await materiaPrima.productosDeAlmacen(req.query.almacen, req.query.tipo));
+}));
 // familia va en query (no en la ruta): algunas familias del ERP traen "/" en
 // el nombre ("MP/MB TERCERO"), que rompería el path si fuera :familia.
-compras.get('/materia-prima/lineas/productos', ...soloAdmin, (req, res) => {
+compras.get('/materia-prima/lineas/productos', ...soloAdmin, asinc(async (req, res) => {
   if (!req.query.familia) throw Object.assign(new Error('Indica la línea (familia).'), { status: 400 });
-  res.json(materiaPrima.productosDeLinea(req.query.familia, req.query.tipo));
-});
-compras.get('/materia-prima/productos/:codigo/almacenes', ...soloAdmin, (req, res) =>
-  res.json(materiaPrima.almacenesDeProducto(req.params.codigo)));
+  res.json(await materiaPrima.productosDeLinea(req.query.familia, req.query.tipo));
+}));
+compras.get('/materia-prima/productos/:codigo/almacenes', ...soloAdmin, asinc(async (req, res) =>
+  res.json(await materiaPrima.almacenesDeProducto(req.params.codigo))));
+
+// ------------------------------------------------------- muestras de materia prima
+// Registro propio de logística (no viene del ERP): cada muestra que llega al
+// almacén, con su costo y su evaluación. Van antes de /materia-prima/:algo
+// para que "muestras" no se lea como un parámetro.
+compras.get('/materia-prima/muestras', ...soloAdmin, asinc(async (req, res) => res.json(await muestras.listar())));
+compras.get('/materia-prima/muestras/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await muestras.resumen(req.query.mes))));
+// Razón social a partir del RUC, para completar el formulario al escribirlo.
+compras.get('/materia-prima/muestras/proveedor', ...soloAdmin, asinc(async (req, res) =>
+  res.json({ ruc: String(req.query.ruc || ''), proveedor: await muestras.proveedorPorRuc(req.query.ruc) })));
+compras.post('/materia-prima/muestras', ...soloAdmin, asinc(async (req, res) => {
+  const m = await muestras.crear(req.body || {}, req.usuario.usuario);
+  await log('muestra_mp_creada', req, 'id ' + m.id + ' · ' + m.descripcion);
+  res.status(201).json(m);
+}));
+compras.post('/materia-prima/muestras/lote', ...soloAdmin, asinc(async (req, res) => {
+  const r = await muestras.crearLote(req.body?.filas, req.usuario.usuario);
+  await log('muestras_mp_importadas', req, r.creadas + ' muestras');
+  res.status(201).json(r);
+}));
+compras.patch('/materia-prima/muestras/:id', ...soloAdmin, asinc(async (req, res) => res.json(await muestras.actualizar(req.params.id, req.body || {}))));
+compras.delete('/materia-prima/muestras/:id', ...soloAdmin, asinc(async (req, res) => {
+  const motivo = exigirMotivo(req);
+  const r = await muestras.eliminar(req.params.id);
+  await log('muestra_mp_eliminada', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
+  res.json(r);
+}));
 
 // ------------------------------------------------------- stock valorizado (global)
 // Todos los almacenes y tipos de producto juntos (Producto Terminado + Materia
 // Prima + Activos Fijos, etc.), para el Dashboard. El detalle por almacén ya
 // vive en Materia Prima (un solo tipo) y en Almacén Los Olivos (un almacén).
-compras.get('/stock-valorizado/resumen', ...soloAdmin, (req, res) => res.json(stockValorizado.resumenGlobal()));
+compras.get('/stock-valorizado/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await stockValorizado.resumenGlobal())));

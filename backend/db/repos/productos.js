@@ -1,4 +1,4 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, aCamel, enTransaccion, insertarLote } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -28,15 +28,13 @@ const COLUMNAS = [
 ];
 
 export function cargarInicial(filas) {
-  return enTransaccion(base => {
-    const upsert = base.prepare(
-      'INSERT INTO productos (' + COLUMNAS.join(', ') + ') VALUES (' + COLUMNAS.map(c => '@' + c).join(', ') + ') '
-      + 'ON CONFLICT (codigo) DO UPDATE SET '
-      + COLUMNAS.slice(1).map(c => c + ' = excluded.' + c).join(', ') + ', actualizado_en = datetime(\'now\')'
-    );
-    let n = 0;
-    filas.forEach(p => {
-      upsert.run({
+  return enTransaccion(async () => {
+    // Un mismo INSERT multi-fila no puede actualizar dos veces el mismo código
+    // (PostgreSQL lo rechaza en el DO UPDATE): si el ERP repite un código, se
+    // queda la última aparición, que es lo que dejaba el UPSERT fila a fila.
+    const porCodigo = new Map();
+    for (const p of filas) {
+      porCodigo.set(p.codigo, {
         codigo: p.codigo,
         codigo_alterno: p.codigoAlterno || '',
         descripcion: p.descripcion || '',
@@ -56,16 +54,23 @@ export function cargarInicial(filas) {
         tiene_ficha_tecnica: p.tieneFichaTecnica || 'NO',
         tiene_materia_prima: p.tieneMateriaPrima || 'NO'
       });
-      n++;
-    });
-    tocar();
-    return n;
+    }
+    await insertarLote('productos', COLUMNAS, [...porCodigo.values()],
+      'ON CONFLICT (codigo) DO UPDATE SET '
+      + COLUMNAS.slice(1).map(c => c + ' = excluded.' + c).join(', ') + ', actualizado_en = ahora_txt()');
+    await tocar();
+    // Igual que antes: cuántas filas se procesaron (con repetidos incluidos).
+    return filas.length;
   });
 }
 
-export function total() {
-  return db().prepare('SELECT COUNT(*) AS n FROM productos').get().n;
+export async function total() {
+  return (await uno('SELECT COUNT(*) AS n FROM productos')).n;
 }
+
+// Hace 365 días (UTC) como texto 'YYYY-MM-DD' -lo que era date('now', '-365
+// days') en SQLite-: fecha_emision es TEXT, se compara texto con texto.
+const HACE_UN_ANIO = "to_char((now() AT TIME ZONE 'UTC')::date - 365, 'YYYY-MM-DD')";
 
 /**
  * CTE compartido por listar()/resumen(): agrega ordenes_compra_detalle por
@@ -77,7 +82,7 @@ const CTE_ROTACION = `
   WITH compras AS (
     SELECT codigo_producto AS codigo,
            MAX(fecha_emision) AS ultima_compra,
-           SUM(CASE WHEN fecha_emision >= date('now', '-365 days') THEN 1 ELSE 0 END) AS compras_ultimo_anio
+           SUM(CASE WHEN fecha_emision >= ${HACE_UN_ANIO} THEN 1 ELSE 0 END) AS compras_ultimo_anio
     FROM ordenes_compra_detalle
     WHERE codigo_producto != ''
     GROUP BY codigo_producto
@@ -91,12 +96,13 @@ const JOIN_ROTACION = 'LEFT JOIN compras c ON c.codigo = p.codigo LEFT JOIN rang
 const EXPR_CLASE_ABC = `
   CASE
     WHEN c.ultima_compra IS NULL THEN 'C'
-    WHEN c.ultima_compra < date('now', '-365 days') THEN 'C'
+    WHEN c.ultima_compra < ${HACE_UN_ANIO} THEN 'C'
     WHEN r.quintil = 1 THEN 'A'
     WHEN r.quintil IN (2, 3) THEN 'B'
     ELSE 'C'
   END
 `;
+const EXPR_ES_C = "(CASE WHEN " + EXPR_CLASE_ABC + " = 'C' THEN 1 ELSE 0 END)";
 
 function condiciones(f = {}) {
   const where = [];
@@ -108,7 +114,7 @@ function condiciones(f = {}) {
   if (f.soloConStock === '1' || f.soloConStock === true) where.push('p.stock > 0');
   if (f.clase) { where.push(EXPR_CLASE_ABC + ' = @clase'); params.clase = f.clase; }
   if (f.q) {
-    where.push('(p.codigo LIKE @q OR p.codigo_alterno LIKE @q OR p.descripcion LIKE @q)');
+    where.push('(p.codigo ILIKE @q OR p.codigo_alterno ILIKE @q OR p.descripcion ILIKE @q)');
     params.q = '%' + f.q + '%';
   }
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
@@ -124,39 +130,41 @@ const ORDEN = {
   rotacion_desc: "(CASE " + EXPR_CLASE_ABC + " WHEN 'C' THEN 1 WHEN 'B' THEN 2 ELSE 3 END), p.descripcion ASC"
 };
 
-export function listar(f = {}) {
+export async function listar(f = {}) {
   const { sql, params } = condiciones(f);
   const pagina = Math.max(1, Number(f.pagina) || 1);
   const porPagina = Math.min(200, Math.max(1, Number(f.porPagina) || 50));
   const orden = ORDEN[f.orden] || ORDEN.descripcion_asc;
 
-  const totalFilas = db().prepare(
-    CTE_ROTACION + 'SELECT COUNT(*) AS n FROM productos p ' + JOIN_ROTACION + ' ' + sql
-  ).get(params).n;
-  const filas = db().prepare(
+  const totalFilas = (await uno(
+    CTE_ROTACION + 'SELECT COUNT(*) AS n FROM productos p ' + JOIN_ROTACION + ' ' + sql, params
+  )).n;
+  const filas = (await todos(
     CTE_ROTACION + 'SELECT p.*, c.ultima_compra AS ultima_compra, COALESCE(c.compras_ultimo_anio, 0) AS compras_ultimo_anio, '
     + EXPR_CLASE_ABC + ' AS clase_abc '
     + 'FROM productos p ' + JOIN_ROTACION + ' ' + sql
-    + ' ORDER BY ' + orden + ' LIMIT @limite OFFSET @offset'
-  ).all({ ...params, limite: porPagina, offset: (pagina - 1) * porPagina }).map(aCamel);
+    + ' ORDER BY ' + orden + ' LIMIT @limite OFFSET @offset',
+    { ...params, limite: porPagina, offset: (pagina - 1) * porPagina }
+  )).map(aCamel);
 
   return { filas, total: totalFilas, pagina, porPagina };
 }
 
-export function porCodigo(codigo) {
-  return aCamel(db().prepare('SELECT * FROM productos WHERE codigo = ?').get(codigo));
+export async function porCodigo(codigo) {
+  return aCamel(await uno('SELECT * FROM productos WHERE codigo = ?', [codigo]));
 }
 
-export function resumen(f = {}) {
+export async function resumen(f = {}) {
   const { sql, params } = condiciones(f);
   // condiciones() puede meter un filtro por `clase` (EXPR_CLASE_ABC), que
   // necesita el CTE y el JOIN de rotación -sin esto, filtrar por clase acá
   // rompía con "no such column: c.ultima_compra"-.
-  const totales = db().prepare(
-    CTE_ROTACION + "SELECT COUNT(*) AS productos, SUM(CASE WHEN p.stock > 0 THEN 1 ELSE 0 END) AS conStock, "
+  const totales = await uno(
+    CTE_ROTACION + 'SELECT COUNT(*) AS productos, SUM(CASE WHEN p.stock > 0 THEN 1 ELSE 0 END) AS "conStock", '
     + "SUM(CASE WHEN p.estado = 'ACTIVO' THEN 1 ELSE 0 END) AS activos, COUNT(DISTINCT p.familia) AS familias "
-    + 'FROM productos p ' + JOIN_ROTACION + ' ' + sql
-  ).get(params);
+    + 'FROM productos p ' + JOIN_ROTACION + ' ' + sql,
+    params
+  );
   return {
     productos: totales.productos,
     conStock: totales.conStock || 0,
@@ -166,16 +174,17 @@ export function resumen(f = {}) {
 }
 
 /** Cuántos productos cayeron en cada clase de rotación, según el mismo filtro que la lista. */
-export function resumenRotacion(f = {}) {
+export async function resumenRotacion(f = {}) {
   const { sql, params } = condiciones(f);
-  const fila = db().prepare(
+  const fila = await uno(
     CTE_ROTACION + 'SELECT '
     + "SUM(CASE WHEN " + EXPR_CLASE_ABC + " = 'A' THEN 1 ELSE 0 END) AS a, "
     + "SUM(CASE WHEN " + EXPR_CLASE_ABC + " = 'B' THEN 1 ELSE 0 END) AS b, "
     + "SUM(CASE WHEN " + EXPR_CLASE_ABC + " = 'C' THEN 1 ELSE 0 END) AS c, "
-    + "SUM(CASE WHEN c.ultima_compra IS NULL THEN 1 ELSE 0 END) AS sinComprasRegistradas "
-    + 'FROM productos p ' + JOIN_ROTACION + ' ' + sql
-  ).get(params);
+    + 'SUM(CASE WHEN c.ultima_compra IS NULL THEN 1 ELSE 0 END) AS "sinComprasRegistradas" '
+    + 'FROM productos p ' + JOIN_ROTACION + ' ' + sql,
+    params
+  );
   return aCamel(fila);
 }
 
@@ -187,26 +196,28 @@ export function resumenRotacion(f = {}) {
  * Ordenado de mayor a menor cantidad de SKU en C, solo familias con al menos
  * uno.
  */
-export function resumenRotacionPorFamilia(f = {}) {
+export async function resumenRotacionPorFamilia(f = {}) {
   const { sql, params } = condiciones({ ...f, clase: '' });
-  const filas = db().prepare(
+  // PostgreSQL no deja usar el alias `c` en el HAVING: se repite la expresión.
+  const filas = (await todos(
     CTE_ROTACION + 'SELECT p.familia AS familia, COUNT(*) AS total, '
-    + "SUM(CASE WHEN " + EXPR_CLASE_ABC + " = 'C' THEN 1 ELSE 0 END) AS c "
+    + 'SUM' + EXPR_ES_C + ' AS c '
     + 'FROM productos p ' + JOIN_ROTACION + ' ' + sql
-    + " GROUP BY p.familia HAVING c > 0 ORDER BY c DESC, p.familia ASC"
-  ).all(params).map(aCamel);
+    + ' GROUP BY p.familia HAVING SUM' + EXPR_ES_C + ' > 0 ORDER BY 3 DESC, p.familia ASC',
+    params
+  )).map(aCamel);
   return filas;
 }
 
 /** Valores distintos para poblar los selectores de filtro. */
-export function opciones() {
-  const distintos = campo => db().prepare(
-    'SELECT DISTINCT ' + campo + ' AS v FROM productos WHERE ' + campo + " != '' ORDER BY " + campo
-  ).all().map(r => r.v);
+export async function opciones() {
+  const distintos = async campo => (await todos(
+    'SELECT DISTINCT ' + campo + ' AS v FROM productos WHERE ' + campo + " != '' ORDER BY v"
+  )).map(r => r.v);
   return {
-    familias: distintos('familia'),
-    tiposProducto: distintos('tipo_producto'),
-    estados: distintos('estado'),
-    origenes: distintos('origen')
+    familias: await distintos('familia'),
+    tiposProducto: await distintos('tipo_producto'),
+    estados: await distintos('estado'),
+    origenes: await distintos('origen')
   };
 }

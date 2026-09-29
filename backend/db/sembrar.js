@@ -1,4 +1,4 @@
-import { abrir, cerrar, db } from './conexion.js';
+import { abrir, cerrar, ejecutarVarias } from './conexion.js';
 import * as personal from './repos/personal.js';
 import * as solicitudes from './repos/solicitudes.js';
 import * as ajustes from './repos/ajustes.js';
@@ -15,13 +15,27 @@ import { hashClave, generarClaveTemporal } from '../usuarios/claves.js';
 import { createHash } from 'node:crypto';
 import { padronInicial } from '#data/padron.js';
 import { historico2026, RESUMEN } from '#data/historico.js';
-import { comprasIniciales, RESUMEN as RESUMEN_COMPRAS } from '#data/compras.js';
-import { productosIniciales, RESUMEN as RESUMEN_PRODUCTOS } from '#data/productos.js';
-import { requerimientosHistoricoIniciales, RESUMEN as RESUMEN_RQC } from '#data/requerimientosCompraHistorico.js';
-import { ordenesCompraDetalleIniciales, RESUMEN as RESUMEN_OCD } from '#data/ordenesCompraDetalle.js';
-import { materiaPrimaStockInicial, RESUMEN as RESUMEN_MP } from '#data/materiaPrimaStock.js';
-import { stockValorizadoInicial, RESUMEN as RESUMEN_SV } from '#data/stockValorizado.js';
 import { metrajeAlmacenInicial, RESUMEN as RESUMEN_METRAJE } from '#data/metrajeAlmacen.js';
+
+// Volcados del ERP: están en .gitignore (datos reales del negocio, no van al
+// repo), así que en una instalación recién clonada no existen. Se cargan
+// opcionales: si falta el archivo el servidor arranca igual y esa sección
+// queda vacía hasta copiar el data/*.js desde la PC que lo tiene.
+async function opcional(archivo, nombreFilas) {
+  try {
+    return await import('#data/' + archivo);
+  } catch (e) {
+    if (e.code !== 'ERR_MODULE_NOT_FOUND' || !String(e.url ?? e.message).includes(archivo)) throw e;
+    console.warn('Aviso: falta data/' + archivo + ' (no se versiona). Esa sección quedará vacía.');
+    return { [nombreFilas]: () => [], RESUMEN: new Proxy({}, { get: () => 0 }) };
+  }
+}
+const { comprasIniciales, RESUMEN: RESUMEN_COMPRAS } = await opcional('compras.js', 'comprasIniciales');
+const { productosIniciales, RESUMEN: RESUMEN_PRODUCTOS } = await opcional('productos.js', 'productosIniciales');
+const { requerimientosHistoricoIniciales, RESUMEN: RESUMEN_RQC } = await opcional('requerimientosCompraHistorico.js', 'requerimientosHistoricoIniciales');
+const { ordenesCompraDetalleIniciales, RESUMEN: RESUMEN_OCD } = await opcional('ordenesCompraDetalle.js', 'ordenesCompraDetalleIniciales');
+const { materiaPrimaStockInicial, RESUMEN: RESUMEN_MP } = await opcional('materiaPrimaStock.js', 'materiaPrimaStockInicial');
+const { stockValorizadoInicial, RESUMEN: RESUMEN_SV } = await opcional('stockValorizado.js', 'stockValorizadoInicial');
 
 const sinTildes = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 const slugArea = area => sinTildes(area).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -53,20 +67,20 @@ export const VERSION_DATOS = '2026.2';
  * tras un --forzar). El resultado en la base es el mismo.
  */
 const huella = filas => createHash('sha1').update(JSON.stringify(filas)).digest('hex');
-function recargarSiCambio(nombre, filas, tablaConDatos, forzar, cargar) {
+async function recargarSiCambio(nombre, filas, tablaConDatos, forzar, cargar) {
   const h = huella(filas);
   const clave = 'huella_' + nombre;
-  if (!forzar && tablaConDatos && ajustes.leer(clave, '') === h) return false;
-  cargar(filas);
-  ajustes.escribir(clave, h);
+  if (!forzar && tablaConDatos && (await ajustes.leer(clave, '')) === h) return false;
+  await cargar(filas);
+  await ajustes.escribir(clave, h);
   return true;
 }
 
-export function sembrar({ forzar = false, silencioso = false } = {}) {
+export async function sembrar({ forzar = false, silencioso = false } = {}) {
   const decir = (...a) => { if (!silencioso) console.log(...a); };
 
   if (forzar) {
-    db().exec('DELETE FROM adjuntos; DELETE FROM solicitudes; DELETE FROM autorizaciones; '
+    await ejecutarVarias('DELETE FROM paradas; DELETE FROM adjuntos; DELETE FROM solicitudes; DELETE FROM autorizaciones; '
       + 'DELETE FROM personal; DELETE FROM usuarios; DELETE FROM credenciales_area; DELETE FROM pedidos_historico; '
       + 'DELETE FROM ordenes_compra; DELETE FROM productos; DELETE FROM requerimientos_compra_detalle; '
       + 'DELETE FROM ordenes_compra_detalle; DELETE FROM materia_prima_stock; DELETE FROM stock_valorizado; '
@@ -74,10 +88,10 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
     decir('Base vaciada.');
   }
 
-  const yaHay = personal.total() > 0 || solicitudes.total() > 0;
+  const yaHay = (await personal.total()) > 0 || (await solicitudes.total()) > 0;
   if (yaHay) {
-    decir('La base ya tiene datos (' + personal.total() + ' personas, '
-      + solicitudes.total() + ' servicios). Nada que sembrar.');
+    decir('La base ya tiene datos (' + (await personal.total()) + ' personas, '
+      + (await solicitudes.total()) + ' servicios). Nada que sembrar.');
 
     // El padrón se refresca aparte del resto: si RR.HH. entrega un headcount
     // nuevo (altas, bajas, cambios de área), basta con reemplazar
@@ -88,30 +102,30 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
     // vuelve a cargar solo el padrón (cargarPadronOficial ya es un
     // reemplazo completo de los registros con origen 'padron', no un
     // agregado -ver backend/db/repos/personal.js-).
-    const versionGuardada = ajustes.leer('version_datos', '');
+    const versionGuardada = await ajustes.leer('version_datos', '');
     if (versionGuardada !== VERSION_DATOS) {
-      const personas = personal.cargarPadronOficial(padronInicial());
-      ajustes.escribir('version_datos', VERSION_DATOS);
+      const personas = await personal.cargarPadronOficial(padronInicial());
+      await ajustes.escribir('version_datos', VERSION_DATOS);
       decir('Padrón actualizado a la versión ' + VERSION_DATOS + ': ' + personas + ' personas.');
     }
   } else {
-    const personas = personal.cargarPadronOficial(padronInicial());
+    const personas = await personal.cargarPadronOficial(padronInicial());
     decir('Padrón cargado: ' + personas + ' personas.');
 
-    const servicios = solicitudes.cargarHistorico(historico2026());
+    const servicios = await solicitudes.cargarHistorico(historico2026());
     decir('Histórico cargado: ' + servicios + ' servicios de 2026 (S/ ' + RESUMEN.gasto.toFixed(2)
       + ', del ' + RESUMEN.desde + ' al ' + RESUMEN.hasta + ').');
 
-    ajustes.escribir('version_datos', VERSION_DATOS);
+    await ajustes.escribir('version_datos', VERSION_DATOS);
   }
 
   // El usuario admin se siembra aparte y siempre se comprueba, no solo la
   // primera vez: si alguien restaura una base sin la tabla de usuarios llena
   // (o la vació a mano), el sistema no debe quedar sin nadie que pueda entrar.
   let credencialesAdmin = null;
-  if (!usuarios.hayAdmin()) {
+  if (!(await usuarios.hayAdmin())) {
     const claveTemporal = 'admin';
-    usuarios.crear({ usuario: 'admin', claveHash: hashClave(claveTemporal), rol: 'admin', creadoPor: 'siembra' });
+    await usuarios.crear({ usuario: 'admin', claveHash: hashClave(claveTemporal), rol: 'admin', creadoPor: 'siembra' });
     credencialesAdmin = { usuario: 'admin', claveTemporal };
     decir('Usuario "admin" creado con clave temporal "admin". Cámbiala en el primer ingreso.');
   }
@@ -125,12 +139,12 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   // mejor esfuerzo: un choque de nombre de usuario entre dos áreas no debe
   // impedir que arranque el servidor.
   const credencialesAreaCreadas = [];
-  for (const area of personal.areas()) {
-    if (credencialesArea.porArea(area)) continue;
+  for (const area of await personal.areas()) {
+    if (await credencialesArea.porArea(area)) continue;
     try {
       const usuario = slugArea(area);
       const claveTemporal = generarClaveTemporal();
-      credencialesArea.crear({ area, usuario, claveHash: hashClave(claveTemporal), creadoPor: 'siembra' });
+      await credencialesArea.crear({ area, usuario, claveHash: hashClave(claveTemporal), creadoPor: 'siembra' });
       credencialesAreaCreadas.push({ area, usuario, claveTemporal });
       decir('Credencial del área "' + area + '" creada: usuario "' + usuario + '", clave temporal "' + claveTemporal + '".');
     } catch (e) {
@@ -146,8 +160,8 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   // cualquier forma es idempotente por numero_registro (ON CONFLICT DO
   // NOTHING).
   const filasCompras = comprasIniciales();
-  if (ordenesCompra.total() < filasCompras.length) {
-    const nuevasCompras = ordenesCompra.cargarInicial(filasCompras);
+  if ((await ordenesCompra.total()) < filasCompras.length) {
+    const nuevasCompras = await ordenesCompra.cargarInicial(filasCompras);
     if (nuevasCompras) {
       decir('Órdenes de compra cargadas: ' + nuevasCompras + ' comprobantes nuevos (' + RESUMEN_COMPRAS.desde
         + ' a ' + RESUMEN_COMPRAS.hasta + ', S/ ' + RESUMEN_COMPRAS.totalNeto.toFixed(2) + ' neto).');
@@ -158,15 +172,18 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   // reprocesa siempre (cargarInicial hace UPSERT por código, no lo salta un
   // total() >= length como los otros).
   const filasProductos = productosIniciales();
-  if (recargarSiCambio('productos', filasProductos, productos.total() > 0, forzar, f => productos.cargarInicial(f))) decir('Catálogo de productos actualizado: ' + RESUMEN_PRODUCTOS.productos + ' productos, '
+  // Sin data/*.js local (lo normal desde que la foto llega de MongoDB, ver
+  // backend/mongo/sincronizar.js) no se recarga nada: con una lista vacía,
+  // materia prima y stock valorizado se BORRARÍAN en cada arranque.
+  if (filasProductos.length && await recargarSiCambio('productos', filasProductos, (await productos.total()) > 0, forzar, f => productos.cargarInicial(f))) decir('Catálogo de productos actualizado: ' + RESUMEN_PRODUCTOS.productos + ' productos, '
     + RESUMEN_PRODUCTOS.conStock + ' con stock.');
 
   // Historial de requerimientos de compra del ERP: igual criterio que
   // ordenes_compra -no depende de `yaHay`, se reprocesa solo si trae filas
   // nuevas, cargarInicial es idempotente por `clave`-.
   const filasRqc = requerimientosHistoricoIniciales();
-  if (requerimientosHistorico.total() < filasRqc.length) {
-    const nuevosRqc = requerimientosHistorico.cargarInicial(filasRqc);
+  if ((await requerimientosHistorico.total()) < filasRqc.length) {
+    const nuevosRqc = await requerimientosHistorico.cargarInicial(filasRqc);
     if (nuevosRqc) {
       decir('Historial de requerimientos de compra cargado: ' + nuevosRqc + ' filas nuevas ('
         + RESUMEN_RQC.requerimientos + ' requerimientos, ' + RESUMEN_RQC.proveedores + ' proveedores).');
@@ -176,8 +193,8 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   // Historial de Órdenes de Compra del ERP: mismo criterio que los otros
   // historiales de solo lectura.
   const filasOcd = ordenesCompraDetalleIniciales();
-  if (ordenesCompraDetalle.total() < filasOcd.length) {
-    const nuevasOcd = ordenesCompraDetalle.cargarInicial(filasOcd);
+  if ((await ordenesCompraDetalle.total()) < filasOcd.length) {
+    const nuevasOcd = await ordenesCompraDetalle.cargarInicial(filasOcd);
     if (nuevasOcd) {
       decir('Historial de Órdenes de Compra cargado: ' + nuevasOcd + ' líneas nuevas ('
         + RESUMEN_OCD.ordenes + ' OC, ' + RESUMEN_OCD.proveedores + ' proveedores, '
@@ -189,36 +206,43 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   // un histórico -a diferencia de todo lo de arriba-, así que se reemplaza
   // entero en cada arranque (cargarInicial borra y vuelve a insertar).
   const filasMp = materiaPrimaStockInicial();
-  if (recargarSiCambio('materia_prima', filasMp, materiaPrima.total() === filasMp.length, forzar, f => materiaPrima.cargarInicial(f))) decir('Stock de materia prima actualizado: ' + RESUMEN_MP.productos + ' productos, '
+  if (filasMp.length && await recargarSiCambio('materia_prima', filasMp, (await materiaPrima.total()) === filasMp.length, forzar, f => materiaPrima.cargarInicial(f))) decir('Stock de materia prima actualizado: ' + RESUMEN_MP.productos + ' productos, '
     + RESUMEN_MP.categorias + ' categorías, US$ ' + RESUMEN_MP.valorizadoUsd + ' valorizado.');
 
   // Stock valorizado completo (todos los tipos de producto, no solo materia
   // prima): mismo criterio de foto que el de arriba.
   const filasSv = stockValorizadoInicial();
-  if (recargarSiCambio('stock_valorizado', filasSv, stockValorizado.total() === filasSv.length, forzar, f => stockValorizado.cargarInicial(f))) decir('Stock valorizado completo actualizado: ' + RESUMEN_SV.filas + ' filas, '
+  if (filasSv.length && await recargarSiCambio('stock_valorizado', filasSv, (await stockValorizado.total()) === filasSv.length, forzar, f => stockValorizado.cargarInicial(f))) decir('Stock valorizado completo actualizado: ' + RESUMEN_SV.filas + ' filas, '
     + RESUMEN_SV.almacenes + ' almacenes, US$ ' + RESUMEN_SV.valorizadoUsd + ' valorizado.');
 
   // Metraje y costo del alquiler de Almacén Los Olivos: histórico de
   // METRAJE ALMACEN LOS OLIVOS.xlsx, cargado una sola vez por su clave
   // natural (tipo, fecha_desde, fecha_hasta) -no depende de `yaHay` ni se
   // vuelve a pisar si admin ya agregó/editó filas a mano-.
+  //
+  // "Una sola vez" de verdad: antes se recargaba cada vez que la tabla tenía
+  // MENOS filas que el Excel, así que borrar una fila "Pendiente" para
+  // reemplazarla la hacía reaparecer en el siguiente arranque. Ahora queda
+  // marcado en ajustes; una tabla que ya tiene filas cuenta como sembrada.
   const filasMetraje = metrajeAlmacenInicial();
-  if (metrajeAlmacen.total() < filasMetraje.length) {
-    const nuevasMetraje = metrajeAlmacen.cargarInicial(filasMetraje);
+  const metrajeSembrado = (await ajustes.leer('metraje_sembrado', '')) || (await metrajeAlmacen.total()) > 0;
+  if (!metrajeSembrado || forzar) {
+    const nuevasMetraje = await metrajeAlmacen.cargarInicial(filasMetraje);
     if (nuevasMetraje) {
       decir('Metraje de Almacén Los Olivos cargado: ' + nuevasMetraje + ' filas nuevas ('
         + RESUMEN_METRAJE.desde + ' a ' + RESUMEN_METRAJE.hasta + ', ' + RESUMEN_METRAJE.pendientes + ' pendientes de validar).');
     }
   }
+  if (!(await ajustes.leer('metraje_sembrado', ''))) await ajustes.escribir('metraje_sembrado', '1');
 
-  ajustes.tocar();
+  await ajustes.tocar();
 
   return { sembrado: !yaHay, credencialesAdmin, credencialesArea: credencialesAreaCreadas };
 }
 
 // Ejecutable directo: node backend/db/sembrar.js [--forzar]
 if (import.meta.filename === process.argv[1]) {
-  abrir();
-  sembrar({ forzar: process.argv.includes('--forzar') });
-  cerrar();
+  await abrir();
+  await sembrar({ forzar: process.argv.includes('--forzar') });
+  await cerrar();
 }

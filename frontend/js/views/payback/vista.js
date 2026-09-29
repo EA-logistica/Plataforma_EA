@@ -1,3 +1,4 @@
+import { MARGEN_HORAS } from '../../config.js';
 import { $, esc } from '../../utils/dom.js';
 import { soles, solesK } from '../../utils/format.js';
 import { DB } from '../../api/estado.js';
@@ -303,7 +304,7 @@ function politicaUrgencias(cmp, demanda) {
   const medidas = [
     ['Hora de corte diaria',
       'Lo que entra hasta las 16:00 se programa en la ruta del día siguiente. Después de esa hora, salvo'
-      + ' excepción aprobada, va a la ruta siguiente. La plataforma ya obliga a un margen de 4 horas: la hora'
+      + ' excepción aprobada, va a la ruta siguiente. La plataforma ya obliga a un margen de ' + MARGEN_HORAS + ' horas: la hora'
       + ' de corte es la misma idea, pero fijada a una hora concreta y conocida por todos.'],
     ['Días fijos por zona',
       'Las zonas lejanas no se visitan todos los días. Publicar el calendario convierte "necesito ir a Chilca'

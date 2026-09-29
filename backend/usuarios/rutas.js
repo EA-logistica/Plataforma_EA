@@ -5,6 +5,7 @@ import * as sesiones from './sesiones.js';
 import { requiereSesion, requiereRol } from './middleware.js';
 import { limitarIntentos } from '../middleware/limites.js';
 import { log } from '../seguridad/log.js';
+import { asinc } from '../middleware/errores.js';
 
 /**
  * Cuentas de logística: ingreso, cambio de clave propia y administración de
@@ -22,46 +23,46 @@ const error = (msg, status) => Object.assign(new Error(msg), { status });
 const frenoIngreso = limitarIntentos();
 
 // -------------------------------------------------------------------- auth
-usuarios.post('/auth/ingresar', frenoIngreso, (req, res) => {
-  res.json(servicio.ingresar(req.body?.usuario, req.body?.clave, req));
-});
+usuarios.post('/auth/ingresar', frenoIngreso, asinc(async (req, res) => {
+  res.json(await servicio.ingresar(req.body?.usuario, req.body?.clave, req));
+}));
 
-usuarios.post('/auth/salir', requiereSesion, (req, res) => {
+usuarios.post('/auth/salir', requiereSesion, asinc(async (req, res) => {
   sesiones.revocar(req.token);
-  log('logout', req);
+  await log('logout', req);
   res.json({ ok: true });
-});
+}));
 
 usuarios.get('/auth/yo', requiereSesion, (req, res) => {
   res.json({ usuario: req.usuario.usuario, rol: req.usuario.rol });
 });
 
-usuarios.put('/auth/clave', requiereSesion, (req, res) => {
+usuarios.put('/auth/clave', requiereSesion, asinc(async (req, res) => {
   // Cambiar la clave revoca todas las sesiones de la cuenta -incluida esta-,
   // así que se devuelve un token nuevo para no dejar afuera a quien la pidió.
-  const token = servicio.cambiarClavePropia(req.usuario, req.body?.actual, req.body?.nueva, req);
+  const token = await servicio.cambiarClavePropia(req.usuario, req.body?.actual, req.body?.nueva, req);
   res.json({ ok: true, token });
-});
+}));
 
 // ------------------------------------------------------- gestión de cuentas
 // Solo admin: es quien crea usuarios y reparte las claves temporales.
-usuarios.get('/usuarios', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.json(repo.listar());
-});
+usuarios.get('/usuarios', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.json(await repo.listar());
+}));
 
-usuarios.post('/usuarios', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.status(201).json(servicio.crearUsuario({
+usuarios.post('/usuarios', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.status(201).json(await servicio.crearUsuario({
     usuario: req.body?.usuario,
     rol: req.body?.rol,
     creadoPor: req.usuario.usuario
   }, req));
-});
+}));
 
-usuarios.post('/usuarios/:id/restablecer', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.json(servicio.restablecerClave(Number(req.params.id), req));
-});
+usuarios.post('/usuarios/:id/restablecer', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.json(await servicio.restablecerClave(Number(req.params.id), req));
+}));
 
-usuarios.patch('/usuarios/:id', requiereSesion, requiereRol('admin'), (req, res) => {
+usuarios.patch('/usuarios/:id', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
   if (typeof req.body?.activo !== 'boolean') throw error('Falta indicar "activo" (true/false).', 400);
-  res.json(servicio.cambiarEstado(Number(req.params.id), req.body.activo, req.usuario, req));
-});
+  res.json(await servicio.cambiarEstado(Number(req.params.id), req.body.activo, req.usuario, req));
+}));

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { CONFIG } from '../config.js';
-import { registrar } from '../db/repos/eventosSeguridad.js';
+import { registrarSeguro as registrar } from '../seguridad/log.js';
 
 /**
  * Dos defensas mínimas para cuando la aplicación deja de estar sola en una PC
@@ -63,6 +63,8 @@ export function limitarIntentos({ maximo = CONFIG.limites.intentos, ventanaMs = 
       // Se registra solo el momento en que se cruza el máximo, no cada 429
       // mientras dura el freno: eso solo repetiría la misma fila sin agregar
       // nada, mil veces si alguien insiste con el freno puesto.
+      // La respuesta ya salió: el registro corre solo (registrarSeguro nunca
+      // se rechaza, así que no queda ninguna promesa sin capturar).
       if (nuevoTotal === maximo) {
         registrar('actividad_sospechosa', {
           ip, detalle: maximo + ' intentos fallidos seguidos en ' + req.method + ' ' + req.originalUrl
@@ -106,12 +108,15 @@ export function limitarPeticiones({ maximo, ventanaMs, mensaje, nombre = '' }) {
     if (e.n > maximo) {
       const faltan = Math.ceil((e.hasta - ahora) / 1000);
       res.setHeader('Retry-After', String(faltan));
+      const responder = () => res.status(429).json({ error: mensaje || 'Demasiadas solicitudes. Espera un momento y vuelve a intentar.' });
       if (e.n === maximo + 1) {
-        registrar('actividad_sospechosa', {
+        // Se espera a que el evento quede escrito antes de responder, igual
+        // que cuando la base era síncrona. registrarSeguro nunca se rechaza.
+        return registrar('actividad_sospechosa', {
           ip, detalle: 'más de ' + maximo + ' peticiones a ' + req.method + ' ' + req.originalUrl + ' en poco tiempo'
-        });
+        }).then(responder);
       }
-      return res.status(429).json({ error: mensaje || 'Demasiadas solicitudes. Espera un momento y vuelve a intentar.' });
+      return responder();
     }
     next();
   };

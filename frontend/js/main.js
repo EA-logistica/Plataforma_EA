@@ -14,10 +14,11 @@
 import { $, esc } from './utils/dom.js';
 import { hoyISO } from './utils/format.js';
 import { cargar } from './api/estado.js';
-import { DESTINOS_FRECUENTES } from '#data/destinos.js';
 import { sesion } from './state/sessionState.js';
 import { iniciarSincronizacion } from './render.js';
 import { aplicarTema, actualizarBoton } from './ui/theme.js';
+import { iniciarEstadoMongo } from './ui/mongoEstado.js';
+import { iniciarAvisoActualizacion, reiniciarServidor } from './ui/actualizacion.js';
 import { alternarAccesoLogistica, cerrarAccesoLogistica } from './ui/logisticaPopover.js';
 import { alternarMenuCuenta, cerrarMenuCuenta } from './ui/cuentaPopover.js';
 import { toggleNavGroup, restaurarNavGroups, alternarMenu, cerrarMenu } from './ui/sidebar.js';
@@ -29,11 +30,15 @@ import {
 import { tabUser, tabAdmin, subtabHistorico } from './views/tabs.js';
 import {
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
-  agregarParada, editarParada, quitarParada
+  agregarParada, editarParada, quitarParada,
+  validarServicioVivo, revisarDestino, setDestinoTipo, abrirMapa, olvidarPunto,
+  pintarSugerenciasDestino,
+  setModalidad, setServicio, setOrigen, elegirDestino, setFecha, setHora, irAPasoSolicitud
 } from './views/requestForm.js';
-import { consultarTicket, renderMis, cancelarMiSolicitud, pedirHistoricoCompleto } from './views/tickets.js';
+import { cerrarSelectorMapa, confirmarSelectorMapa, buscarEnMapa, miUbicacion } from './ui/mapaPicker.js';
+import { renderMis, cancelarMiSolicitud, pedirHistoricoCompleto, buscarMisServicios, limpiarBusquedaMis } from './views/tickets.js';
 import {
-  renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
+  renderBandeja, setFiltroBandeja, setFiltroModalidadBandeja, setFiltroAccionBandeja, buscarEnBandeja, refrescarEditorServicio, guardarServicioTicket, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
   abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud, confirmarEliminacionSubmit
 } from './views/dispatch.js';
 import {
@@ -64,7 +69,7 @@ import {
 import {
   renderOrdenesCompra, setFiltroOrdenesCompra, limpiarFiltroOrdenesCompra, irPaginaOrdenesCompra,
   renderEvolucionProveedorCompra, filtrarOrdenesCompraPorMes, elegirProveedorOrdenesCompra,
-  renderOC, setFiltroOC, limpiarFiltroOC, irPaginaOC, verItemsOC, filtrarOCPorMes, elegirProveedorOC
+  renderOC, subtabCompras, setFiltroOC, limpiarFiltroOC, irPaginaOC, verItemsOC, filtrarOCPorMes, elegirProveedorOC
 } from './views/ordenesCompra.js';
 import {
   renderProveedores, elegirProveedorSeccion, elegirProveedorIndice, buscarProveedorSeccion, teclaProveedorSeccion,
@@ -80,6 +85,10 @@ import {
   verAlmacenesProductoMateriaPrima, buscarProductosMateriaPrima, cambiarTipoMateriaPrima, verProductosDeAlmacenMateriaPrima,
   ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima
 } from './views/materiaPrima.js';
+import {
+  subtabMateriaPrima, renderMuestras, irAMesMuestras, filtrarMuestras, abrirNuevaMuestra, editarMuestra, subtotalMuestra,
+  buscarProveedorMuestra, guardarMuestra, cambiarEstadoMuestra, borrarMuestraVista, abrirPegarMuestras, previsualizarPegado, importarPegado
+} from './views/muestras.js';
 import {
   renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
   guardarServicioLogistica, borrarServicioLogisticaVista
@@ -100,9 +109,13 @@ Object.assign(window, {
   entrarSolicitanteArea, volverAlDni,
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
   agregarParada, editarParada, quitarParada,
+  validarServicioVivo, revisarDestino, setDestinoTipo, abrirMapa, olvidarPunto,
+  setModalidad, setServicio, setOrigen, elegirDestino, setFecha, setHora, irAPasoSolicitud,
+  reiniciarServidor,
+  cerrarMapa: cerrarSelectorMapa, confirmarMapa: confirmarSelectorMapa, buscarEnMapa, miUbicacion,
   tabUser, tabAdmin, subtabHistorico,
-  consultarTicket, renderMis, cancelarMiSolicitud, pedirHistoricoCompleto,
-  renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
+  renderMis, cancelarMiSolicitud, pedirHistoricoCompleto, buscarMisServicios, limpiarBusquedaMis,
+  renderBandeja, setFiltroBandeja, setFiltroModalidadBandeja, setFiltroAccionBandeja, buscarEnBandeja, refrescarEditorServicio, guardarServicioTicket, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
   abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud, confirmarEliminacionSubmit,
   renderHistorico, abrirExportarExcel, confirmarExportarExcel,
   filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico,
@@ -122,7 +135,7 @@ Object.assign(window, {
   irPaginaRequerimientosHistorico, verFacturasProveedorRqc, setEstadoRequerimientosHistorico,
   renderOrdenesCompra, setFiltroOrdenesCompra, limpiarFiltroOrdenesCompra, irPaginaOrdenesCompra, renderEvolucionProveedorCompra,
   filtrarOrdenesCompraPorMes, elegirProveedorOrdenesCompra,
-  renderOC, setFiltroOC, limpiarFiltroOC, irPaginaOC, verItemsOC, filtrarOCPorMes, elegirProveedorOC,
+  renderOC, subtabCompras, setFiltroOC, limpiarFiltroOC, irPaginaOC, verItemsOC, filtrarOCPorMes, elegirProveedorOC,
   renderProveedores, elegirProveedorSeccion, elegirProveedorIndice, buscarProveedorSeccion, teclaProveedorSeccion,
   cerrarSugerenciasProveedor, irARegistroDeProveedor, irAOCDeProveedor,
   renderProductos, setFiltroProductos, limpiarFiltroProductos, irPaginaProductos, verRequerimientosProducto, ordenarProductosPorStock,
@@ -131,11 +144,13 @@ Object.assign(window, {
   verAlmacenesProductoMateriaPrima, buscarProductosMateriaPrima, cambiarTipoMateriaPrima, verProductosDeAlmacenMateriaPrima,
   ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima,
   renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
-  guardarServicioLogistica, borrarServicioLogisticaVista
+  guardarServicioLogistica, borrarServicioLogisticaVista,
+  subtabMateriaPrima, renderMuestras, irAMesMuestras, filtrarMuestras, abrirNuevaMuestra, editarMuestra, subtotalMuestra,
+  buscarProveedorMuestra, guardarMuestra, cambiarEstadoMuestra, borrarMuestraVista, abrirPegarMuestras, previsualizarPegado, importarPegado
 });
 
 // ---- Listeners que no van como atributos inline ----
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModal(); cerrarAccesoLogistica(); cerrarMenuCuenta(); cerrarMenu(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarSelectorMapa(); cerrarModal(); cerrarAccesoLogistica(); cerrarMenuCuenta(); cerrarMenu(); } });
 // Clic fuera del icono o del panel: se cierra solo, como cualquier menú.
 document.addEventListener('click', e => {
   if (!$('logisticaAnchor').contains(e.target)) cerrarAccesoLogistica();
@@ -147,8 +162,6 @@ $('areaUsuarioInput').addEventListener('keydown', e => { if (e.key === 'Enter') 
 $('areaClaveInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSolicitanteArea(); });
 $('userInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAdmin(); });
 $('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAdmin(); });
-$('qTicket').addEventListener('keydown', e => { if (e.key === 'Enter') consultarTicket(); });
-$('qTicket').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
 $('pDni').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
 $('fTel').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
 
@@ -174,12 +187,12 @@ restaurarNavGroups();
 
 // Destinos frecuentes del histórico real: se ofrecen como sugerencia, el
 // campo sigue aceptando cualquier dirección escrita a mano.
-$('dlDestinos').innerHTML = DESTINOS_FRECUENTES
-  .map(d => '<option value="' + d.replace(/"/g, '&quot;') + '"></option>').join('');
+pintarSugerenciasDestino();
 
 $('fFecha').min = hoyISO();
-$('fFecha').value = hoyISO();
 refrescarHoras();
 
 iniciarSincronizacion(2500);
+iniciarEstadoMongo();
+iniciarAvisoActualizacion();
 setInterval(() => { if (sesion && sesion.tipo === 'user' && $('uNueva').classList.contains('on')) refrescarHoras(); }, 60000);

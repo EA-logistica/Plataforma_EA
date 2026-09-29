@@ -2,8 +2,8 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 /**
  * Hash de claves con scrypt: viene incorporado en Node, así que no hace falta
- * bcrypt ni Argon2 -que exigen un módulo nativo que compilar, justo lo que
- * `conexion.js` evita usando node:sqlite en vez de better-sqlite3-. scrypt es
+ * bcrypt ni Argon2 -que exigen un módulo nativo que compilar, algo que el
+ * proyecto evita a propósito (por eso usa `pg` puro JavaScript)-. scrypt es
  * el mismo tipo de función (memory-hard, pensada para que probar contraseñas
  * en masa sea caro) y está igual de aceptado por OWASP para este uso.
  *

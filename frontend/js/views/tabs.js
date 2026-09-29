@@ -1,7 +1,7 @@
 import { $ } from '../utils/dom.js';
 import { sesion } from '../state/sessionState.js';
 import { setSubtabHistoricoActual } from '../state/historicoSubtab.js';
-import { renderMis, consultarTicket } from './tickets.js';
+import { renderMis } from './tickets.js';
 import { renderDashboard } from './dashboard.js';
 import { renderKpi } from './kpi.js';
 import { renderHistorico } from './history.js';
@@ -11,23 +11,21 @@ import { renderUsuarios } from './usuarios.js';
 import { renderCredencialesArea } from './credencialesArea.js';
 import { renderExportaciones } from './exportaciones.js';
 import { renderRequerimientos, renderRequerimientosHistorico } from './requerimientosCompra.js';
-import { renderOrdenesCompra, renderOC } from './ordenesCompra.js';
+import { subtabCompras } from './ordenesCompra.js';
 import { renderProductos } from './productos.js';
-import { renderMateriaPrima } from './materiaPrima.js';
+import { subtabMateriaPrima } from './muestras.js';
 import { renderProveedores } from './proveedores.js';
 import { renderServiciosLogistica } from './serviciosLogistica.js';
 import { abrirAlmacen } from './almacen.js';
 import { cerrarMenu } from '../ui/sidebar.js';
 import { cerrarMenuCuenta } from '../ui/cuentaPopover.js';
 
-/** Pestañas de la vista de solicitante: nueva solicitud / seguimiento / mis servicios. */
+/** Pestañas de la vista de solicitante: nueva solicitud / mis servicios (con buscador). */
 export function tabUser(k) {
   document.querySelectorAll('[data-utab]').forEach(b => b.classList.toggle('on', b.dataset.utab === k));
   $('uNueva').classList.toggle('on', k === 'nueva');
-  $('uSeguimiento').classList.toggle('on', k === 'seguimiento');
   $('uMis').classList.toggle('on', k === 'mis');
   if (k === 'mis') renderMis();
-  if (k === 'seguimiento' && $('qTicket').value) consultarTicket();
 }
 
 /** Pestañas reservadas a rol admin: dashboard, payback, padrón, usuarios y el grupo de compras/logística. */
@@ -107,9 +105,9 @@ export function tabAdmin(k) {
   if (k === 'almacen') abrirAlmacen();
   if (k === 'exportaciones') renderExportaciones();
   if (k === 'productos') renderProductos();
-  if (k === 'materiaPrima') renderMateriaPrima();
+  if (k === 'materiaPrima') subtabMateriaPrima();
   if (k === 'requerimientos') { renderRequerimientos(); renderRequerimientosHistorico(); }
-  if (k === 'ordenesCompra') { renderOrdenesCompra(); renderOC(); }
+  if (k === 'ordenesCompra') subtabCompras();
   if (k === 'proveedores') renderProveedores();
   if (k === 'servicios') renderServiciosLogistica();
   cerrarMenu();

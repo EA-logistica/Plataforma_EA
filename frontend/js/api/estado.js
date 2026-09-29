@@ -30,7 +30,8 @@ export let DB = {
   solicitudes: [],
   autorizaciones: [],
   adjuntos: [],
-  destinos: []
+  destinos: [],
+  destinosRegistrados: []
 };
 
 let revisionActual = null;
@@ -49,7 +50,8 @@ export async function cargar() {
     solicitudes: estado.solicitudes,
     autorizaciones: estado.autorizaciones,
     adjuntos: estado.adjuntos,
-    destinos: estado.destinos
+    destinos: estado.destinos,
+    destinosRegistrados: estado.destinosRegistrados || []
   };
   revisionActual = estado.revision;
   return DB;
@@ -61,6 +63,15 @@ export async function cargar() {
  * área. Se llama al entrar y de nuevo en cada sondeo, para que "Mis
  * servicios" vea los cambios que haga logística sin tener que recargar.
  */
+/**
+ * Busca en TODOS los servicios del área (no solo los últimos 10): por
+ * ticket, solicitante o destino. No toca DB.solicitudes -eso sigue siendo la
+ * lista de los últimos-; devuelve el resultado aparte.
+ */
+export async function buscarMiArea(q) {
+  return obtener('/solicitudes/mias/buscar?q=' + encodeURIComponent(q));
+}
+
 export async function cargarMiArea() {
   const r = await obtener('/solicitudes/mias');
   DB.solicitudes = r.solicitudes;
@@ -311,3 +322,12 @@ export const resumenStockValorizadoGlobal = () => obtener('/stock-valorizado/res
 // Ticket de un solo uso para entrar al módulo de Almacén (otro repositorio,
 // embebido en un iframe propio; ver backend/almacen/acceso.js).
 export const emitirTicketAlmacen = () => crear('/almacen/ticket');
+
+// ------------------------------------------------ muestras de materia prima
+export const listarMuestras = () => obtener('/materia-prima/muestras');
+export const resumenMuestras = mes => obtener('/materia-prima/muestras/resumen' + (mes ? '?mes=' + encodeURIComponent(mes) : ''));
+export const proveedorPorRuc = ruc => obtener('/materia-prima/muestras/proveedor?ruc=' + encodeURIComponent(ruc));
+export const crearMuestra = datos => crear('/materia-prima/muestras', datos);
+export const crearMuestrasLote = filas => crear('/materia-prima/muestras/lote', { filas });
+export const actualizarMuestra = (id, datos) => modificar('/materia-prima/muestras/' + id, datos);
+export const borrarMuestra = (id, motivo) => borrar('/materia-prima/muestras/' + id, { motivo });

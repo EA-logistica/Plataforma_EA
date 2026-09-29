@@ -1,4 +1,4 @@
-import { db, aCamel } from '../conexion.js';
+import { todos, uno, ejecutar, aCamel } from '../conexion.js';
 import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tocar } from './ajustes.js';
 
@@ -23,14 +23,14 @@ function tope(campo, valor) {
   }
 }
 
-export function listar() {
-  return db().prepare('SELECT * FROM autorizaciones ORDER BY solicitado DESC').all().map(aCamel);
+export async function listar() {
+  return (await todos('SELECT * FROM autorizaciones ORDER BY solicitado DESC')).map(aCamel);
 }
 
-export const pendientes = () =>
-  listar().filter(a => a.estado === 'Pendiente');
+export const pendientes = async () =>
+  (await listar()).filter(a => a.estado === 'Pendiente');
 
-export function pedir(doc, datos = {}) {
+export async function pedir(doc, datos = {}) {
   const dni = normalizarDoc(doc);
   if (!DOC_VALIDO.test(dni)) throw error('Documento inválido.');
 
@@ -46,26 +46,27 @@ export function pedir(doc, datos = {}) {
   if (email && !EMAIL_VALIDO.test(email)) throw error('El email no tiene un formato válido.');
   tope('apellidos', apellidos); tope('nombres', nombres); tope('email', email); tope('area', area);
 
-  const yaHay = db().prepare(
-    "SELECT 1 FROM autorizaciones WHERE dni = ? AND estado = 'Pendiente'"
-  ).get(dni);
+  const yaHay = await uno(
+    "SELECT 1 FROM autorizaciones WHERE dni = ? AND estado = 'Pendiente'", [dni]
+  );
   if (yaHay) return { dni, repetido: true };
 
-  db().prepare(
+  await ejecutar(
     "INSERT INTO autorizaciones (dni, apellidos, nombres, celular, email, area, solicitado, estado) "
-    + "VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente')"
-  ).run(dni, apellidos, nombres, celular, email, area, new Date().toISOString());
-  tocar('app');
+    + "VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente')",
+    [dni, apellidos, nombres, celular, email, area, new Date().toISOString()]
+  );
+  await tocar('app');
   return { dni, repetido: false };
 }
 
-export function resolver(doc, estado) {
+export async function resolver(doc, estado) {
   if (!['Aprobada', 'Rechazada'].includes(estado)) throw error('Estado inválido.');
   const dni = normalizarDoc(doc);
-  const r = db().prepare(
-    "UPDATE autorizaciones SET estado = ? WHERE dni = ? AND estado = 'Pendiente'"
-  ).run(estado, dni);
+  const r = await ejecutar(
+    "UPDATE autorizaciones SET estado = ? WHERE dni = ? AND estado = 'Pendiente'", [estado, dni]
+  );
   if (!r.changes) throw error('No hay un pedido pendiente para el documento ' + dni + '.', 404);
-  tocar('app');
+  await tocar('app');
   return { dni, estado };
 }

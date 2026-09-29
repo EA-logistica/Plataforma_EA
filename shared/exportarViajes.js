@@ -54,7 +54,10 @@ export const COLUMNAS_VIAJES = [
   ['Detalle de cancelación', 'texto', s => s.motivoCancelacionDetalle || ''],
   ['Cancelado por', 'texto', s => s.canceladoPor || ''],
   ['Fecha de cancelación', 'fechahora', s => fecha(s.tsCancelado)],
-  ['Paradas adicionales', 'texto', paradasTexto]
+  ['Paradas adicionales', 'texto', paradasTexto],
+  // Al final a propósito: agregarla en medio corría las columnas de quien ya usa esta planilla.
+  ['Modalidad', 'texto', s => s.modalidad || 'Envíos'],
+  ['Tipo de destino', 'texto', s => s.destinoTipo || '']
 ];
 
 /**

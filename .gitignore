@@ -43,3 +43,9 @@ data/productos.js
 data/materiaPrimaStock.js
 data/stockValorizado.js
 data/requerimientosCompraHistorico.js
+
+# Respaldos de PostgreSQL y de uploads/ (npm run db:respaldo): datos reales.
+respaldos/
+
+# Accesos directos de Windows: son de cada PC, no del proyecto.
+*.lnk

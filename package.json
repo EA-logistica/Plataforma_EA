@@ -11,7 +11,9 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node tests/payback.mjs && node tests/api.mjs && node tests/frontend.mjs",
-    "db:reiniciar": "node backend/db/sembrar.js --forzar"
+    "db:reiniciar": "node backend/db/sembrar.js --forzar",
+    "db:importar-sqlite": "node backend/db/importarSqlite.js",
+    "db:respaldo": "node backend/db/respaldar.js"
   },
   "imports": {
     "#shared/*": "./shared/*",
@@ -21,6 +23,8 @@
     "compression": "^1.8.2",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
-    "multer": "^1.4.5-lts.1"
+    "mongodb": "^7.7.0",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.23.0"
   }
 }

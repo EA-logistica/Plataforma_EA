@@ -8,6 +8,7 @@ import * as servicio from './servicio.js';
 import { requiereSesion, requiereRol, requiereSesionArea } from '../usuarios/middleware.js';
 import { limitarIntentos, limitarPeticiones } from '../middleware/limites.js';
 import { log } from '../seguridad/log.js';
+import { asinc } from '../middleware/errores.js';
 
 /**
  * Ingreso del solicitante por DNI + credencial de área, "mis servicios"
@@ -22,7 +23,7 @@ export const areas = Router();
 
 const error = (msg, status) => Object.assign(new Error(msg), { status });
 
-const LIMITE_MIS_SERVICIOS = 5;
+const LIMITE_MIS_SERVICIOS = 10;
 
 // -------------------------------------------------------------------- auth
 // Mismo freno de fuerza bruta que el resto del ingreso (comparte presupuesto
@@ -30,20 +31,20 @@ const LIMITE_MIS_SERVICIOS = 5;
 // clave de área a ciegas gasta el mismo cupo.
 const frenoIngreso = limitarIntentos();
 
-areas.post('/auth/area', frenoIngreso, (req, res) => {
-  res.json(servicio.ingresarPorArea(req.body?.dni, req.body?.usuario, req.body?.clave, req));
-});
+areas.post('/auth/area', frenoIngreso, asinc(async (req, res) => {
+  res.json(await servicio.ingresarPorArea(req.body?.dni, req.body?.usuario, req.body?.clave, req));
+}));
 
-areas.post('/auth/area/salir', requiereSesionArea, (req, res) => {
+areas.post('/auth/area/salir', requiereSesionArea, asinc(async (req, res) => {
   sesiones.revocar(req.token);
-  log('logout_area', req);
+  await log('logout_area', req);
   res.json({ ok: true });
-});
+}));
 
-areas.put('/auth/area/clave', requiereSesionArea, (req, res) => {
-  const token = servicio.cambiarClavePropiaArea(req.area, req.body?.actual, req.body?.nueva, req);
+areas.put('/auth/area/clave', requiereSesionArea, asinc(async (req, res) => {
+  const token = await servicio.cambiarClavePropiaArea(req.area, req.body?.actual, req.body?.nueva, req);
   res.json({ ok: true, token });
-});
+}));
 
 // ------------------------------------------------------- mis servicios
 /**
@@ -58,10 +59,18 @@ const frenoMiArea = limitarPeticiones({
   maximo: 60, ventanaMs: 5 * 60 * 1000, nombre: 'mi-area',
   mensaje: 'Demasiadas consultas. Espera unos minutos y vuelve a intentar.'
 });
-areas.get('/solicitudes/mias', requiereSesionArea, frenoMiArea, (req, res) => {
-  const ultimos = solicitudes.deArea(req.area.area, LIMITE_MIS_SERVICIOS);
-  res.json({ solicitudes: ultimos, adjuntos: adjuntos.deTickets(ultimos.map(s => s.id)) });
-});
+areas.get('/solicitudes/mias', requiereSesionArea, frenoMiArea, asinc(async (req, res) => {
+  const ultimos = await solicitudes.deArea(req.area.area, LIMITE_MIS_SERVICIOS);
+  res.json({ solicitudes: ultimos, adjuntos: await adjuntos.deTickets(ultimos.map(s => s.id)) });
+}));
+
+// Buscar entre TODOS los servicios del área -reemplaza a la pestaña
+// "Seguimiento", que solo encontraba un ticket si estaba entre los últimos-:
+// por número de ticket, solicitante o destino. El área sale de la sesión.
+areas.get('/solicitudes/mias/buscar', requiereSesionArea, frenoMiArea, asinc(async (req, res) => {
+  const encontrados = await solicitudes.buscarEnArea(req.area.area, req.query.q, 20);
+  res.json({ solicitudes: encontrados, adjuntos: await adjuntos.deTickets(encontrados.map(s => s.id)) });
+}));
 
 // ------------------------------------------------------ pedidos de histórico
 // Autoservicio, como pedir autorización a logística: el área que quiere ver
@@ -69,41 +78,41 @@ areas.get('/solicitudes/mias', requiereSesionArea, frenoMiArea, (req, res) => {
 // histórico completo por fuera de la aplicación (ya lo tiene en su propia
 // pantalla). `area`/`dni` salen de la sesión, no del cuerpo, por la misma
 // razón que en /solicitudes/mias.
-areas.post('/pedidos-historico', requiereSesionArea, (req, res) => {
-  const r = pedidosRepo.pedir(req.area.area, req.area.dni);
-  log('pedido_historico_creado', req, 'área "' + req.area.area + '"' + (r.repetido ? ' (ya había uno pendiente)' : ''));
+areas.post('/pedidos-historico', requiereSesionArea, asinc(async (req, res) => {
+  const r = await pedidosRepo.pedir(req.area.area, req.area.dni);
+  await log('pedido_historico_creado', req, 'área "' + req.area.area + '"' + (r.repetido ? ' (ya había uno pendiente)' : ''));
   res.status(201).json(r);
-});
+}));
 
-areas.get('/pedidos-historico', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.json(pedidosRepo.listar());
-});
+areas.get('/pedidos-historico', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.json(await pedidosRepo.listar());
+}));
 
-areas.patch('/pedidos-historico/:id', requiereSesion, requiereRol('admin'), (req, res) => {
-  const r = pedidosRepo.resolver(req.params.id, req.body?.estado);
-  log('pedido_historico_resuelto', req, 'pedido #' + req.params.id + ' → ' + req.body?.estado);
+areas.patch('/pedidos-historico/:id', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  const r = await pedidosRepo.resolver(req.params.id, req.body?.estado);
+  await log('pedido_historico_resuelto', req, 'pedido #' + req.params.id + ' → ' + req.body?.estado);
   res.json(r);
-});
+}));
 
 // --------------------------------------------- credenciales de área (admin)
 // Igual que /usuarios: solo admin las crea y reparte las claves temporales.
-areas.get('/credenciales-area', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.json(credRepo.listar());
-});
+areas.get('/credenciales-area', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.json(await credRepo.listar());
+}));
 
-areas.post('/credenciales-area', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.status(201).json(servicio.crearCredencialArea({
+areas.post('/credenciales-area', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.status(201).json(await servicio.crearCredencialArea({
     area: req.body?.area,
     usuario: req.body?.usuario,
     creadoPor: req.usuario.usuario
   }, req));
-});
+}));
 
-areas.post('/credenciales-area/:area/restablecer', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.json(servicio.restablecerClaveArea(req.params.area, req));
-});
+areas.post('/credenciales-area/:area/restablecer', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.json(await servicio.restablecerClaveArea(req.params.area, req));
+}));
 
-areas.patch('/credenciales-area/:area', requiereSesion, requiereRol('admin'), (req, res) => {
+areas.patch('/credenciales-area/:area', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
   if (typeof req.body?.activo !== 'boolean') throw error('Falta indicar "activo" (true/false).', 400);
-  res.json(servicio.cambiarEstadoArea(req.params.area, req.body.activo, req));
-});
+  res.json(await servicio.cambiarEstadoArea(req.params.area, req.body.activo, req));
+}));

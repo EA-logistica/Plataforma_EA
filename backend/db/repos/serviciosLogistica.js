@@ -1,4 +1,4 @@
-import { db, aCamel } from '../conexion.js';
+import { todos, uno, ejecutar, aCamel } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -53,41 +53,44 @@ function normalizar(d) {
   return fila;
 }
 
-export function listar() {
-  return db().prepare('SELECT * FROM servicios_logistica ORDER BY fecha_solicitud DESC, id DESC').all().map(aCamel);
+export async function listar() {
+  return (await todos('SELECT * FROM servicios_logistica ORDER BY fecha_solicitud DESC, id DESC')).map(aCamel);
 }
 
-export function porId(id) {
-  return aCamel(db().prepare('SELECT * FROM servicios_logistica WHERE id = ?').get(Number(id)));
+export async function porId(id) {
+  return aCamel(await uno('SELECT * FROM servicios_logistica WHERE id = ?', [Number(id)]));
 }
 
-export function crear(datos, creadoPor) {
+export async function crear(datos, creadoPor) {
   const f = normalizar(datos);
-  const r = db().prepare(
+  const r = await ejecutar(
     'INSERT INTO servicios_logistica (fecha_solicitud, tipo_servicio, proveedor, descripcion, costo, moneda, '
-    + 'estado, fecha_inicio, fecha_termino, responsable, observaciones, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(f.fecha_solicitud, f.tipo_servicio, f.proveedor, f.descripcion, f.costo, f.moneda, f.estado,
-        f.fecha_inicio, f.fecha_termino, f.responsable, f.observaciones, String(creadoPor || ''));
-  tocar('app');
-  return porId(r.lastInsertRowid);
+    + 'estado, fecha_inicio, fecha_termino, responsable, observaciones, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+    + 'RETURNING id',
+    [f.fecha_solicitud, f.tipo_servicio, f.proveedor, f.descripcion, f.costo, f.moneda, f.estado,
+      f.fecha_inicio, f.fecha_termino, f.responsable, f.observaciones, String(creadoPor || '')]
+  );
+  await tocar('app');
+  return porId(r.filas[0].id);
 }
 
-export function actualizar(id, datos) {
-  const actual = porId(id);
+export async function actualizar(id, datos) {
+  const actual = await porId(id);
   if (!actual) throw error('No existe el servicio ' + id + '.', 404);
   const f = normalizar({ ...actual, ...datos });
-  db().prepare(
+  await ejecutar(
     'UPDATE servicios_logistica SET fecha_solicitud=?, tipo_servicio=?, proveedor=?, descripcion=?, costo=?, '
-    + 'moneda=?, estado=?, fecha_inicio=?, fecha_termino=?, responsable=?, observaciones=? WHERE id=?'
-  ).run(f.fecha_solicitud, f.tipo_servicio, f.proveedor, f.descripcion, f.costo, f.moneda, f.estado,
-        f.fecha_inicio, f.fecha_termino, f.responsable, f.observaciones, Number(id));
-  tocar('app');
+    + 'moneda=?, estado=?, fecha_inicio=?, fecha_termino=?, responsable=?, observaciones=? WHERE id=?',
+    [f.fecha_solicitud, f.tipo_servicio, f.proveedor, f.descripcion, f.costo, f.moneda, f.estado,
+      f.fecha_inicio, f.fecha_termino, f.responsable, f.observaciones, Number(id)]
+  );
+  await tocar('app');
   return porId(id);
 }
 
-export function eliminar(id) {
-  const r = db().prepare('DELETE FROM servicios_logistica WHERE id = ?').run(Number(id));
+export async function eliminar(id) {
+  const r = await ejecutar('DELETE FROM servicios_logistica WHERE id = ?', [Number(id)]);
   if (!r.changes) throw error('No existe el servicio ' + id + '.', 404);
-  tocar('app');
+  await tocar('app');
   return { id: Number(id) };
 }

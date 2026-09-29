@@ -11,6 +11,13 @@ import { log } from '../seguridad/log.js';
 
 const error = (msg, status) => Object.assign(new Error(msg), { status });
 
+/**
+ * Deja el evento de auditoría y, cuando ya quedó escrito, rechaza la petición
+ * con el error dado. `log` es asíncrono (la base lo es) pero nunca se
+ * rechaza, así que `next` se llama exactamente una vez.
+ */
+const rechazar = (next, err, ...evento) => { log(...evento).then(() => next(err)); };
+
 function tokenDe(req) {
   const cab = req.headers.authorization || '';
   return cab.startsWith('Bearer ') ? cab.slice(7) : null;
@@ -27,8 +34,8 @@ export function requiereSesion(req, res, next) {
   const token = tokenDe(req);
   const s = sesiones.verificar(token);
   if (!s || s.tipo !== 'logistica') {
-    log('acceso_denegado', req, 'sin sesión válida en ' + req.method + ' ' + req.originalUrl);
-    throw error('Sesión inválida o vencida. Vuelve a ingresar.', 401);
+    return rechazar(next, error('Sesión inválida o vencida. Vuelve a ingresar.', 401),
+      'acceso_denegado', req, 'sin sesión válida en ' + req.method + ' ' + req.originalUrl);
   }
   req.usuario = s;
   req.token = token;
@@ -40,8 +47,8 @@ export function requiereSesionArea(req, res, next) {
   const token = tokenDe(req);
   const s = sesiones.verificar(token);
   if (!s || s.tipo !== 'area') {
-    log('acceso_denegado', req, 'sin sesión de área válida en ' + req.method + ' ' + req.originalUrl);
-    throw error('Sesión inválida o vencida. Vuelve a ingresar con tu DNI.', 401);
+    return rechazar(next, error('Sesión inválida o vencida. Vuelve a ingresar con tu DNI.', 401),
+      'acceso_denegado', req, 'sin sesión de área válida en ' + req.method + ' ' + req.originalUrl);
   }
   req.area = s;
   req.token = token;
@@ -56,8 +63,8 @@ export function requiereRol(...roles) {
       // No es solo un 401 rutinario (token vencido): alguien autenticado
       // pidió algo que su rol no cubre. Vale la pena distinguirlo en la
       // auditoría de un simple "se le venció la sesión".
-      log('acceso_denegado', req, 'rol "' + req.usuario.rol + '" sin permiso para ' + req.method + ' ' + req.originalUrl);
-      throw error('Tu usuario no tiene permiso para esto.', 403);
+      return rechazar(next, error('Tu usuario no tiene permiso para esto.', 403),
+        'acceso_denegado', req, 'rol "' + req.usuario.rol + '" sin permiso para ' + req.method + ' ' + req.originalUrl);
     }
     next();
   };

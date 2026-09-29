@@ -1,4 +1,4 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, aCamel, enTransaccion, insertarLote } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -24,43 +24,36 @@ const COLUMNAS = [
 ];
 
 export function cargarInicial(filas) {
-  return enTransaccion(base => {
-    const insertar = base.prepare(
-      'INSERT INTO requerimientos_compra_detalle (' + COLUMNAS.join(', ') + ') VALUES (' +
-      COLUMNAS.map(c => '@' + c).join(', ') + ') ON CONFLICT (clave) DO NOTHING'
-    );
-    let n = 0;
-    filas.forEach(d => {
-      n += insertar.run({
-        clave: d.clave,
-        fecha_emision: d.fechaEmision,
-        numero_requerimiento_cabecera: d.numeroRequerimientoCabecera || '',
-        numero_requerimiento: d.numeroRequerimiento,
-        item: d.item || 0,
-        codigo_producto: d.codigoProducto || '',
-        nombre_producto: d.nombreProducto || '',
-        unidad_medida: d.unidadMedida || '',
-        cantidad: d.cantidad || 0,
-        atendida: d.atendida || 0,
-        saldo: d.saldo || 0,
-        fecha_entrega_comprometida: d.fechaEntregaComprometida || '',
-        estado: d.estado || '',
-        numero_oc: d.numeroOc || '',
-        proveedor: d.proveedor || '',
-        ref1_tipo: d.ref1Tipo || '', ref1_serie: d.ref1Serie || '', ref1_numero: d.ref1Numero || '',
-        ref2_tipo: d.ref2Tipo || '', ref2_serie: d.ref2Serie || '', ref2_numero: d.ref2Numero || '',
-        fecha_atencion: d.fechaAtencion || '',
-        cantidad_atendida: d.cantidadAtendida || 0,
-        glosa: d.glosa || ''
-      }).changes;
-    });
-    tocar();
+  return enTransaccion(async () => {
+    const n = await insertarLote('requerimientos_compra_detalle', COLUMNAS, filas.map(d => ({
+      clave: d.clave,
+      fecha_emision: d.fechaEmision,
+      numero_requerimiento_cabecera: d.numeroRequerimientoCabecera || '',
+      numero_requerimiento: d.numeroRequerimiento,
+      item: d.item || 0,
+      codigo_producto: d.codigoProducto || '',
+      nombre_producto: d.nombreProducto || '',
+      unidad_medida: d.unidadMedida || '',
+      cantidad: d.cantidad || 0,
+      atendida: d.atendida || 0,
+      saldo: d.saldo || 0,
+      fecha_entrega_comprometida: d.fechaEntregaComprometida || '',
+      estado: d.estado || '',
+      numero_oc: d.numeroOc || '',
+      proveedor: d.proveedor || '',
+      ref1_tipo: d.ref1Tipo || '', ref1_serie: d.ref1Serie || '', ref1_numero: d.ref1Numero || '',
+      ref2_tipo: d.ref2Tipo || '', ref2_serie: d.ref2Serie || '', ref2_numero: d.ref2Numero || '',
+      fecha_atencion: d.fechaAtencion || '',
+      cantidad_atendida: d.cantidadAtendida || 0,
+      glosa: d.glosa || ''
+    })), 'ON CONFLICT (clave) DO NOTHING');
+    await tocar();
     return n;
   });
 }
 
-export function total() {
-  return db().prepare('SELECT COUNT(*) AS n FROM requerimientos_compra_detalle').get().n;
+export async function total() {
+  return (await uno('SELECT COUNT(*) AS n FROM requerimientos_compra_detalle')).n;
 }
 
 /** La fila más reciente (mayor id) de cada (numero_requerimiento, item): un requerimiento, no una atención. */
@@ -80,29 +73,30 @@ function condiciones(f = {}) {
   if (f.desde) { where.push('d.fecha_emision >= @desde'); params.desde = f.desde; }
   if (f.hasta) { where.push('d.fecha_emision <= @hasta'); params.hasta = f.hasta; }
   if (f.q) {
-    where.push('(d.nombre_producto LIKE @q OR d.proveedor LIKE @q OR d.glosa LIKE @q OR d.numero_requerimiento LIKE @q OR d.codigo_producto LIKE @q)');
+    where.push('(d.nombre_producto ILIKE @q OR d.proveedor ILIKE @q OR d.glosa ILIKE @q OR d.numero_requerimiento ILIKE @q OR d.codigo_producto ILIKE @q)');
     params.q = '%' + f.q + '%';
   }
   return { sql: 'WHERE ' + where.join(' AND '), params };
 }
 
-export function listar(f = {}) {
+export async function listar(f = {}) {
   const { sql, params } = condiciones(f);
   const pagina = Math.max(1, Number(f.pagina) || 1);
   const porPagina = Math.min(200, Math.max(1, Number(f.porPagina) || 50));
 
-  const totalFilas = db().prepare('SELECT COUNT(*) AS n ' + DESDE + ' ' + sql).get(params).n;
-  const filas = db().prepare(
+  const totalFilas = (await uno('SELECT COUNT(*) AS n ' + DESDE + ' ' + sql, params)).n;
+  const filas = (await todos(
     'SELECT d.*, p.familia AS producto_familia, p.linea AS producto_linea ' + DESDE + ' ' + sql
-    + ' ORDER BY d.fecha_emision DESC, d.id DESC LIMIT @limite OFFSET @offset'
-  ).all({ ...params, limite: porPagina, offset: (pagina - 1) * porPagina }).map(aCamel);
+    + ' ORDER BY d.fecha_emision DESC, d.id DESC LIMIT @limite OFFSET @offset',
+    { ...params, limite: porPagina, offset: (pagina - 1) * porPagina }
+  )).map(aCamel);
 
   return { filas, total: totalFilas, pagina, porPagina };
 }
 
-export function resumen(f = {}) {
+export async function resumen(f = {}) {
   const { sql, params } = condiciones(f);
-  const totales = db().prepare(
+  const totales = await uno(
     "SELECT COUNT(*) AS requerimientos, COALESCE(SUM(CASE WHEN d.estado = 'APROBADA' THEN 1 ELSE 0 END), 0) AS aprobados, "
     + "COALESCE(SUM(CASE WHEN d.estado = 'PARCIALMEN' THEN 1 ELSE 0 END), 0) AS parciales, "
     // "Pendiente" no es un estado propio del ERP -solo existen APROBADA y
@@ -111,36 +105,39 @@ export function resumen(f = {}) {
     // `aprobados`, no una cuarta categoría aparte.
     + "COALESCE(SUM(CASE WHEN d.estado = 'APROBADA' AND d.atendida <= 0 THEN 1 ELSE 0 END), 0) AS pendientes, "
     + 'COUNT(DISTINCT d.proveedor) AS proveedores, COUNT(DISTINCT d.codigo_producto) AS productos '
-    + DESDE + ' ' + sql
-  ).get(params);
+    + DESDE + ' ' + sql,
+    params
+  );
 
-  const porProveedor = db().prepare(
+  const porProveedor = (await todos(
     'SELECT d.proveedor AS proveedor, COUNT(*) AS requerimientos ' + DESDE + ' ' + sql
-    + " AND d.proveedor != '' GROUP BY d.proveedor ORDER BY requerimientos DESC LIMIT 10"
-  ).all(params).map(aCamel);
+    + " AND d.proveedor != '' GROUP BY d.proveedor ORDER BY requerimientos DESC LIMIT 10",
+    params
+  )).map(aCamel);
 
   return { ...totales, porProveedor };
 }
 
-export function proveedores() {
-  return db().prepare(
+export async function proveedores() {
+  return (await todos(
     "SELECT proveedor, COUNT(*) AS requerimientos FROM requerimientos_compra_detalle WHERE proveedor != '' "
     + 'GROUP BY proveedor ORDER BY requerimientos DESC'
-  ).all().map(aCamel);
+  )).map(aCamel);
 }
 
 /** Familias y líneas de los productos que de verdad aparecen en el historial -no las 38 del catálogo completo-. */
-export function opciones() {
-  const distintos = campo => db().prepare(
-    'SELECT DISTINCT p.' + campo + ' AS v ' + DESDE + " WHERE p." + campo + " IS NOT NULL AND p." + campo + " != '' ORDER BY v"
-  ).all().map(r => r.v);
-  return { familias: distintos('familia'), lineas: distintos('linea') };
+export async function opciones() {
+  const distintos = async campo => (await todos(
+    'SELECT DISTINCT p.' + campo + ' AS v ' + DESDE + ' WHERE p.' + campo + ' IS NOT NULL AND p.' + campo + " != '' ORDER BY v"
+  )).map(r => r.v);
+  return { familias: await distintos('familia'), lineas: await distintos('linea') };
 }
 
 /** Requerimientos históricos de un producto: el cruce que pide Productos → "dónde se pidió esto". */
-export function porProducto(codigoProducto) {
-  return db().prepare(
+export async function porProducto(codigoProducto) {
+  return (await todos(
     'SELECT * FROM requerimientos_compra_detalle WHERE codigo_producto = ? AND id IN (' + ULTIMA_FILA_POR_GRUPO + ') '
-    + 'ORDER BY fecha_emision DESC'
-  ).all(codigoProducto).map(aCamel);
+    + 'ORDER BY fecha_emision DESC',
+    [codigoProducto]
+  )).map(aCamel);
 }

@@ -302,6 +302,20 @@ h1,h2,h3{font-family:var(--sans)}
 .brand-name em{font-style:normal;color:var(--brand-green)}
 .brand-sub{font-size:11.5px;color:var(--muted2);line-height:1.2;font-weight:500}
 .topbar-spacer{flex:1}
+
+/* Indicador discreto de la conexión a MongoDB (ver js/ui/mongoEstado.js). */
+.mongo-estado{
+  display:inline-flex;align-items:center;gap:7px;min-width:0;
+  padding:4px 11px 4px 8px;margin-left:6px;border-radius:999px;
+  border:1px solid var(--line-soft);background:var(--surface2);
+  font-size:11.5px;font-weight:500;color:var(--muted2);white-space:nowrap;cursor:default;
+}
+.mongo-estado[hidden]{display:none}
+.mongo-hoja{width:14px;height:14px;flex:none;color:var(--ok)}
+.mongo-punto{width:7px;height:7px;flex:none;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.mongo-texto{overflow:hidden;text-overflow:ellipsis}
+.mongo-estado.off .mongo-hoja{color:var(--muted2)}
+.mongo-estado.off .mongo-punto{background:var(--muted2);box-shadow:none}
 .topbar-actions{display:flex;align-items:center;gap:10px}
 
 /* Botón redondo genérico: lo reutilizan cada icono del selector de tema y el
@@ -729,6 +743,7 @@ tbody tr:hover{background:var(--surface2)}
 }
 .ticket:hover{box-shadow:var(--shadow-md);border-color:var(--line-soft)}
 .ticket-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.ticket-top > div:first-child{min-width:0;flex:1}
 .ticket-code{font-family:var(--mono);font-size:16px;font-weight:750;color:var(--primary);letter-spacing:.5px}
 .ticket-meta{font-size:12px;color:var(--muted2);margin-top:1px}
 .route{display:flex;gap:12px;margin-bottom:14px}
@@ -916,6 +931,8 @@ svg{display:block;max-width:100%}
   .wrap{padding:20px 14px 60px}
   .topbar{padding:10px 14px}
   .brand-sub{display:none}
+  .mongo-texto{display:none}
+  .mongo-estado{padding:5px 7px;margin-left:0}
   .session-name{max-width:110px}
 }
 
@@ -1460,3 +1477,298 @@ svg{display:block;max-width:100%}
 #mpMetrics .kpi .v{font-size:23px;letter-spacing:-.8px}
 #aMateriaPrima .panel + .panel{margin-top:16px}
 /* ===================== fin Proveedores / Materia Prima ===================== */
+
+/* ------------------------------------------------ formulario: mapa y destino
+   Campo de dirección con botón de mapa al costado, tipo de destino nuevo y el
+   modal del mapa (pin fijo al centro, como en las apps de taxi). Ver
+   js/ui/mapaPicker.js. */
+.input-mapa{display:flex;gap:8px;align-items:stretch}
+.input-mapa .input{flex:1;min-width:0}
+.btn-mapa{
+  display:inline-flex;align-items:center;gap:6px;flex:none;padding:0 13px;
+  border-radius:var(--r-sm);border:1.5px solid var(--line);background:var(--surface);
+  color:var(--primary);font-weight:600;font-size:13px;cursor:pointer;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease);
+}
+.btn-mapa svg{width:17px;height:17px}
+.btn-mapa:hover{border-color:var(--primary);background:var(--primary-soft)}
+.hint.con-punto{color:var(--ok)}
+.destino-nuevo{margin-top:12px;padding:12px 14px;border-radius:var(--r-sm);border:1px dashed var(--line);background:var(--surface2)}
+.destino-nuevo[hidden]{display:none}
+.destino-nuevo label{display:block;font-size:12.5px;color:var(--text);margin-bottom:8px;font-weight:600}
+
+.mapa-modal{display:flex;flex-direction:column;max-height:92vh}
+.mapa-busqueda{display:flex;gap:8px;padding:14px 22px 0}
+.mapa-busqueda .input{flex:1;min-width:0}
+.mapa-resultados{padding:0 22px}
+.mapa-resultados:empty{display:none}
+.mapa-resultados button{
+  display:block;width:100%;text-align:left;padding:9px 10px;margin-top:6px;border-radius:7px;
+  border:1px solid var(--line-soft);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;
+}
+.mapa-resultados button:hover{border-color:var(--primary)}
+.mapa-resultados small{display:block;color:var(--muted2);font-size:11.5px;margin-top:2px}
+.mapa-resultados .vacio{padding:9px 2px;font-size:13px;color:var(--muted2)}
+.mapa-lienzo{position:relative;margin:14px 22px 0;border-radius:var(--r-sm);overflow:hidden;border:1px solid var(--line)}
+#mapaLienzo{height:min(52vh,440px);background:var(--surface2)}
+.mapa-pin{position:absolute;left:50%;top:50%;z-index:500;pointer-events:none;transform:translate(-50%,-100%);color:var(--danger)}
+.mapa-pin svg{width:38px;height:38px;fill:var(--surface);filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+.mapa-pie{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px 18px}
+.mapa-direccion{min-width:0}
+.mapa-direccion span{display:block;font-size:11.5px;color:var(--muted2)}
+.mapa-direccion b{display:block;font-size:13.5px;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:640px){
+  .btn-mapa span{display:none}
+  .btn-mapa{padding:0 11px}
+  .mapa-busqueda{flex-wrap:wrap;padding:12px 16px 0}
+  .mapa-busqueda .input{flex-basis:100%}
+  .mapa-resultados{padding:0 16px}
+  .mapa-lienzo{margin:12px 16px 0}
+  .mapa-pie{flex-direction:column;align-items:stretch;padding:12px 16px 16px}
+}
+
+/* Motivo al costado del código del ticket ("Mis servicios"). */
+.ticket-titulo{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;min-width:0}
+.ticket-motivo{font-size:14px;font-weight:600;color:var(--text);min-width:0;overflow-wrap:anywhere}
+.ticket-motivo::before{content:"";display:inline-block;width:1px;height:14px;background:var(--line);margin-right:12px;vertical-align:-2px}
+.chip-destino{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;background:var(--primary-soft);color:var(--primary);vertical-align:1px}
+
+/* --------------------------------------- formulario de solicitud por clics
+   Pasos numerados (títulos más visibles), modalidades con ilustración y
+   opciones como botones. Ver views/requestForm.js. */
+.paso{display:flex;align-items:center;gap:10px;margin:26px 0 12px;padding-top:18px;border-top:1px solid var(--line-soft)}
+.waybill > .paso:first-child,.card > .paso:first-child{margin-top:0;padding-top:0;border-top:none}
+.paso h3{margin:0;font-size:16px;font-weight:750;color:var(--text);letter-spacing:-.01em}
+.paso-n{
+  width:26px;height:26px;flex:none;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  background:var(--primary);color:var(--on-primary,#fff);font-size:13px;font-weight:800;
+}
+.paso-sub{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:8px}
+#uNueva .field > label{font-size:13.5px;font-weight:700;color:var(--text)}
+
+.modalidades{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.modalidad{
+  display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 8px 12px;cursor:pointer;
+  border-radius:14px;border:1.5px solid var(--line);background:var(--surface);color:var(--text);text-align:center;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease),transform .15s var(--ease);
+}
+.modalidad:hover{border-color:var(--muted2);transform:translateY(-1px)}
+.modalidad.on{border-color:var(--primary);background:var(--primary-soft);box-shadow:0 0 0 3px var(--primary-soft)}
+.modalidad-img{
+  width:100%;max-width:130px;aspect-ratio:120/72;display:block;margin-bottom:6px;
+  border-radius:12px;background:#EEF0F3;padding:6px 8px;
+}
+.modalidad-img svg{width:100%;height:100%;display:block}
+.modalidad b{font-size:13.5px;font-weight:750}
+.modalidad small{font-size:11.5px;color:var(--muted2)}
+
+.chips-servicio,.chips-opcion{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.chip-op{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;cursor:pointer;text-align:left;
+  border-radius:var(--r-sm);border:1.5px solid var(--line);background:var(--surface);color:var(--text);min-width:0;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease);
+}
+.chip-op:hover{border-color:var(--muted2)}
+.chip-op.on{border-color:var(--primary);background:var(--primary-soft)}
+.chip-op.on b{color:var(--primary)}
+.chip-op b{font-size:13.5px;font-weight:650;overflow-wrap:anywhere}
+.chip-op small{font-size:11.5px;color:var(--muted2);line-height:1.3;overflow-wrap:anywhere}
+.chips-vacio{font-size:13px;color:var(--muted2);padding:10px 2px}
+.chips-destino{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.chips-destino small{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+#chipsFecha{grid-template-columns:repeat(auto-fill,minmax(86px,1fr))}
+.input-otra{margin-top:8px;max-width:200px}
+
+.chips-hora{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:6px}
+.chip-hora{
+  padding:8px 0;border-radius:8px;border:1.5px solid var(--line);background:var(--surface);color:var(--text);
+  font-family:var(--mono);font-size:13px;font-weight:600;cursor:pointer;
+}
+.chip-hora:hover:not(:disabled){border-color:var(--muted2)}
+.chip-hora.on{border-color:var(--primary);background:var(--primary);color:var(--on-primary,#fff)}
+.chip-hora:disabled{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+
+.destino-parecidos{margin-top:12px;padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--primary);background:var(--primary-soft)}
+.destino-parecidos[hidden]{display:none}
+#listaParecidos{display:grid;gap:8px}
+.mapa-aviso{position:absolute;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;
+  background:var(--surface2);color:var(--muted);font-size:13.5px}
+.mapa-aviso[hidden]{display:none}
+
+@media (max-width:640px){
+  .modalidades{gap:6px}
+  .modalidad{padding:8px 4px 10px}
+  .modalidad small{display:none}
+  .chips-servicio,.chips-opcion{grid-template-columns:1fr}
+  #chipsFecha{grid-template-columns:repeat(3,1fr)}
+}
+
+/* Buscador de lugares (ui/autocompletar.js): lista bajo el campo de dirección. */
+.campo-sug{position:relative;flex:1;min-width:0}
+.campo-sug .input{width:100%}
+.sugerencias{
+  position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;max-height:320px;overflow:auto;padding:6px;
+  border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow-sm,0 8px 24px rgba(0,0,0,.14));
+}
+.sugerencias[hidden]{display:none}
+.sug-titulo{padding:6px 8px 4px;font-size:11.5px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px}
+.sug-item{display:block;width:100%;text-align:left;padding:8px 10px;border-radius:7px;border:none;background:none;color:var(--text);cursor:pointer}
+.sug-item:hover,.sug-item.on{background:var(--primary-soft)}
+.sug-item b{display:block;font-size:13.5px;font-weight:650}
+.sug-item small{display:block;font-size:12px;color:var(--muted2);margin-top:1px}
+.sug-item mark{background:none;color:var(--primary);font-weight:800}
+.sug-vacio{padding:10px;font-size:12.5px;color:var(--muted2)}
+
+/* ------------------------------------------- bandeja: modalidad del servicio
+   Etiqueta con la ilustración del formulario en miniatura (presenters.js,
+   modalidadHTML) y el filtro por modalidad de la bandeja. */
+.mod-tag{display:inline-flex;align-items:center;gap:6px;vertical-align:middle}
+.mod-tag b{font-size:12.5px;font-weight:700}
+.mod-mini{width:34px;height:21px;flex:none;display:inline-block;border-radius:6px;background:#EEF0F3;padding:1px 2px}
+.mod-mini svg{width:100%;height:100%;display:block}
+.mod-envios b{color:#C0392B}
+.mod-transporte b{color:var(--text)}
+.mod-cargo b{color:#B9461F}
+:root[data-theme="dark"] .mod-envios b,:root[data-theme="black"] .mod-envios b{color:#FF7A6E}
+:root[data-theme="dark"] .mod-cargo b,:root[data-theme="black"] .mod-cargo b{color:#FF9466}
+.cell-mod .mod-tag{margin-bottom:3px}
+.cell-mod > span:last-child{display:block}
+.accion-recoger{color:var(--info)}
+.accion-entregar{color:var(--ok)}
+.filtros-modalidad{align-items:center;margin-top:-6px}
+.filtros-modalidad .fchip{display:inline-flex;align-items:center;gap:6px}
+.filtros-modalidad .mod-mini{width:26px;height:16px}
+.filtro-rotulo{font-size:12px;font-weight:700;color:var(--muted2);margin-right:2px}
+.enlace-mapa{text-decoration:none;white-space:nowrap}
+
+/* ------------------------------------------------ bandeja de despacho v2
+   Una barra de filtros (estado · acción · modalidad · búsqueda) y una fila por
+   ticket en tres bloques: cuándo / qué y a dónde / qué hacer. Sin tabla ancha
+   ni scroll horizontal. Ver views/dispatch.js (filaBandeja). */
+.bandeja-barra{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
+.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--surface2);border:1px solid var(--line-soft)}
+.seg-op{border:none;background:none;padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+.seg-op:hover{color:var(--text)}
+.seg-op.on{background:var(--surface);color:var(--primary);box-shadow:var(--shadow-xs)}
+.seg-n{display:inline-block;min-width:20px;padding:0 6px;margin-left:4px;border-radius:999px;background:var(--surface3,var(--line-soft));font-size:11.5px;font-family:var(--mono);text-align:center}
+.seg-op.on .seg-n{background:var(--primary-soft)}
+.bandeja-mod{width:auto;min-width:190px}
+.bandeja-buscar{position:relative;flex:1;min-width:220px}
+.bandeja-buscar svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted2)}
+.bandeja-buscar .input{padding-left:34px;width:100%}
+.txt-bad{color:var(--danger);font-weight:650}
+
+.bandeja-lista{display:flex;flex-direction:column;gap:10px}
+.b-fila{
+  display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:18px;align-items:center;
+  padding:14px 18px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface);
+}
+.b-fila:hover{border-color:var(--muted2)}
+.b-cerrada{opacity:.72}
+.b-cuando{border-right:1px solid var(--line-soft);padding-right:14px}
+.b-hora{font-family:var(--mono);font-size:20px;font-weight:750;color:var(--text);line-height:1.1}
+.b-fecha{font-size:12px;color:var(--muted2);margin-bottom:6px}
+.b-hoy .b-fecha{color:var(--primary);font-weight:700}
+.b-req{border:none;background:none;padding:0;cursor:pointer;font-size:13px}
+.b-req:hover{text-decoration:underline}
+.b-que{min-width:0}
+.b-linea1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.b-accion{padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:750;letter-spacing:.2px;text-transform:uppercase}
+.b-accion.es-envio{background:var(--ok-soft);color:var(--ok)}
+.b-accion.es-recojo{background:var(--info-soft);color:var(--info)}
+.b-servicio{font-size:13.5px;font-weight:650;color:var(--text)}
+.b-destino{font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+.b-destino b{color:var(--text);font-weight:700}
+.b-meta{font-size:12.5px;color:var(--muted2);margin-top:3px;overflow-wrap:anywhere}
+.b-meta b{color:var(--muted);font-weight:600}
+.b-motivo{font-size:12.5px;color:var(--muted);margin-top:4px;font-style:italic}
+.b-hacer{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+.b-tarifa{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.b-tarifa .mini-input{width:84px}
+.b-botones{display:flex;gap:6px}
+.destino-gps{color:var(--text)}
+.row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:1100px){
+  .b-fila{grid-template-columns:96px minmax(0,1fr)}
+  .b-hacer{grid-column:1 / -1;justify-content:flex-start;border-top:1px solid var(--line-soft);padding-top:10px}
+}
+@media (max-width:640px){
+  .b-fila{grid-template-columns:1fr;gap:10px;padding:12px 14px}
+  .b-cuando{border-right:none;padding-right:0;display:flex;align-items:baseline;gap:10px}
+  .b-fecha{margin:0}
+  .row3{grid-template-columns:1fr}
+  .seg{width:100%}
+  .seg-op{flex:1;padding:7px 6px}
+  .bandeja-mod{width:100%}
+}
+
+/* --------------------------------------- Materia Prima: pestaña Muestras
+   Ver views/muestras.js. */
+.mu-barra{align-items:flex-end;justify-content:space-between}
+.mu-acciones{display:flex;gap:8px;flex-wrap:wrap}
+.mu-estado{display:grid;grid-template-columns:130px 1fr 40px;align-items:center;gap:10px;margin-bottom:8px}
+.mu-estado b{text-align:right;font-family:var(--mono)}
+.bar-fill.mu-st-espera{background:var(--warn,#C98A10)}
+.bar-fill.mu-st-transito{background:var(--info)}
+.bar-fill.mu-st-concluido{background:var(--ok)}
+.bar-fill.mu-st-cancelado{background:var(--danger)}
+.mu-pendiente{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line-soft)}
+.mu-pendiente span{min-width:0;font-size:13px;font-weight:600}
+.mu-pendiente small{display:block;font-size:11.5px;color:var(--muted2);font-weight:500}
+.mu-pendiente b{font-family:var(--mono);font-size:13px}
+.txt-ok{color:var(--ok);font-weight:650}
+.mu-subtotal{margin:-4px 0 12px;font-size:14px;color:var(--muted)}
+.mu-subtotal b{color:var(--text);font-size:16px}
+.mu-pegar{min-height:150px;font-family:var(--mono);font-size:12.5px;white-space:pre}
+#muTabla tfoot td{border-top:2px solid var(--line);background:var(--surface2)}
+@media (max-width:640px){
+  .mu-estado{grid-template-columns:110px 1fr 34px}
+  .mu-acciones{width:100%}
+  .mu-acciones .btn{flex:1}
+}
+
+/* ------------------------------------ nueva solicitud: un solo recorrido
+   Pasos 1 → 6 en una columna y el botón al final (views/requestForm.js). */
+.form-flujo{max-width:900px;margin:0 auto}
+.form-flujo > .waybill{width:100%}
+
+/* Destinos frecuentes: pastillas compactas con el nombre corto (el título
+   lleva la dirección completa). Las plantas van primero y resaltadas. */
+.chips-opcion.chips-destino{display:flex;flex-wrap:wrap;gap:6px}
+.pin-destino{
+  padding:6px 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);
+  color:var(--text);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease);
+}
+.pin-destino:hover{border-color:var(--muted2)}
+.pin-destino.on{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+.pin-destino.es-planta{border-style:dashed}
+.pin-destino.es-planta::before{content:"🏭 ";}
+
+/* Paso 6: resumen vivo. */
+.resumen-solicitud{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface2);padding:6px 14px;margin-bottom:12px}
+.res-fila{display:grid;grid-template-columns:18px 70px minmax(0,1fr);align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-soft)}
+.res-fila:last-of-type{border-bottom:none}
+.res-marca{color:var(--muted2);font-weight:800;text-align:center}
+.res-fila.ok .res-marca{color:var(--ok)}
+.res-k{font-size:12px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.3px}
+.res-v{font-size:13.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+.res-falta{justify-self:start;border:none;background:none;padding:0;color:var(--danger);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline}
+.res-pie{margin:6px 0 4px;font-size:12.5px;color:var(--muted)}
+.solicitante-linea{border-top:none;padding-top:0;margin-bottom:14px}
+.btn-registrar{padding:14px 18px;font-size:15px}
+@media (max-width:640px){
+  .res-fila{grid-template-columns:16px 58px minmax(0,1fr)}
+}
+
+/* Aviso de actualización sin aplicar (ui/actualizacion.js). */
+.aviso-actualizacion{
+  display:flex;align-items:center;gap:12px;padding:10px 22px;
+  background:var(--info-soft);border-bottom:1px solid var(--info-line);color:var(--text);font-size:13.5px;
+}
+.aviso-actualizacion[hidden]{display:none}
+.aviso-actualizacion > div{flex:1;min-width:0}
+.aviso-ico{font-size:18px;color:var(--info);font-weight:800}
+.aviso-ico.girando{display:inline-block;animation:girar 1s linear infinite}
+@keyframes girar{to{transform:rotate(360deg)}}
+@media (max-width:640px){.aviso-actualizacion{flex-wrap:wrap;padding:10px 14px}}

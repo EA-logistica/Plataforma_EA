@@ -5,8 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { CONFIG } from './config.js';
-import { abrir, cerrar } from './db/conexion.js';
+import { abrir, cerrar, describir } from './db/conexion.js';
 import { sembrar } from './db/sembrar.js';
+import { programarSincronizacion } from './mongo/sincronizar.js';
 import { api } from './rutas/index.js';
 import { noEncontrado, manejarErrores } from './middleware/errores.js';
 import { cabeceras, soloDatosPublicos } from './middleware/limites.js';
@@ -144,7 +145,7 @@ function direccionesDeRed(puerto) {
   return urls;
 }
 
-export function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, silencioso = false } = {}) {
+export async function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, silencioso = false } = {}) {
   // Un error de programación en una sola petición no debe tumbar el servidor
   // para las otras 49 personas conectadas: Express ya atrapa lo síncrono y
   // asinc() lo asíncrono; esto es la última red para lo que se escape (un
@@ -153,9 +154,11 @@ export function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, silencioso
     process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
   }
 
-  abrir();
+  await abrir();
   fs.mkdirSync(CONFIG.subidas, { recursive: true });
-  sembrar({ silencioso });
+  await sembrar({ silencioso });
+  // Fotos del ERP desde MongoDB: en segundo plano, no retrasa el arranque.
+  programarSincronizacion({ silencioso });
 
   const app = crearApp();
   const servidor = app.listen(puerto, host, () => {
@@ -164,25 +167,28 @@ export function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, silencioso
     console.log('\n  Plataforma EA');
     console.log('  en esta PC   http://localhost:' + dir.port);
     for (const url of direccionesDeRed(dir.port)) console.log('  en la red    ' + url);
-    console.log('  base         ' + CONFIG.baseDatos);
+    console.log('  base         PostgreSQL ' + describir());
     console.log('  subidas      ' + CONFIG.subidas + '\n');
   });
 
   // Apagado ordenado: dejar de aceptar, cerrar las conexiones keep-alive
   // ociosas (sin esto, el sondeo de cada navegador mantenía el servidor
   // abierto y SIEMPRE se llegaba al exit forzado del timeout, que salía sin
-  // cerrar la base ni volcar el WAL) y cerrar SQLite. El timeout sigue como
+  // cerrar la base) y cerrar el pool de PostgreSQL. El timeout sigue como
   // red de seguridad, pero ahora también cierra la base.
   let apagando = false;
-  const apagar = senal => {
+  // `codigoSalida` 3 = reinicio pedido desde la plataforma: el .bat de arranque
+  // lo vuelve a levantar con el código nuevo (ver POST /api/servidor/reiniciar).
+  const apagar = (senal, codigoSalida = 0) => {
     if (apagando) return;
     apagando = true;
     if (!silencioso) console.log('\n  ' + senal + ': cerrando…');
-    const salir = codigo => { try { cerrar(); } catch (_) { /* ya cerrada */ } process.exit(codigo); };
-    servidor.close(() => salir(0));
+    const salir = codigo => { cerrar().catch(() => { /* ya cerrada */ }).finally(() => process.exit(codigo)); };
+    servidor.close(() => salir(codigoSalida));
     servidor.closeIdleConnections?.();
-    setTimeout(() => { servidor.closeAllConnections?.(); salir(0); }, 3000).unref();
+    setTimeout(() => { servidor.closeAllConnections?.(); salir(codigoSalida); }, 3000).unref();
   };
+  process.on('plansa:reiniciar', () => apagar('Reinicio para aplicar la actualización', 3));
   process.on('SIGINT', () => apagar('SIGINT'));
   process.on('SIGTERM', () => apagar('SIGTERM'));
   // En Windows, cerrar la ventana de consola del .bat llega como SIGHUP: sin

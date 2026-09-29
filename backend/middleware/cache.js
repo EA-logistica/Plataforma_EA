@@ -1,23 +1,25 @@
 import { createHash } from 'node:crypto';
 import zlib from 'node:zlib';
+import { leer } from '../db/repos/ajustes.js';
 
 /**
  * Caché en memoria de respuestas GET en JSON.
  *
- * Por qué existe: la base es `node:sqlite` síncrona, así que mientras una
- * consulta agrega 30 mil filas (ranking de proveedores, rotación ABC,
- * /estado con 1600 servicios y ~1 MB de JSON) el proceso entero queda
- * detenido y todos los demás usuarios esperan. Con 50 personas abriendo las
- * mismas pantallas, casi todas piden exactamente lo mismo; se calcula una vez
- * y se reparte.
+ * Por qué existe: consultas como el ranking de proveedores, la rotación ABC o
+ * /estado (1600 servicios y ~1 MB de JSON) agregan decenas de miles de filas
+ * en PostgreSQL y luego se serializan y comprimen en este proceso. Con 50
+ * personas abriendo las mismas pantallas, casi todas piden exactamente lo
+ * mismo; se calcula una vez y se reparte.
  *
  * Cuándo se invalida: TODA escritura de la app pasa por `ajustes.tocar()`
  * (el testigo de revisión que ya sondea el navegador), que llama a
- * `invalidar()` (ver los grupos más abajo). Como el proceso es uno solo y las consultas son
- * síncronas, no hay carrera posible entre "calculé" y "alguien escribió":
- * mientras se calcula una respuesta no corre ninguna otra petición. Además se
- * vacía al cambiar el día (UTC), porque la clasificación ABC de productos usa
- * date('now') de SQLite.
+ * `invalidar()` (ver los grupos más abajo). Las consultas ahora son
+ * asíncronas, así que entre "empecé a calcular" y "respondí" pueden correr
+ * otras peticiones, incluidas escrituras. Por eso cada petición anota la
+ * generación de su grupo al empezar y solo guarda la respuesta si al terminar
+ * sigue siendo la misma: si alguien escribió (y tocó) en el medio, se responde
+ * igual pero no se guarda. Además se vacía al cambiar el día (UTC), porque la
+ * clasificación ABC de productos depende de la fecha actual.
  *
  * Lo que se guarda es el cuerpo ya serializado y ya comprimido: repetir
  * JSON.stringify + gzip de un megabyte por cada pestaña era la otra mitad del
@@ -123,11 +125,12 @@ function enviar(req, res, entrada, origen) {
  * (error, archivo, stream) pasa de largo sin tocarse.
  */
 export function cachearGet({ variar } = {}) {
-  return function (req, res, next) {
+  return async function (req, res, next) {
     if (DESACTIVADA || (req.method !== 'GET' && req.method !== 'HEAD')) return next();
 
     const hoy = hoyUtc();
     if (hoy !== dia) { dia = hoy; invalidar(); }
+    await verificarRevision();
 
     const clave = (req.usuario ? req.usuario.rol : '-') + '|' + (variar ? variar(req) : '')
       + '|' + req.originalUrl;
@@ -147,6 +150,27 @@ export function cachearGet({ variar } = {}) {
     };
     next();
   };
+}
+
+/**
+ * Escrituras que no pasan por ESTE proceso -un script de carga, una
+ * importación, la sincronización de Mongo corrida a mano- cambian el testigo
+ * `revision` en la base pero no llaman a invalidar() acá: sin esto, el caché
+ * seguía sirviendo la versión de antes (p. ej. una lista de muestras vacía
+ * recién cargada por fuera). Se mira el testigo a lo sumo cada 2 s, para no
+ * sumar una consulta a cada petición.
+ */
+let revisionVista = null;
+let revisadoEn = 0;
+async function verificarRevision() {
+  const ahora = Date.now();
+  if (ahora - revisadoEn < 2000) return;
+  revisadoEn = ahora;
+  try {
+    const r = await leer('revision', '0');
+    if (revisionVista !== null && r !== revisionVista) invalidar();
+    revisionVista = r;
+  } catch (_) { /* base no disponible: se sigue con lo que hay */ }
 }
 
 /** Para diagnóstico y pruebas. */

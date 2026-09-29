@@ -1,4 +1,4 @@
-import { db, aCamel } from '../conexion.js';
+import { todos, uno, ejecutar, aCamel } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -12,34 +12,39 @@ import { tocar } from './ajustes.js';
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
 
-export function listar() {
-  return db().prepare('SELECT * FROM pedidos_historico ORDER BY solicitado DESC').all().map(aCamel);
+export async function listar() {
+  return (await todos('SELECT * FROM pedidos_historico ORDER BY solicitado DESC')).map(aCamel);
 }
 
-export const pendientes = () => listar().filter(p => p.estado === 'Pendiente');
+export const pendientes = async () => (await listar()).filter(p => p.estado === 'Pendiente');
 
-export function pedir(area, dni) {
+export async function pedir(area, dni) {
   const a = String(area || '').trim();
   if (!a) throw error('Falta el área.');
 
-  const yaHay = db().prepare(
-    "SELECT 1 FROM pedidos_historico WHERE area = ? AND estado = 'Pendiente'"
-  ).get(a);
+  const yaHay = await uno(
+    "SELECT 1 FROM pedidos_historico WHERE area = ? AND estado = 'Pendiente'", [a]
+  );
   if (yaHay) return { area: a, repetido: true };
 
-  db().prepare(
-    "INSERT INTO pedidos_historico (area, dni, solicitado, estado) VALUES (?, ?, ?, 'Pendiente')"
-  ).run(a, String(dni || ''), new Date().toISOString());
-  tocar('app');
+  await ejecutar(
+    "INSERT INTO pedidos_historico (area, dni, solicitado, estado) VALUES (?, ?, ?, 'Pendiente')",
+    [a, String(dni || ''), new Date().toISOString()]
+  );
+  await tocar('app');
   return { area: a, repetido: false };
 }
 
-export function resolver(id, estado) {
+export async function resolver(id, estado) {
   if (!['Atendida', 'Rechazada'].includes(estado)) throw error('Estado inválido.');
-  const r = db().prepare(
-    "UPDATE pedidos_historico SET estado = ? WHERE id = ? AND estado = 'Pendiente'"
-  ).run(estado, Number(id));
+  // `id` es INTEGER: un id que no es entero (NaN, '1.5', 'abc') en PostgreSQL
+  // haría fallar la consulta con 500; en SQLite simplemente no coincidía con
+  // nada. Se responde igual que antes: 404.
+  const n = Number(id);
+  const r = Number.isSafeInteger(n)
+    ? await ejecutar("UPDATE pedidos_historico SET estado = ? WHERE id = ? AND estado = 'Pendiente'", [estado, n])
+    : { changes: 0 };
   if (!r.changes) throw error('No hay un pedido pendiente con ese id.', 404);
-  tocar('app');
-  return { id: Number(id), estado };
+  await tocar('app');
+  return { id: n, estado };
 }

@@ -164,6 +164,15 @@
   table.log-table td.num{text-align:right;}
   table.log-table .obs{white-space:normal;font-family:'Inter',sans-serif;color:var(--text-muted);max-width:160px;}
   .table-scroll{overflow-x:auto;}
+  /* Tabla mensual de metraje: cada mes se despliega y muestra sus semanas. */
+  table.log-table tr.mes-fila{cursor:pointer;}
+  table.log-table tr.mes-fila:hover td{background:var(--bg-card);}
+  table.log-table tr.mes-fila:focus-visible{outline:2px solid var(--apt);outline-offset:-2px;}
+  .mes-caret{display:inline-block;width:12px;color:var(--text-dim);transition:transform .15s;}
+  tr.mes-fila.abierto .mes-caret{transform:rotate(90deg);}
+  table.log-table tr.mes-detalle > td{background:var(--bg-card);padding:10px 12px 12px 26px;white-space:normal;}
+  table.log-table.mes-semanas{margin:0;font-size:11.5px;}
+  table.log-table.mes-semanas td, table.log-table.mes-semanas th{padding:5px 6px;}
   .log-empty{color:var(--text-dim);font-size:12px;padding:16px 6px;text-align:center;}
 
   .btn-add{background:var(--apt);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-family:'Inter',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer;}
@@ -2043,6 +2052,9 @@ function renderPager(elId, page, total, onGo, extra){
 // ---- estado del metraje ----
 let mtjPage = 1;
 let metrajeFiltrado = [];
+// Meses desplegados en la tabla mensual: se conservan al volver a pintar
+// (filtros, sincronización), así el panel no se cierra solo.
+const mtjMesesAbiertos = new Set();
 
 function leerFiltroMetraje(){
   return {
@@ -2353,6 +2365,45 @@ function renderMetrajeCharts(confirmadas, meses){
   }
 }
 
+function toggleMesMetraje(key){
+  if(mtjMesesAbiertos.has(key)) mtjMesesAbiertos.delete(key); else mtjMesesAbiertos.add(key);
+  renderMetrajeTodo();
+}
+
+/**
+ * Panel de un mes: la renta base y cada semana registrada que empieza en ese
+ * mes, con su factura y su valorizado. Incluye las pendientes de validar
+ * (resaltadas) aunque no sumen en el total del mes, para que se vea qué falta
+ * confirmar. Sale de `metrajeFiltrado`: respeta los filtros de arriba.
+ */
+function detalleMesMetraje(key){
+  const filas = metrajeFiltrado.filter(r => r.fechaDesde.slice(0,7) === key)
+    .sort((a,b) => (a.tipo==='mensual' ? -1 : 0) - (b.tipo==='mensual' ? -1 : 0) || a.fechaDesde.localeCompare(b.fechaDesde));
+  let cuerpo;
+  if(!filas.length){
+    cuerpo = '<div class="log-empty">Sin filas registradas en este mes.</div>';
+  } else {
+    const conf = filas.filter(r => !r.pendienteValidar);
+    const suma = k => conf.reduce((s,r) => s + (r[k]||0), 0);
+    cuerpo = `<table class="log-table mes-semanas">
+      <thead><tr><th>Periodo</th><th>Tipo</th><th class="r">m²</th><th class="r">US$/m²</th><th class="r">Sin IGV</th><th class="r">Con IGV</th><th>Factura</th><th>Estado</th></tr></thead>
+      <tbody>${filas.map(f => `<tr${f.pendienteValidar ? ' style="background:var(--alert-soft)"' : ''}>
+        <td>${esc(periodoLabelMetraje(f))}</td>
+        <td>${tipoBadgeMetraje(f.tipo)}</td>
+        <td class="num">${f.metraje==null ? '—' : fmtM2(f.metraje)}</td>
+        <td class="num">${f.precioM2==null ? '—' : Number(f.precioM2).toFixed(3)}</td>
+        <td class="num">${fmtDolares(f.precioSinIgv)}</td>
+        <td class="num">${fmtDolares(f.totalConIgv)}</td>
+        <td>${esc(f.factura || '—')}</td>
+        <td>${estadoBadgeMetraje(f.pendienteValidar)}</td>
+      </tr>`).join('')}
+      <tr class="row-total"><td colspan="4">Confirmado (${conf.length} de ${filas.length})</td>
+        <td class="num">${fmtDolares(suma('precioSinIgv'))}</td><td class="num">${fmtDolares(suma('totalConIgv'))}</td><td colspan="2"></td></tr>
+      </tbody></table>`;
+  }
+  return `<tr class="mes-detalle"><td colspan="8"><div class="table-scroll">${cuerpo}</div></td></tr>`;
+}
+
 function renderMetrajeMeses(meses){
   const tb = document.getElementById('tblMetrajeMeses');
   if(!meses.length){ tb.innerHTML = '<tr><td colspan="8" class="log-empty">Sin meses con datos confirmados.</td></tr>'; return; }
@@ -2361,8 +2412,11 @@ function renderMetrajeMeses(meses){
   const filas = [...meses].reverse().map(m => {
     const p = pendPorMes.get(m.key);
     const nota = [m.parcial ? (m.proyeccion ? 'en curso' : 'parcial') : '', p ? p + ' pendiente' + (p>1?'s':'') : ''].filter(Boolean).join(' · ');
-    return `<tr>
-      <td>${mesLabelCorto(m.key)}${nota ? ` <span style="color:${p?'var(--alert)':'var(--text-dim)'};font-size:10.5px">(${nota})</span>` : ''}</td>
+    const abierto = mtjMesesAbiertos.has(m.key);
+    return `<tr class="mes-fila${abierto ? ' abierto' : ''}" tabindex="0" role="button" aria-expanded="${abierto}"
+        title="Ver las semanas de ${mesLabelCorto(m.key)}"
+        onclick="toggleMesMetraje('${m.key}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleMesMetraje('${m.key}')}">
+      <td><span class="mes-caret">▸</span> ${mesLabelCorto(m.key)}${nota ? ` <span style="color:${p?'var(--alert)':'var(--text-dim)'};font-size:10.5px">(${nota})</span>` : ''}</td>
       <td class="num">${m.tieneBase ? fmtDolares(m.base) : '—'}</td>
       <td class="num">${m.nSem}/${m.esperadas}</td>
       <td class="num">${fmtDolares(m.costoSem)}</td>
@@ -2370,7 +2424,7 @@ function renderMetrajeMeses(meses){
       <td class="num">${m.varPct==null ? '<span class="delta flat">—</span>' : deltaHTML(m.varPct)}</td>
       <td class="num">${fmtM2_0(m.m2Prom)}</td>
       <td class="num">${m.costoM2==null ? '—' : 'US$ ' + nf2.format(m.costoM2)}</td>
-    </tr>`;
+    </tr>${abierto ? detalleMesMetraje(m.key) : ''}`;
   });
   const tot = meses.reduce((s,m)=>s+m.total,0), totBase = meses.reduce((s,m)=>s+m.base,0), totSem = meses.reduce((s,m)=>s+m.costoSem,0);
   filas.push(`<tr class="row-total"><td>Total (${meses.length} meses)</td><td class="num">${fmtDolares(totBase)}</td><td class="num">${meses.reduce((s,m)=>s+m.nSem,0)}</td><td class="num">${fmtDolares(totSem)}</td><td class="num">${fmtDolares(tot)}</td><td></td><td></td><td></td></tr>`);

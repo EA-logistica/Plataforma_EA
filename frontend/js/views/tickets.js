@@ -1,37 +1,21 @@
 import { $, esc } from '../utils/dom.js';
-import { pad, numeroTicket } from '../utils/format.js';
-import { DB, cancelarSolicitud, pedirHistoricoArea } from '../api/estado.js';
+import { DB, cancelarSolicitud, pedirHistoricoArea, buscarMiArea } from '../api/estado.js';
 import { sesion } from '../state/sessionState.js';
 import { toast } from '../utils/toast.js';
 import { ticketHTML } from './presenters.js';
 
 /**
- * Vista del solicitante: consulta de un ticket puntual y listado de los
- * últimos 5 servicios de su área.
+ * "Mis servicios" del solicitante: los últimos 10 de su área y un buscador
+ * sobre TODOS los del área -por número de ticket, solicitante o destino-.
+ * Reemplaza a la antigua pestaña "Seguimiento", que solo encontraba un
+ * ticket si estaba entre los últimos.
  */
-export function consultarTicket() {
-  // El campo solo recibe números: el prefijo REQ- lo pone la interfaz.
-  const n = ($('qTicket').value || '').replace(/[^0-9]/g, '');
-  if (!n) {
-    $('eTicket').textContent = 'Escribe el número de tu ticket.';
-    $('eTicket').classList.add('on');
-    $('resTicket').innerHTML = '';
-    return;
-  }
-  const id = 'REQ-' + pad(parseInt(n, 10));
-  // DB.solicitudes ya viene acotada por el servidor a los últimos 5 del área
-  // (ver cargarMiArea en api/estado.js): no hace falta filtrar por DNI acá, y
-  // filtrar lo dejaría sin poder consultar el de un compañero de la misma área.
-  const s = DB.solicitudes.find(x => x.id === id);
-  if (!s) {
-    $('eTicket').textContent = 'No encontramos el ticket ' + esc(id) + ' entre los últimos servicios de tu área.';
-    $('eTicket').classList.add('on');
-    $('resTicket').innerHTML = '';
-    return;
-  }
-  $('eTicket').classList.remove('on');
-  $('qTicket').value = numeroTicket(s.id);
-  $('resTicket').innerHTML = ticketHTML(s);
+let busqueda = null; // { q, solicitudes } mientras se muestra un resultado de búsqueda
+
+function pintar(lista, vacio) {
+  $('misTickets').innerHTML = lista.length
+    ? lista.map(ticketHTML).join('')
+    : '<div class="card empty"><strong>' + vacio + '</strong></div>';
 }
 
 export function renderMis() {
@@ -39,16 +23,45 @@ export function renderMis() {
   $('misArea').textContent = sesion.area;
   const mias = DB.solicitudes.slice().sort((a, b) => b.creado.localeCompare(a.creado));
   $('cntMis').textContent = mias.length;
-  const cont = $('misTickets');
-  if (!mias.length) {
-    cont.innerHTML = '<div class="card empty"><strong>Todavía no hay servicios de tu área</strong>Registra el primero en la pestaña anterior.</div>';
-  } else {
-    cont.innerHTML = mias.map(ticketHTML).join('');
-  }
-  if ($('uSeguimiento').classList.contains('on') && $('qTicket').value) consultarTicket();
+  if (busqueda) return; // no pisar un resultado de búsqueda con el sondeo
+  $('misResumen').textContent = mias.length ? 'Últimos ' + mias.length + ' servicios del área.' : '';
+  pintar(mias, 'Todavía no hay servicios de tu área. Registra el primero en "Nueva solicitud".');
 }
 
-/** Pide a logística el histórico completo del área, cuando los últimos 5 no alcanzan. */
+export async function buscarMisServicios() {
+  const q = $('qMis').value.trim();
+  $('eMis').classList.remove('on');
+  if (q.length < 2) {
+    $('eMis').textContent = 'Escribe al menos 2 caracteres: número de ticket, nombre o destino.';
+    $('eMis').classList.add('on');
+    return;
+  }
+  let r;
+  try { r = await buscarMiArea(q); } catch (e) {
+    $('eMis').textContent = e.message; $('eMis').classList.add('on'); return;
+  }
+  // Los adjuntos de lo encontrado se suman a los conocidos, para que las
+  // tarjetas muestren sus guías igual que las de los últimos 10.
+  const ids = new Set(DB.adjuntos.map(a => a.id));
+  DB.adjuntos.push(...(r.adjuntos || []).filter(a => !ids.has(a.id)));
+  busqueda = { q, solicitudes: r.solicitudes };
+  $('btnLimpiarMis').hidden = false;
+  $('misResumen').innerHTML = r.solicitudes.length
+    ? r.solicitudes.length + (r.solicitudes.length === 20 ? ' o más' : '') + ' resultado' + (r.solicitudes.length === 1 ? '' : 's')
+      + ' para <b>' + esc(q) + '</b>' + (r.solicitudes.length === 20 ? ' (se muestran los 20 más recientes; afina la búsqueda).' : '.')
+    : '';
+  pintar(r.solicitudes, 'Ningún servicio del área coincide con "' + esc(q) + '".');
+}
+
+export function limpiarBusquedaMis() {
+  busqueda = null;
+  $('qMis').value = '';
+  $('eMis').classList.remove('on');
+  $('btnLimpiarMis').hidden = true;
+  renderMis();
+}
+
+/** Pide a logística el histórico completo del área. */
 export async function pedirHistoricoCompleto() {
   let r;
   try {
@@ -77,7 +90,6 @@ export async function cancelarMiSolicitud(id) {
     toast('No se pudo cancelar', e.message, 'bad');
     return;
   }
-  renderMis();
-  if ($('qTicket').value) consultarTicket();
+  if (busqueda) await buscarMisServicios(); else renderMis();
   toast('Servicio cancelado', id + ' ya no se va a ejecutar.', 'warn');
 }

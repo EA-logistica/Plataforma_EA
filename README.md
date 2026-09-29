@@ -3,9 +3,25 @@
 Mensajería y encargos de Plásticos Nacionales: registro de solicitudes,
 trazabilidad del despacho, guías de entrega e indicadores de costo.
 
-Aplicación Node.js + SQLite. El navegador no guarda nada: la verdad vive en el
+Aplicación Node.js + PostgreSQL. El navegador no guarda nada: la verdad vive en el
 servidor, así que lo que registra una persona lo ve el resto al instante, desde
 cualquier PC de la red.
+
+---
+
+## Dirección en Plansa
+
+La plataforma corre en la PC **`pla073li`** y se abre desde cualquier equipo
+conectado a la red Tailscale de Plansa:
+
+> **http://100.123.225.96:3000**  (o http://pla073li:3000 si MagicDNS está activo)
+
+Desde la red local de la oficina: http://192.168.1.156:3000
+
+Para que responda, en `pla073li` tiene que estar abierta la ventana de
+`Iniciar Plataforma EA.bat` y el firewall debe tener la regla
+**"Plataforma EA (puerto 3000)"** (entrada TCP 3000, solo desde Tailscale
+`100.64.0.0/10` y la subred local).
 
 ---
 
@@ -16,7 +32,7 @@ npm install     # solo la primera vez
 npm start       # http://localhost:3000
 ```
 
-La primera vez se crea `plansa.sqlite` y se siembra con el padrón de RR.HH.
+La primera vez se crean las tablas en PostgreSQL y se siembran con el padrón de RR.HH.
 (114 personas) y el histórico real de 2026: **1 600 servicios del 15 de enero al
 15 de septiembre, S/ 35 234,60**.
 
@@ -41,11 +57,13 @@ Variables de entorno, para mover la base a un disco de red o cerrar el acceso:
 |---|---|
 | `PLANSA_PUERTO` | Puerto. Por defecto 3000. |
 | `PLANSA_HOST` | Interfaz. Por defecto todas; `127.0.0.1` lo deja solo en esta PC. |
-| `PLANSA_DB` | Archivo SQLite. |
+| `PLANSA_PG_URL` | Base PostgreSQL (va en `.env`, nunca al repo). |
+| `PLANSA_DB` | SQLite de antes de la migración: solo lo lee `db:importar-sqlite`. |
+| `PLANSA_RESPALDOS` | Carpeta de respaldos. Por defecto `respaldos/`. |
 | `PLANSA_UPLOADS` | Carpeta de las guías. |
 
 ```bash
-PLANSA_PUERTO=8080 PLANSA_DB=D:/datos/plansa.sqlite PLANSA_UPLOADS=D:/datos/guias npm start
+PLANSA_PUERTO=8080 PLANSA_UPLOADS=D:/datos/guias npm start
 ```
 
 - **Acceso solicitante:** con un DNI del padrón, por ejemplo `73012556`.
@@ -68,7 +86,7 @@ backend/                     ← NODE.JS. Nada de esto llega al navegador.
   db/
     esquema.sql               DDL de las tablas: la forma de los datos, para una base nueva
     migrar.js                 Cambios de forma en una base que ya existe
-    conexion.js               SQLite (node:sqlite), transacciones, snake_case ↔ camelCase
+    conexion.js               PostgreSQL (pg), transacciones, snake_case ↔ camelCase
     sembrar.js                Carga inicial: padrón + histórico 2026
     repos/                    Único sitio del proyecto que escribe SQL
       personal.js              padrón y búsqueda
@@ -124,7 +142,7 @@ data/                        ← DATOS DE REFERENCIA (código versionado)
   payback/                    Supuestos del análisis: jornada, ley, motos, zonas
 
 uploads/                     ← Guías de entrega subidas (fuera de git)
-plansa.sqlite                ← La base (fuera de git)
+.env                         ← PLANSA_PG_URL con la clave de PostgreSQL (fuera de git)
 tests/                       node tests/payback.mjs · api.mjs · frontend.mjs
 docs/payback.md              El análisis payback, escrito
 ```
@@ -148,14 +166,25 @@ formas de encontrarlo, cero duplicación.
 
 ## La base de datos
 
-SQLite, en un solo archivo, con `node:sqlite` incorporado en Node 22.5+. Sin
-dependencias nativas que compilar, que en Windows sin herramientas de build es
-la diferencia entre funcionar y no.
+**PostgreSQL 17**, instalado como servicio de Windows en la PC servidor
+(`pla073li`), que arranca solo con la PC. La aplicación se conecta con el
+usuario `plansa` a la base `plansa`; la dirección y la clave van en `.env`:
 
-Seis tablas —`personal`, `solicitudes`, `autorizaciones`, `usuarios`,
-`adjuntos`, `ajustes`— definidas en `backend/db/esquema.sql`. Las reglas viven
-en la base, no solo en el código: un estado que no existe o una tarifa negativa
-los rechaza SQLite con un CHECK, aunque el bug esté en la pantalla.
+```
+PLANSA_PG_URL=postgresql://plansa:<clave>@localhost:5432/plansa
+```
+
+La base usa collation `C` (orden por bytes, igual que el SQLite de antes).
+PostgreSQL solo escucha en esta PC (`localhost`): el resto de la red entra a
+la aplicación, no a la base. Para conectar otra plataforma o Power BI hay que
+abrirla a propósito (`listen_addresses` y `pg_hba.conf`), idealmente con un
+usuario de solo lectura.
+
+Las tablas se definen en `backend/db/esquema.sql`. Las reglas viven en la
+base, no solo en el código: un estado que no existe o una tarifa negativa los
+rechaza PostgreSQL con un CHECK, aunque el bug esté en la pantalla. Las fechas
+siguen siendo TEXT y los sí/no INTEGER 0/1, como en SQLite, para que nada fuera
+de `backend/db/` tuviera que cambiar.
 
 `personal` y `usuarios` son universos distintos y no hay que confundirlos:
 `personal` es el padrón de RR.HH. (quién puede **pedir** un servicio, cientos
@@ -163,19 +192,48 @@ de filas); `usuarios` son las cuentas de logística (quién puede **entrar** a
 despachar o administrar, unas pocas filas).
 
 Todo el SQL está en `backend/db/repos/`. Ninguna ruta, ninguna vista y ningún
-cálculo escriben una consulta: si mañana esto se muda a PostgreSQL, se
-reescriben esos cinco archivos y nada más.
+cálculo escriben una consulta. Los repositorios usan `todos()`, `uno()`,
+`ejecutar()`, `insertarLote()` y `enTransaccion()` de `conexion.js`, todas
+asíncronas.
+
+### Traer los datos de un SQLite anterior
+
+Hasta la migración la base era un archivo `plansa.sqlite`. Para pasar sus datos
+(usuarios y claves, solicitudes, padrón, compras…) a PostgreSQL, con el
+servidor apagado:
+
+```bash
+npm run db:importar-sqlite -- D:/copia/plansa.sqlite --reemplazar
+```
+
+`--reemplazar` vacía PostgreSQL y lo llena con el archivo, todo en una
+transacción. Las guías (`uploads/`) se copian aparte, carpeta entera.
+
+### Respaldos
+
+`npm run db:respaldo` deja en `respaldos/<fecha>/` un `pg_dump` de la base y
+una copia de `uploads/`, y conserva los últimos 14. Una tarea programada de
+Windows ("Plataforma EA - respaldo") lo corre todos los días. Conviene que
+`PLANSA_RESPALDOS` apunte a un disco de red o a una carpeta sincronizada,
+**fuera de esta PC**. Restaurar (servidor apagado):
+
+```bash
+pg_restore --clean --if-exists -d "<PLANSA_PG_URL>" respaldos/<fecha>/plansa.dump
+```
 
 ### Migraciones (`backend/db/migrar.js`)
 
 `esquema.sql` usa `CREATE TABLE IF NOT EXISTS`: sirve para una base nueva,
-pero no le cambia nada a una que ya existe con una forma anterior -y SQLite
-tampoco deja alterar un `CHECK` con `ALTER TABLE`-. `migrar()` se corre solo,
-al abrir la base (`conexion.js`), y aplica en orden las migraciones que
-falten según `esquema_version` en `ajustes`; cada una se salta sola si ya se
-aplicó. La primera (v2) agregó el estado `Cancelado` y sus columnas de motivo
-a `solicitudes`, recreando la tabla sin perder una fila -incluida la relación
-con `adjuntos`, que la referencia por clave foránea-.
+pero no le cambia nada a una que ya existe. `migrar()` se corre solo al abrir
+la base y aplica en orden los pasos que falten según `esquema_version` en
+`ajustes`. La base PostgreSQL nació en la versión 3 (las v2 y v3 fueron de la
+época de SQLite); los cambios nuevos empiezan en la 4.
+
+### Pruebas
+
+`npm test` crea una base PostgreSQL desechable (`plansa_prueba_…`) en el mismo
+servidor, corre contra ella y la borra al terminar (ver `tests/pgTemporal.mjs`):
+nunca toca la base real. El usuario de `.env` necesita permiso `CREATEDB`.
 
 ### Sincronización entre pestañas
 

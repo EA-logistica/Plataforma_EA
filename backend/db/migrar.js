@@ -1,145 +1,126 @@
-import { db } from './conexion.js';
 import { leer, escribir } from './repos/ajustes.js';
+import { ejecutarVarias, enTransaccion } from './conexion.js';
 
 /**
- * Migraciones de esquema para una base que YA existe en disco.
+ * Migraciones de esquema para una base que YA existe.
  *
  * `esquema.sql` usa `CREATE TABLE IF NOT EXISTS`: le sirve a una base nueva,
- * pero un cambio ahí no le hace nada a una tabla que ya existe. SQLite tampoco
- * deja alterar un CHECK constraint con `ALTER TABLE`, así que la única forma
- * de cambiar uno es recrear la tabla entera y copiar los datos.
+ * pero un cambio ahí no le hace nada a una tabla que ya existe. Cada cambio de
+ * forma posterior va como un paso acá, que se salta solo si ya se aplicó
+ * comprobando `esquema_version` en `ajustes`.
  *
- * `migrar()` se corre siempre al arrancar (ver conexion.js). Cada paso se
- * salta solo si ya se aplicó, comprobando `esquema_version` en `ajustes` —
- * misma tabla que ya guarda la revisión y `version_datos`.
+ * Historia: las versiones 1 a 3 fueron de la época de SQLite (el estado
+ * 'Cancelado' en `solicitudes` y los datos de contacto en `autorizaciones`).
+ * La base PostgreSQL nació ya con esa forma -esquema.sql es la versión 3
+ * completa-, así que arranca directamente en 3 y los pasos nuevos empiezan en
+ * 4. A diferencia de SQLite, PostgreSQL sí deja cambiar un CHECK con
+ * `ALTER TABLE … DROP/ADD CONSTRAINT` y todo el DDL entra en una transacción,
+ * así que ya no hace falta recrear tablas para migrar.
+ *
+ * `migrar()` se corre siempre al arrancar (ver conexion.js).
  */
-const VERSION_ACTUAL = 3;
-
-export function migrar() {
-  const desde = Number(leer('esquema_version', '1'));
-  if (desde < 2) migrarA2();
-  if (desde < 3) migrarA3();
-  if (desde < VERSION_ACTUAL) escribir('esquema_version', String(VERSION_ACTUAL));
-}
+const VERSION_ACTUAL = 7;
+/** La versión que deja esquema.sql por sí solo, en una base nueva. */
+const VERSION_ESQUEMA_SQL = 3;
 
 /**
- * v2: agrega el estado 'Cancelado' y las columnas de motivo a `solicitudes`.
- *
- * `adjuntos.ticket_id` tiene una FOREIGN KEY hacia `solicitudes(id)`. La forma
- * segura de recrear una tabla que otra referencia -la que documenta el propio
- * SQLite- es armar la tabla nueva con OTRO nombre, copiar los datos, borrar la
- * vieja y recién ahí renombrar la nueva al nombre original. Si en cambio se
- * renombrara primero la vieja fuera del camino, SQLite reescribe la FK de
- * `adjuntos` para que apunte a ese nombre temporal, y se queda rota cuando ese
- * nombre desaparece.
+ * 4: formulario de solicitud con mapa y tipo de destino.
+ *   - solicitudes: coordenadas del punto elegido en el mapa (origen "Otros"
+ *     y destino) y si el destino es Cliente o Proveedor.
+ *   - destinos_registrados: cada dirección nueva que un solicitante clasificó.
+ *     La siguiente vez ya es conocida y no se vuelve a preguntar.
+ * IF NOT EXISTS en todo: corre igual sobre una base nueva (esquema.sql sigue
+ * en la versión 3) que sobre una existente, y repetirlo no rompe nada.
  */
-function migrarA2() {
-  const base = db();
-  base.exec('PRAGMA foreign_keys = OFF');
-  base.exec('BEGIN');
-  try {
-    base.exec(`
-      CREATE TABLE solicitudes_v2 (
-        id              TEXT PRIMARY KEY,
-        correlativo     INTEGER NOT NULL,
-        creado          TEXT NOT NULL,
-
-        dni             TEXT NOT NULL DEFAULT '',
-        nombre          TEXT NOT NULL DEFAULT '',
-        cargo           TEXT NOT NULL DEFAULT '',
-        area            TEXT NOT NULL DEFAULT '',
-
-        tipo            TEXT NOT NULL CHECK (tipo IN ('Recoger', 'Entregar')),
-        servicio        TEXT NOT NULL DEFAULT '',
-        motivo          TEXT NOT NULL DEFAULT '',
-        origen          TEXT NOT NULL DEFAULT '',
-        origen_detalle  TEXT NOT NULL DEFAULT '',
-        destino         TEXT NOT NULL DEFAULT '',
-        contacto        TEXT NOT NULL DEFAULT '',
-        telefono        TEXT NOT NULL DEFAULT '',
-
-        fecha_prog      TEXT NOT NULL DEFAULT '',
-        hora_prog       TEXT NOT NULL DEFAULT '',
-
-        vehiculo        TEXT CHECK (vehiculo IS NULL OR vehiculo IN ('Motorizado', 'Carro')),
-        costo           REAL CHECK (costo IS NULL OR costo >= 0),
-
-        estado          TEXT NOT NULL CHECK (estado IN ('En espera', 'En tránsito', 'Concluido', 'Cancelado')),
-        ts_espera       TEXT,
-        ts_transito     TEXT,
-        ts_concluido    TEXT,
-
-        motivo_cancelacion         TEXT NOT NULL DEFAULT ''
-                                   CHECK (motivo_cancelacion IN ('', 'Usuario solicitó baja', 'No autorizado', 'Otros')),
-        motivo_cancelacion_detalle TEXT NOT NULL DEFAULT '',
-        cancelado_por              TEXT NOT NULL DEFAULT '',
-        ts_cancelado               TEXT,
-
-        fuente          TEXT NOT NULL DEFAULT 'app' CHECK (fuente IN ('app', 'historico'))
-      )
-    `);
-
-    base.exec(`
-      INSERT INTO solicitudes_v2 (
-        id, correlativo, creado, dni, nombre, cargo, area, tipo, servicio, motivo,
-        origen, origen_detalle, destino, contacto, telefono, fecha_prog, hora_prog,
-        vehiculo, costo, estado, ts_espera, ts_transito, ts_concluido, fuente
-      )
-      SELECT
-        id, correlativo, creado, dni, nombre, cargo, area, tipo, servicio, motivo,
-        origen, origen_detalle, destino, contacto, telefono, fecha_prog, hora_prog,
-        vehiculo, costo, estado, ts_espera, ts_transito, ts_concluido, fuente
-      FROM solicitudes
-    `);
-
-    base.exec('DROP TABLE solicitudes');
-    base.exec('ALTER TABLE solicitudes_v2 RENAME TO solicitudes');
-
-    base.exec('CREATE INDEX IF NOT EXISTS idx_solicitudes_estado ON solicitudes (estado)');
-    base.exec('CREATE INDEX IF NOT EXISTS idx_solicitudes_fecha  ON solicitudes (fecha_prog)');
-    base.exec('CREATE INDEX IF NOT EXISTS idx_solicitudes_dni    ON solicitudes (dni)');
-
-    const huerfanos = base.prepare('PRAGMA foreign_key_check(adjuntos)').all();
-    if (huerfanos.length) throw new Error('La migración dejó adjuntos sin su ticket: revisa antes de continuar.');
-
-    base.exec('COMMIT');
-  } catch (e) {
-    base.exec('ROLLBACK');
-    throw e;
-  } finally {
-    base.exec('PRAGMA foreign_keys = ON');
-  }
+/**
+ * 5: modalidad del servicio (Envíos / Transporte / Cargo) y cuánto se usa
+ * cada destino registrado -para ofrecer primero los que más se repiten y
+ * canalizar las redacciones nuevas hacia ellos-.
+ */
+/**
+ * 6: vehículos de carga. Con la modalidad Cargo / Flete, logística asigna
+ * también furgón o camión, no solo moto o carro.
+ */
+/**
+ * 7: registro de muestras de materia prima que llegan al almacén (pestaña
+ * "Muestras" de Materia Prima). Es un registro propio de logística -no viene
+ * del ERP-, con su evaluación: así se sabe cuánto se invirtió en muestras,
+ * de quién y cuáles terminaron aprobadas.
+ */
+async function migrarA7() {
+  await enTransaccion(() => ejecutarVarias(`
+    CREATE TABLE IF NOT EXISTS muestras_mp (
+      id               INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+      fecha_llegada    TEXT NOT NULL,
+      ruc_proveedor    TEXT NOT NULL DEFAULT '',
+      proveedor        TEXT NOT NULL DEFAULT '',
+      descripcion      TEXT NOT NULL,
+      familia          TEXT NOT NULL DEFAULT '',
+      codigo_producto  TEXT NOT NULL DEFAULT '',
+      cantidad_kg      DOUBLE PRECISION NOT NULL CHECK (cantidad_kg >= 0),
+      precio_kg        DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (precio_kg >= 0),
+      moneda           TEXT NOT NULL DEFAULT 'USD' CHECK (moneda IN ('USD', 'PEN')),
+      estado           TEXT NOT NULL DEFAULT 'Recibida'
+                       CHECK (estado IN ('Recibida', 'En evaluación', 'Aprobada', 'Rechazada')),
+      observaciones    TEXT NOT NULL DEFAULT '',
+      creado_por       TEXT NOT NULL DEFAULT '',
+      creado_en        TEXT NOT NULL DEFAULT ahora_txt(),
+      actualizado_en   TEXT NOT NULL DEFAULT ahora_txt()
+    );
+    CREATE INDEX IF NOT EXISTS idx_muestras_fecha ON muestras_mp (fecha_llegada);
+    CREATE INDEX IF NOT EXISTS idx_muestras_ruc ON muestras_mp (ruc_proveedor);
+  `));
 }
 
-/**
- * v3: agrega a `autorizaciones` quién es la persona que pide el alta -antes
- * solo quedaba el DNI, y admin tenía que aprobarla a ciegas-.
- *
- * Son columnas nuevas con un valor por defecto constante ('') y sin CHECK: a
- * diferencia de v2, esto SÍ lo permite `ALTER TABLE ADD COLUMN` directo, sin
- * recrear la tabla ni copiar filas.
- *
- * Cada columna se agrega solo si todavía no existe: una base NUEVA ya la creó
- * con esta forma desde `esquema.sql` -que siempre refleja la versión más
- * reciente-, así que para ella esto no debe hacer nada. Solo una base vieja,
- * creada antes de este cambio, de verdad necesita el `ALTER TABLE`.
- */
-function migrarA3() {
-  const base = db();
-  const columnas = new Set(base.prepare('PRAGMA table_info(autorizaciones)').all().map(c => c.name));
-  const agregar = (nombre, tipo) => {
-    if (!columnas.has(nombre)) base.exec('ALTER TABLE autorizaciones ADD COLUMN ' + nombre + ' ' + tipo);
-  };
-  base.exec('BEGIN');
-  try {
-    agregar('apellidos', "TEXT NOT NULL DEFAULT ''");
-    agregar('nombres', "TEXT NOT NULL DEFAULT ''");
-    agregar('celular', "TEXT NOT NULL DEFAULT ''");
-    agregar('email', "TEXT NOT NULL DEFAULT ''");
-    agregar('area', "TEXT NOT NULL DEFAULT ''");
-    base.exec('COMMIT');
-  } catch (e) {
-    base.exec('ROLLBACK');
-    throw e;
+async function migrarA6() {
+  await enTransaccion(() => ejecutarVarias(`
+    ALTER TABLE solicitudes DROP CONSTRAINT IF EXISTS solicitudes_vehiculo_check;
+    ALTER TABLE solicitudes ADD CONSTRAINT solicitudes_vehiculo_check
+      CHECK (vehiculo IS NULL OR vehiculo IN ('Motorizado', 'Carro', 'Furgón', 'Camión'));
+  `));
+}
+
+async function migrarA5() {
+  await enTransaccion(() => ejecutarVarias(`
+    ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS modalidad TEXT NOT NULL DEFAULT '';
+    ALTER TABLE solicitudes DROP CONSTRAINT IF EXISTS solicitudes_modalidad_check;
+    ALTER TABLE solicitudes ADD CONSTRAINT solicitudes_modalidad_check CHECK (modalidad IN ('', 'Envíos', 'Transporte', 'Cargo'));
+    ALTER TABLE destinos_registrados ADD COLUMN IF NOT EXISTS usos INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE destinos_registrados ADD COLUMN IF NOT EXISTS ultimo_uso TEXT NOT NULL DEFAULT ahora_txt();
+  `));
+}
+
+async function migrarA4() {
+  await enTransaccion(() => ejecutarVarias(`
+    ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS origen_lat DOUBLE PRECISION;
+    ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS origen_lng DOUBLE PRECISION;
+    ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS destino_lat DOUBLE PRECISION;
+    ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS destino_lng DOUBLE PRECISION;
+    ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS destino_tipo TEXT NOT NULL DEFAULT '';
+    ALTER TABLE solicitudes DROP CONSTRAINT IF EXISTS solicitudes_destino_tipo_check;
+    ALTER TABLE solicitudes ADD CONSTRAINT solicitudes_destino_tipo_check CHECK (destino_tipo IN ('', 'Cliente', 'Proveedor'));
+    CREATE TABLE IF NOT EXISTS destinos_registrados (
+      clave       TEXT PRIMARY KEY,
+      direccion   TEXT NOT NULL,
+      tipo        TEXT NOT NULL CHECK (tipo IN ('Cliente', 'Proveedor')),
+      lat         DOUBLE PRECISION,
+      lng         DOUBLE PRECISION,
+      area        TEXT NOT NULL DEFAULT '',
+      creado_por  TEXT NOT NULL DEFAULT '',
+      creado_en   TEXT NOT NULL DEFAULT ahora_txt()
+    );
+  `));
+}
+
+export async function migrar() {
+  // Una base recién creada no tiene la clave todavía: arranca en la versión
+  // de esquema.sql (3), no en la actual, para que corran los pasos nuevos.
+  const desde = Number(await leer('esquema_version', String(VERSION_ESQUEMA_SQL)));
+  if (desde < 4) await migrarA4();
+  if (desde < 5) await migrarA5();
+  if (desde < 6) await migrarA6();
+  if (desde < 7) await migrarA7();
+  if (desde < VERSION_ACTUAL || !(await leer('esquema_version'))) {
+    await escribir('esquema_version', String(VERSION_ACTUAL));
   }
 }

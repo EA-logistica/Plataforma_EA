@@ -20,14 +20,14 @@ const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
 const HASH_FICTICIO = '32768:8:1:' + '0'.repeat(32) + ':' + '0'.repeat(128);
 
 /** `req` es opcional (solo para la auditoría); nunca hace falta para la lógica en sí. */
-export function ingresar(usuario, clave, req) {
-  const u = repo.porUsuario(usuario);
+export async function ingresar(usuario, clave, req) {
+  const u = await repo.porUsuario(usuario);
   const claveOk = verificarHash(clave, u && u.activo ? u.claveHash : HASH_FICTICIO);
   if (!u || !u.activo || !claveOk) {
     // El mismo mensaje de siempre no dice si el problema fue el usuario o la
     // clave; en el log sí conviene distinguir "no existe/inactivo" de "clave
     // mala", porque son dos formas distintas de sospechoso.
-    log('login_fallido', req, 'usuario "' + String(usuario || '') + '": '
+    await log('login_fallido', req, 'usuario "' + String(usuario || '') + '": '
       + (u && u.activo ? 'clave incorrecta' : 'usuario inexistente o inactivo'));
     throw error('Usuario o clave incorrectos.', 401);
   }
@@ -36,9 +36,9 @@ export function ingresar(usuario, clave, req) {
   // costo explícito), se aprovecha el ingreso para pasarlo al nuevo formato.
   // No cuesta un viaje extra a la base -ya se leyó la fila- y así las cuentas
   // existentes se ponen al día solas, sin forzar un cambio de clave.
-  if (u.claveHash.split(':').length !== 5) repo.cambiarClave(u.id, hashClave(clave), { debeCambiar: !!u.debeCambiarClave });
+  if (u.claveHash.split(':').length !== 5) await repo.cambiarClave(u.id, hashClave(clave), { debeCambiar: !!u.debeCambiarClave });
 
-  registrarEvento('login_exitoso', { usuario: u.usuario, ip: req?.ip || '' });
+  await registrarEvento('login_exitoso', { usuario: u.usuario, ip: req?.ip || '' });
   return {
     token: sesiones.crear(u),
     usuario: u.usuario,
@@ -47,38 +47,38 @@ export function ingresar(usuario, clave, req) {
   };
 }
 
-export function crearUsuario({ usuario, rol, creadoPor }, req) {
+export async function crearUsuario({ usuario, rol, creadoPor }, req) {
   const claveTemporal = generarClaveTemporal();
-  const creado = repo.crear({ usuario, claveHash: hashClave(claveTemporal), rol, creadoPor });
-  log('usuario_creado', req, 'usuario "' + creado.usuario + '", rol ' + creado.rol);
+  const creado = await repo.crear({ usuario, claveHash: hashClave(claveTemporal), rol, creadoPor });
+  await log('usuario_creado', req, 'usuario "' + creado.usuario + '", rol ' + creado.rol);
   // La clave temporal sale UNA sola vez, en la respuesta de creación: no se
   // guarda en ningún lado en claro y no se puede volver a consultar después,
   // solo generar una nueva con restablecerClave.
   return { ...creado, claveTemporal };
 }
 
-export function restablecerClave(id, req) {
-  const u = repo.porId(id);
+export async function restablecerClave(id, req) {
+  const u = await repo.porId(id);
   if (!u) throw error('No existe ese usuario.', 404);
   const claveTemporal = generarClaveTemporal();
-  repo.cambiarClave(id, hashClave(claveTemporal), { debeCambiar: true });
+  await repo.cambiarClave(id, hashClave(claveTemporal), { debeCambiar: true });
   sesiones.revocarDeUsuario(id);
-  log('clave_restablecida', req, 'admin restableció la clave de "' + u.usuario + '"');
+  await log('clave_restablecida', req, 'admin restableció la clave de "' + u.usuario + '"');
   return { id, usuario: u.usuario, claveTemporal };
 }
 
-export function cambiarClavePropia(sesion, actual, nueva, req) {
-  const u = repo.porUsuario(sesion.usuario);
+export async function cambiarClavePropia(sesion, actual, nueva, req) {
+  const u = await repo.porUsuario(sesion.usuario);
   if (!u || !verificarHash(actual, u.claveHash)) throw error('La clave actual no es correcta.', 401);
   if (String(nueva || '').length < 6) throw error('La clave nueva debe tener al menos 6 caracteres.');
   if (verificarHash(nueva, u.claveHash)) throw error('La clave nueva debe ser distinta de la actual.');
-  repo.cambiarClave(u.id, hashClave(nueva), { debeCambiar: false });
+  await repo.cambiarClave(u.id, hashClave(nueva), { debeCambiar: false });
   // Si alguien más tenía un token de esta cuenta -robado o de una PC
   // compartida donde nunca se cerró sesión-, cambiar la clave lo debe dejar
   // afuera. La sesión que pidió el cambio se re-emite para no cortarse a sí
   // misma en el proceso.
   sesiones.revocarDeUsuario(u.id);
-  log('cambio_clave', req, 'cambió su propia clave');
+  await log('cambio_clave', req, 'cambió su propia clave');
   return sesiones.crear(u);
 }
 
@@ -87,12 +87,12 @@ export function cambiarClavePropia(sesion, actual, nueva, req) {
  * siempre queda activo: por eso basta con impedir que alguien se desactive a
  * sí mismo para que nunca se pueda dejar el sistema sin ningún admin activo.
  */
-export function cambiarEstado(id, activo, sesion, req) {
-  const u = repo.porId(id);
+export async function cambiarEstado(id, activo, sesion, req) {
+  const u = await repo.porId(id);
   if (!u) throw error('No existe ese usuario.', 404);
   if (!activo && u.usuario === sesion.usuario) throw error('No puedes desactivar tu propio usuario.');
-  const actualizado = repo.cambiarEstado(id, activo);
+  const actualizado = await repo.cambiarEstado(id, activo);
   if (!activo) sesiones.revocarDeUsuario(id);
-  log(activo ? 'usuario_reactivado' : 'usuario_desactivado', req, 'cuenta "' + u.usuario + '"');
+  await log(activo ? 'usuario_reactivado' : 'usuario_desactivado', req, 'cuenta "' + u.usuario + '"');
   return actualizado;
 }

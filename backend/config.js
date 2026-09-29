@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +14,17 @@ import { fileURLToPath } from 'node:url';
 
 export const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// .env de la raíz (nunca va al repo): ahí vive PLANSA_PG_URL con la clave de
+// PostgreSQL. Lo ya definido en el entorno manda sobre el archivo.
+const archivoEnv = path.join(RAIZ, '.env');
+if (fs.existsSync(archivoEnv)) {
+  for (const linea of fs.readFileSync(archivoEnv, 'utf8').split(/\r?\n/)) {
+    const m = linea.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (!m || linea.trim().startsWith('#')) continue;
+    if (process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+}
+
 const ruta = (env, porDefecto) =>
   process.env[env] ? path.resolve(process.env[env]) : path.join(RAIZ, porDefecto);
 
@@ -26,7 +38,16 @@ export const CONFIG = {
    */
   host: process.env.PLANSA_HOST || '0.0.0.0',
 
-  /** Archivo de la base SQLite. Se crea solo la primera vez. */
+  /**
+   * Base PostgreSQL. Las tablas se crean solas la primera vez; la base y el
+   * usuario los crea la instalación (ver README, "La base de datos").
+   */
+  postgres: process.env.PLANSA_PG_URL || 'postgresql://plansa@localhost:5432/plansa',
+
+  /**
+   * Base SQLite de antes de pasar a PostgreSQL. Ya no se usa al correr: solo
+   * la lee `npm run db:importar-sqlite` para traer sus datos.
+   */
   baseDatos: ruta('PLANSA_DB', 'plansa.sqlite'),
 
   /** Carpeta donde multer deja las guías de entrega. */

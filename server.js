@@ -6,4 +6,9 @@
  */
 import { iniciar } from './backend/servidor.js';
 
-iniciar();
+try {
+  await iniciar();
+} catch (e) {
+  console.error('\n  No se pudo iniciar la Plataforma EA:\n  ' + e.message + '\n');
+  process.exit(1);
+}

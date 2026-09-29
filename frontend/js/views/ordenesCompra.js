@@ -26,7 +26,24 @@ let cargando = false;
 let otraVez = false;
 
 export function renderOrdenesCompraSiVisible() {
-  if ($('aOrdenesCompra').classList.contains('on')) renderOrdenesCompra();
+  if ($('aOrdenesCompra').classList.contains('on') && subtabActual === 'sunat') renderOrdenesCompra();
+}
+
+/**
+ * Dos fuentes distintas en la misma pestaña, cada una en su sub-pestaña:
+ * las OC del ERP (llegan por MongoDB, siempre con datos) primero, y el
+ * registro de facturas SUNAT al lado. Antes estaban apiladas con SUNAT
+ * arriba: cuando ese registro estaba vacío, la pantalla abría en cero y las
+ * OC -que sí tienen datos- quedaban escondidas abajo.
+ */
+let subtabActual = 'oc';
+export function subtabCompras(k = subtabActual) {
+  subtabActual = k;
+  $('ocSubOC').classList.toggle('on', k === 'oc');
+  $('ocSubSunat').classList.toggle('on', k === 'sunat');
+  $('ocPanelOC').style.display = k === 'oc' ? '' : 'none';
+  $('ocPanelSunat').style.display = k === 'sunat' ? '' : 'none';
+  return k === 'oc' ? renderOC() : renderOrdenesCompra();
 }
 
 function filtroActual() {
@@ -98,6 +115,13 @@ export async function renderOrdenesCompra() {
       api.resumenOrdenesCompra(filtro),
       api.listarOrdenesCompra({ ...filtro, pagina, porPagina: FILAS_POR_PAGINA })
     ]);
+    // Registro vacío (no hay filtro que lo explique): se dice qué falta en vez
+    // de mostrar tarjetas y gráficos en cero.
+    const sinFiltro = !filtro.q && !filtro.proveedor && !filtro.desde && !filtro.hasta && !filtro.moneda;
+    const vacio = sinFiltro && !resumen.comprobantes;
+    $('ocSunatVacio').innerHTML = vacio ? sunatVacioHTML() : '';
+    $('ocSunatContenido').style.display = vacio ? 'none' : '';
+    if (vacio) return;
     pintarMetricas(resumen);
     pintarProveedores(resumen.porProveedor);
     pintarMeses(resumen.porMes);
@@ -112,6 +136,17 @@ export async function renderOrdenesCompra() {
     cargando = false;
     if (otraVez) { otraVez = false; renderOrdenesCompra(); }
   }
+}
+
+function sunatVacioHTML() {
+  return '<div class="card card-pad empty" style="text-align:left">'
+    + '<strong>El registro de facturas SUNAT todavía no tiene datos</strong>'
+    + '<p>Este registro (facturas, boletas y notas ya contabilizadas) no llega por MongoDB: el bot solo trae las '
+    + '<b>órdenes de compra</b> del ERP, que están en la otra sub-pestaña con todos sus indicadores.</p>'
+    + '<p>Para llenarlo hay dos caminos: que el bot de logística cargue el registro de compras en MongoDB '
+    + '(se enlaza igual que las OC), o copiar a <code>data/compras.js</code> el volcado del ERP desde la PC que lo tenga '
+    + 'y reiniciar la plataforma.</p>'
+    + '<button class="btn btn-sm" onclick="subtabCompras(\'oc\')">Ver órdenes de compra</button></div>';
 }
 
 const tarjeta = (clase, v, k, d) => '<div class="kpi ' + clase + '"><div class="v">' + esc(String(v))
@@ -343,11 +378,18 @@ export async function renderOC() {
 }
 
 function ocdPintarMetricas(r) {
+  const p = r.pendientes || { ordenes: 0, saldoPen: 0, saldoUsd: 0 };
+  const saldo = [p.saldoPen ? soles(p.saldoPen) : '', p.saldoUsd ? dolares(p.saldoUsd) : ''].filter(Boolean).join(' + ') || 'sin saldo';
   $('ocdMetrics').innerHTML = [
-    tarjeta('primary', r.ordenes.toLocaleString('es-PE'), 'Órdenes de compra', r.proveedores + ' proveedores en el filtro'),
-    tarjeta('ok', soles(r.pen.total), 'Valorizado en soles', r.pen.ordenes.toLocaleString('es-PE') + ' OC en soles'),
-    tarjeta('info', dolares(r.usd.total), 'Valorizado en dólares', r.usd.ordenes.toLocaleString('es-PE') + ' OC en dólares')
+    tarjeta('primary', r.ordenes.toLocaleString('es-PE'), 'Órdenes de compra',
+      r.items.toLocaleString('es-PE') + ' ítems · ' + r.proveedores.toLocaleString('es-PE') + ' proveedores'),
+    tarjeta('ok', soles(r.pen.total), 'Comprado en soles', r.pen.ordenes.toLocaleString('es-PE') + ' OC en soles'),
+    tarjeta('info', dolares(r.usd.total), 'Comprado en dólares', r.usd.ordenes.toLocaleString('es-PE') + ' OC en dólares'),
+    tarjeta(p.ordenes ? 'bad' : 'ok', p.ordenes.toLocaleString('es-PE'), 'OC pendientes de atender', 'Saldo por recibir: ' + saldo)
   ].join('');
+  $('ocdRango').textContent = r.desde
+    ? 'Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta) + ' · datos del ERP vía MongoDB'
+    : '';
 }
 
 function ocdEstadoChip(estado) {

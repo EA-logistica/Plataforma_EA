@@ -3,7 +3,8 @@
  *
  *     node tests/api.mjs
  *
- * Levantan un servidor de verdad contra una base SQLite temporal y una carpeta
+ * Levantan un servidor de verdad contra una base PostgreSQL temporal (ver
+ * tests/pgTemporal.mjs) y una carpeta
  * de subidas temporal, y lo golpean por HTTP igual que lo hace el navegador.
  * No se simula nada: la subida pasa por multer, el archivo termina en disco y
  * se vuelve a descargar para comprobar que es el mismo.
@@ -16,7 +17,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const temporal = fs.mkdtempSync(path.join(os.tmpdir(), 'plansa-test-'));
-process.env.PLANSA_DB = path.join(temporal, 'prueba.sqlite');
+const { crearBaseTemporal } = await import('./pgTemporal.mjs');
+const borrarBase = await crearBaseTemporal();
 process.env.PLANSA_UPLOADS = path.join(temporal, 'uploads');
 process.env.PLANSA_PUERTO = '0';                 // puerto libre que elija el sistema
 
@@ -35,7 +37,7 @@ const SIGUIENTE = 'REQ-' + String(SEMBRADOS + 1).padStart(3, '0');
 let fallos = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLA') + ' ' + msg); if (!cond) fallos++; };
 
-const servidor = iniciar({ puerto: 0, silencioso: true });
+const servidor = await iniciar({ puerto: 0, silencioso: true });
 await new Promise(r => servidor.once('listening', r));
 const BASE = 'http://127.0.0.1:' + servidor.address().port;
 
@@ -61,7 +63,7 @@ try {
   ok(salud.status === 200 && salud.datos.ok, 'el servidor responde');
   ok(salud.datos.personal === TOTAL_PADRON, `la base se sembró con el padrón (${salud.datos.personal} personas)`);
   ok(salud.datos.solicitudes === SEMBRADOS, `y con el histórico 2026 (${salud.datos.solicitudes} servicios)`);
-  ok(fs.existsSync(process.env.PLANSA_DB), 'el archivo SQLite existe en disco');
+  ok(/plansa_prueba_/.test(process.env.PLANSA_PG_URL), 'corre contra la base PostgreSQL temporal, no la real');
 
   // Sin sesión -el caso del solicitante, que nunca tuvo clave- /estado ya NO
   // trae el historial: antes cualquiera en la red se traía los 1600+
@@ -212,17 +214,50 @@ try {
   ok((await api('POST', '/api/solicitudes', { ...nueva, tipo: 'Volar' })).status === 400,
      'y rechaza una acción que no existe');
 
+  // Formulario v4: acción coherente con el servicio, destino clasificado y mapa.
+  // (Son varios POST seguidos: se vacía el freno de inundación, que no es lo que se prueba acá.)
+  olvidarPeticiones();
+  const contradictoria = await api('POST', '/api/solicitudes', { ...nueva, tipo: 'Entregar', servicio: 'Recojo de paquete' });
+  ok(contradictoria.status === 400 && /recoger/.test(contradictoria.datos.error),
+     'rechaza "Recojo de paquete" marcado como Entregar');
+  ok((await api('POST', '/api/solicitudes', { ...nueva, tipo: 'Recoger', servicio: 'Envío de documentos' })).status === 400,
+     'y "Envío de documentos" marcado como Recoger');
+  ok(creada.datos.destinoTipo === '', 'un destino del catálogo no pide Cliente/Proveedor');
+  const sinTipo = await api('POST', '/api/solicitudes', { ...nueva, destino: 'AV. NUEVA SIN REGISTRAR 123, ATE' });
+  ok(sinTipo.status === 400 && /cliente o un proveedor/.test(sinTipo.datos.error),
+     'un destino que no está registrado exige indicar si es cliente o proveedor');
+  ok((await api('POST', '/api/solicitudes', { ...nueva, destinoTipo: 'Amigo', destino: 'AV. NUEVA SIN REGISTRAR 123, ATE' })).status === 400,
+     'y solo acepta Cliente o Proveedor');
+  ok((await api('POST', '/api/solicitudes', { ...nueva, destinoLat: 48.85, destinoLng: 2.35 })).status === 400,
+     'rechaza un punto del mapa fuera del Perú');
+  ok((await api('POST', '/api/solicitudes', { ...nueva, destinoLat: -12.05 })).status === 400,
+     'y un punto con una sola coordenada');
+  olvidarPeticiones();
+
   const id = creada.datos.id;
   ok((await api('PATCH', '/api/solicitudes/' + id, { vehiculo: 'Motorizado' })).status === 401,
      'gestionar el ticket sí exige sesión de logística');
-  ok((await api('POST', '/api/solicitudes/' + id + '/avanzar', undefined, tokenSeg)).status === 409,
-     'no deja pasar a tránsito sin transporte asignado (seguimiento sí puede intentarlo)');
+  // El gestor corrige qué se pidió: modalidad, acción y servicio, siempre coherentes.
+  const corregido = await api('PATCH', '/api/solicitudes/' + id, { modalidad: 'Cargo', tipo: 'Entregar', servicio: 'Despacho de producto terminado' }, tokenSeg);
+  ok(corregido.status === 200 && corregido.datos.modalidad === 'Cargo' && corregido.datos.servicio === 'Despacho de producto terminado',
+     'el gestor puede cambiar la modalidad y el servicio del ticket');
+  ok((await api('PATCH', '/api/solicitudes/' + id, { tipo: 'Recoger' }, tokenSeg)).status === 400,
+     'pero no dejarlo contradictorio (un despacho marcado como recojo)');
+  ok((await api('PATCH', '/api/solicitudes/' + id, { modalidad: 'Avión' }, tokenSeg)).status === 400, 'ni con una modalidad que no existe');
+  await api('PATCH', '/api/solicitudes/' + id, { modalidad: 'Envíos', servicio: 'Envío de documentos' }, tokenSeg);
+  olvidarPeticiones();
+  const conEnlace = await api('POST', '/api/solicitudes', { ...nueva, destinoTipo: 'Cliente',
+    destino: 'maps.google.com/maps?q=-12.0168152%2C-77.0512345&z=17' });
+  ok(conEnlace.status === 201 && Math.abs(conEnlace.datos.destinoLat + 12.0168152) < 1e-5 && Math.abs(conEnlace.datos.destinoLng + 77.0512345) < 1e-5,
+     'un destino pegado como enlace de Google Maps guarda sus coordenadas');
   ok((await api('PATCH', '/api/solicitudes/' + id, { vehiculo: 'Bicicleta' }, tokenSeg)).status === 400,
      'rechaza un transporte que no existe');
+  ok((await api('PATCH', '/api/solicitudes/' + id, { vehiculo: 'Camión' }, tokenSeg)).datos.vehiculo === 'Camión',
+     'acepta los vehículos de carga (furgón, camión) para Cargo / Flete');
   ok((await api('PATCH', '/api/solicitudes/' + id, { vehiculo: 'Motorizado' }, tokenSeg)).datos.vehiculo === 'Motorizado',
      'seguimiento asigna el transporte: es trabajo de despacho, no de administración');
   ok((await api('POST', '/api/solicitudes/' + id + '/avanzar', undefined, tokenSeg)).datos.estado === 'En tránsito',
-     'con transporte, pasa a tránsito');
+     'pasa a tránsito sin exigir vehículo: la modalidad ya dice qué unidad va');
   ok((await api('POST', '/api/solicitudes/' + id + '/avanzar', undefined, tokenSeg)).status === 409,
      'no deja cerrar sin tarifa');
   ok((await api('PATCH', '/api/solicitudes/' + id, { costo: 25 }, tokenSeg)).datos.costo === 25, 'asigna la tarifa');
@@ -770,22 +805,44 @@ try {
   const nuevaLogistica = {
     dni: '73012556', nombre: 'EDDY PERCY AVALOS VALDIVIA', cargo: 'COORDINADOR DE LOGISTICA', area: 'Logistica',
     tipo: 'Entregar', servicio: 'Prueba de área', motivo: 'Verificar el alcance de mis servicios',
-    origen: 'Plásticos Nacionales - Talleres', destino: 'Prueba de área, Lima',
+    origen: 'Plásticos Nacionales - Talleres', destino: 'Prueba de área, Lima', destinoTipo: 'Proveedor',
+    destinoLat: -12.0464, destinoLng: -77.0428,
     contacto: 'Mesa de partes', telefono: '987654321', fechaProg: '2026-09-25', horaProg: '10:00'
   };
   const nuevaOtraArea = { ...nuevaLogistica, area: 'Producción', destino: 'Otra área, no debe verse' };
 
-  const ticketLogistica = (await api('POST', '/api/solicitudes', nuevaLogistica)).datos.id;
+  const creadaLogistica = (await api('POST', '/api/solicitudes', nuevaLogistica)).datos;
+  const ticketLogistica = creadaLogistica.id;
+  ok(creadaLogistica.destinoTipo === 'Proveedor' && creadaLogistica.destinoLat === -12.0464,
+     'guarda el tipo de destino y el punto del mapa');
+  const registrados = (await api('GET', '/api/estado')).datos.destinosRegistrados;
+  ok(registrados.some(d => d.direccion === 'Prueba de área, Lima' && d.tipo === 'Proveedor'),
+     'el destino nuevo queda registrado y se ofrece en las sugerencias');
+  const yaConocido = await api('POST', '/api/solicitudes', { ...nueva, destino: 'PRUEBA DE AREA  LIMA' });
+  ok(yaConocido.status === 201, 'la siguiente vez ese destino ya no pide tipo (sin importar tildes ni mayúsculas)');
+  ok((await api('GET', '/api/mapa/tiles/esri-satelite-img/1/0/0')).status === 404,
+     'el mapa público solo sirve la capa de calles');
   const ticketOtraArea = (await api('POST', '/api/solicitudes', nuevaOtraArea)).datos.id;
 
   const mias = await api('GET', '/api/solicitudes/mias', undefined, tokenArea);
   ok(mias.status === 200 && Array.isArray(mias.datos.solicitudes), 'con sesión de área, "mis servicios" responde');
-  ok(mias.datos.solicitudes.length <= 5, 'nunca trae más de 5');
+  ok(mias.datos.solicitudes.length <= 10, 'nunca trae más de 10');
   ok(mias.datos.solicitudes.every(s => s.area === 'Logistica'), 'y todos son del área de la sesión, ninguno de otra');
   ok(mias.datos.solicitudes.some(s => s.id === ticketLogistica), 'el que se acaba de registrar para esta área aparece');
   ok(!mias.datos.solicitudes.some(s => s.id === ticketOtraArea),
      'el de otra área nunca aparece, aunque sea más reciente que alguno de los 5');
   ok(Array.isArray(mias.datos.adjuntos), 'junto con los adjuntos de esos tickets');
+
+  // Buscador de "Mis servicios": todo el área, nunca otra área.
+  ok((await api('GET', '/api/solicitudes/mias/buscar?q=prueba')).status === 401, 'buscar exige sesión de área');
+  const porNumero = await api('GET', '/api/solicitudes/mias/buscar?q=' + ticketLogistica.replace(/D/g, ''), undefined, tokenArea);
+  ok(porNumero.status === 200 && porNumero.datos.solicitudes.some(s => s.id === ticketLogistica), 'encuentra un ticket del área por su número');
+  const porDestino = await api('GET', '/api/solicitudes/mias/buscar?q=' + encodeURIComponent('Prueba de área'), undefined, tokenArea);
+  ok(porDestino.datos.solicitudes.some(s => s.id === ticketLogistica), 'y por destino');
+  const ajena = await api('GET', '/api/solicitudes/mias/buscar?q=' + encodeURIComponent('Otra área'), undefined, tokenArea);
+  ok(!ajena.datos.solicitudes.some(s => s.id === ticketOtraArea), 'pero nunca uno de otra área, aunque coincida el texto');
+  ok(creadaLogistica.modalidad === 'Envíos', 'sin modalidad, el servicio queda como Envíos');
+  ok((await api('POST', '/api/solicitudes', { ...nuevaLogistica, modalidad: 'Avión' })).status === 400, 'y rechaza una modalidad que no existe');
 
   // El propio solicitante -sin sesión de logística, solo con la de área- lo
   // sigue viendo actualizarse por la misma vía, incluida una cancelación:
@@ -821,6 +878,49 @@ try {
   ok(resuelto.status === 200 && resuelto.datos.estado === 'Atendida', 'admin lo marca como atendido');
   ok((await api('PATCH', '/api/pedidos-historico/' + idPedido, { estado: 'Atendida' }, tokenAdmin)).status === 404,
      'resolverlo dos veces responde 404: ya no está pendiente');
+
+  // ------------------------------------------------ muestras de materia prima
+  console.log('\n-- muestras de materia prima --');
+  ok((await api('GET', '/api/materia-prima/muestras')).status === 401, 'las muestras son cosa de logística');
+  ok((await api('GET', '/api/materia-prima/muestras', undefined, tokenSeg)).status === 403, 'y solo de admin');
+  const mesPrueba = new Date().toISOString().slice(0, 7);
+  const hoyPrueba = new Date().toISOString().slice(0, 10);
+  const m1 = await api('POST', '/api/materia-prima/muestras', {
+    fechaLlegada: hoyPrueba, rucProveedor: '20601119111', proveedor: 'PROVEEDOR DE PRUEBA SAC',
+    descripcion: 'PP COPO SINOPEC K8009 M.I 9 (MUESTRA)', familia: 'pp copo', cantidadKg: 200, precioKg: 1.75
+  }, tokenAdmin);
+  ok(m1.status === 201 && m1.datos.subtotal === 350 && m1.datos.familia === 'PP COPO' && m1.datos.moneda === 'USD',
+     'registra una muestra: subtotal = cantidad × precio, familia en mayúsculas, US$ por defecto');
+  ok((await api('POST', '/api/materia-prima/muestras', { fechaLlegada: hoyPrueba, descripcion: 'X', cantidadKg: 1 }, tokenAdmin)).status === 400,
+     'exige una descripción real');
+  ok((await api('POST', '/api/materia-prima/muestras', { fechaLlegada: hoyPrueba, rucProveedor: '123', descripcion: 'Muestra', cantidadKg: 1 }, tokenAdmin)).status === 400,
+     'y un RUC de 11 dígitos');
+  const porRuc = await api('GET', '/api/materia-prima/muestras/proveedor?ruc=20601119111', undefined, tokenAdmin);
+  ok(porRuc.datos.proveedor === 'PROVEEDOR DE PRUEBA SAC', 'el RUC devuelve la razón social ya conocida');
+  const dd = hoyPrueba.slice(8, 10) + '/' + hoyPrueba.slice(5, 7) + '/' + hoyPrueba.slice(0, 4);
+  const lote = await api('POST', '/api/materia-prima/muestras/lote', { filas: [
+    { rucProveedor: '20601119111', descripcion: 'HDPE INYECCION MARPOL HDM520 (MUESTRA)', familia: 'HDPE INYECCION', cantidadKg: '100', precioKg: '1.5', fechaLlegada: dd },
+    { rucProveedor: '20207190285', descripcion: 'HDPE SOPLADO BOREALIS BB2588 (MUESTRA)', familia: 'HDPE SOPLADO', cantidadKg: '100', precioKg: '0', fechaLlegada: dd }
+  ] }, tokenAdmin);
+  ok(lote.status === 201 && lote.datos.creadas === 2, 'importa varias filas pegadas desde Excel, con fecha dd/mm/aaaa');
+  const listaMuestras = (await api('GET', '/api/materia-prima/muestras', undefined, tokenAdmin)).datos;
+  ok(listaMuestras.find(x => x.descripcion.startsWith('HDPE INYECCION MARPOL')).proveedor === 'PROVEEDOR DE PRUEBA SAC',
+     'y completa la razón social de cada fila con su RUC');
+  ok((await api('POST', '/api/materia-prima/muestras/lote', { filas: [{ descripcion: 'Sin fecha', cantidadKg: 1 }] }, tokenAdmin)).status === 400,
+     'una fila inválida frena todo el lote (no quedan cargas a medias)');
+  const res = (await api('GET', '/api/materia-prima/muestras/resumen?mes=' + mesPrueba, undefined, tokenAdmin)).datos;
+  ok(res.mesActual.muestras === 3 && res.mesActual.kg === 400 && res.mesActual.usd === 500,
+     'indicadores del mes: 3 muestras, 400 kg, US$ 500 invertidos');
+  ok(res.mesActual.gratuitas === 1 && res.mesActual.proveedores === 2 && res.proveedoresNuevos === 2,
+     'una sin costo, dos proveedores y los dos son nuevos');
+  ok(res.porMes.length === 12 && res.porMes[11].mes === mesPrueba, 'serie de los últimos 12 meses');
+  ok(res.totalPendientes === 3 && res.tasaAprobacion === null, 'todas pendientes de evaluar, sin tasa de aprobación todavía');
+  await api('PATCH', '/api/materia-prima/muestras/' + m1.datos.id, { estado: 'Aprobada' }, tokenAdmin);
+  const res2 = (await api('GET', '/api/materia-prima/muestras/resumen?mes=' + mesPrueba, undefined, tokenAdmin)).datos;
+  ok(res2.tasaAprobacion === 100 && res2.totalPendientes === 2, 'aprobar una actualiza el embudo y la tasa (sin caché vieja)');
+  ok((await api('DELETE', '/api/materia-prima/muestras/' + m1.datos.id, {}, tokenAdmin)).status === 400, 'eliminar exige motivo');
+  ok((await api('DELETE', '/api/materia-prima/muestras/' + m1.datos.id, { motivo: 'Registro de prueba' }, tokenAdmin)).status === 200,
+     'y con motivo la elimina');
 
   // -------------------------------------------------------------- salida
   ok((await api('POST', '/api/auth/area/salir', undefined, tokenAdmin)).status === 401,
@@ -1008,7 +1108,8 @@ try {
 } finally {
   servidor.close();
   const { cerrar } = await import('../backend/db/conexion.js');
-  cerrar();
+  await cerrar();
+  await borrarBase();
   fs.rmSync(temporal, { recursive: true, force: true });
 }
 

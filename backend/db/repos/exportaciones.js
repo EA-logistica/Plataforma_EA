@@ -1,4 +1,4 @@
-import { db, aCamel } from '../conexion.js';
+import { todos, uno, ejecutar, aCamel } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -51,41 +51,44 @@ function normalizar(d) {
   return fila;
 }
 
-export function listar() {
-  return db().prepare('SELECT * FROM exportaciones ORDER BY fecha_envio DESC, id DESC').all().map(aCamel);
+export async function listar() {
+  return (await todos('SELECT * FROM exportaciones ORDER BY fecha_envio DESC, id DESC')).map(aCamel);
 }
 
-export function porId(id) {
-  return aCamel(db().prepare('SELECT * FROM exportaciones WHERE id = ?').get(Number(id)));
+export async function porId(id) {
+  return aCamel(await uno('SELECT * FROM exportaciones WHERE id = ?', [Number(id)]));
 }
 
-export function crear(datos, creadoPor) {
+export async function crear(datos, creadoPor) {
   const f = normalizar(datos);
-  const r = db().prepare(
+  const r = await ejecutar(
     'INSERT INTO exportaciones (fecha_envio, oc, costo_envio, descripcion, pais_destino, '
     + 'fecha_llegada_proveedor, motivo, transportista, tracking, estado, responsable, notas, creado_por) '
-    + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(f.fecha_envio, f.oc, f.costo_envio, f.descripcion, f.pais_destino, f.fecha_llegada_proveedor,
-        f.motivo, f.transportista, f.tracking, f.estado, f.responsable, f.notas, String(creadoPor || ''));
-  tocar('app');
-  return porId(r.lastInsertRowid);
+    + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+    [f.fecha_envio, f.oc, f.costo_envio, f.descripcion, f.pais_destino, f.fecha_llegada_proveedor,
+      f.motivo, f.transportista, f.tracking, f.estado, f.responsable, f.notas, String(creadoPor || '')]
+  );
+  await tocar('app');
+  return porId(r.filas[0].id);
 }
 
-export function actualizar(id, datos) {
-  if (!porId(id)) throw error('No existe la exportación ' + id + '.', 404);
-  const f = normalizar({ ...porId(id), ...datos });
-  db().prepare(
+export async function actualizar(id, datos) {
+  const actual = await porId(id);
+  if (!actual) throw error('No existe la exportación ' + id + '.', 404);
+  const f = normalizar({ ...actual, ...datos });
+  await ejecutar(
     'UPDATE exportaciones SET fecha_envio=?, oc=?, costo_envio=?, descripcion=?, pais_destino=?, '
-    + 'fecha_llegada_proveedor=?, motivo=?, transportista=?, tracking=?, estado=?, responsable=?, notas=? WHERE id=?'
-  ).run(f.fecha_envio, f.oc, f.costo_envio, f.descripcion, f.pais_destino, f.fecha_llegada_proveedor,
-        f.motivo, f.transportista, f.tracking, f.estado, f.responsable, f.notas, Number(id));
-  tocar('app');
+    + 'fecha_llegada_proveedor=?, motivo=?, transportista=?, tracking=?, estado=?, responsable=?, notas=? WHERE id=?',
+    [f.fecha_envio, f.oc, f.costo_envio, f.descripcion, f.pais_destino, f.fecha_llegada_proveedor,
+      f.motivo, f.transportista, f.tracking, f.estado, f.responsable, f.notas, Number(id)]
+  );
+  await tocar('app');
   return porId(id);
 }
 
-export function eliminar(id) {
-  const r = db().prepare('DELETE FROM exportaciones WHERE id = ?').run(Number(id));
+export async function eliminar(id) {
+  const r = await ejecutar('DELETE FROM exportaciones WHERE id = ?', [Number(id)]);
   if (!r.changes) throw error('No existe la exportación ' + id + '.', 404);
-  tocar('app');
+  await tocar('app');
   return { id: Number(id) };
 }

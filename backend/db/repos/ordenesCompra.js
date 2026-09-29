@@ -1,4 +1,4 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, aCamel, enTransaccion, insertarLote } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -25,44 +25,41 @@ const COLUMNAS = [
 
 const EXPR_EQUIVALENTE_PEN = "(CASE WHEN moneda = 'USD' THEN total * tipo_cambio ELSE total END)";
 
+// Hoy en UTC como texto 'YYYY-MM-DD' (lo que era date('now') en SQLite):
+// fecha_emision es TEXT, así que se compara texto con texto.
+const HOY = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')";
+
 /** Carga inicial idempotente: una fila con el mismo numero_registro no se duplica. */
 export function cargarInicial(filas) {
-  return enTransaccion(base => {
-    const insertar = base.prepare(
-      'INSERT INTO ordenes_compra (' + COLUMNAS.join(', ') + ') VALUES (' +
-      COLUMNAS.map(c => '@' + c).join(', ') + ') ON CONFLICT (numero_registro) DO NOTHING'
-    );
-    let n = 0;
-    filas.forEach(f => {
-      n += insertar.run({
-        fecha_emision: f.fechaEmision,
-        codigo_sunat: f.codigoSunat || '',
-        tipo_comprobante: f.tipoComprobante || '',
-        serie: f.serie || '',
-        numero_doc: f.numeroDoc || '',
-        numero_registro: f.numeroRegistro,
-        ruc: f.ruc || '',
-        tipo_cambio: f.tipoCambio || 0,
-        proveedor: f.proveedor || '',
-        moneda: f.moneda === 'USD' ? 'USD' : 'PEN',
-        monto_me: f.montoMe || 0,
-        base_gravada: f.baseGravada || 0,
-        base_no_gravada: f.baseNoGravada || 0,
-        igv: f.igv || 0,
-        igv_no_gravado: f.igvNoGravado || 0,
-        otros: f.otros || 0,
-        percepcion: f.percepcion || 0,
-        total: f.total || 0,
-        glosa: f.glosa || ''
-      }).changes;
-    });
-    tocar();
+  return enTransaccion(async () => {
+    const n = await insertarLote('ordenes_compra', COLUMNAS, filas.map(f => ({
+      fecha_emision: f.fechaEmision,
+      codigo_sunat: f.codigoSunat || '',
+      tipo_comprobante: f.tipoComprobante || '',
+      serie: f.serie || '',
+      numero_doc: f.numeroDoc || '',
+      numero_registro: f.numeroRegistro,
+      ruc: f.ruc || '',
+      tipo_cambio: f.tipoCambio || 0,
+      proveedor: f.proveedor || '',
+      moneda: f.moneda === 'USD' ? 'USD' : 'PEN',
+      monto_me: f.montoMe || 0,
+      base_gravada: f.baseGravada || 0,
+      base_no_gravada: f.baseNoGravada || 0,
+      igv: f.igv || 0,
+      igv_no_gravado: f.igvNoGravado || 0,
+      otros: f.otros || 0,
+      percepcion: f.percepcion || 0,
+      total: f.total || 0,
+      glosa: f.glosa || ''
+    })), 'ON CONFLICT (numero_registro) DO NOTHING');
+    await tocar();
     return n;
   });
 }
 
-export function total() {
-  return db().prepare('SELECT COUNT(*) AS n FROM ordenes_compra').get().n;
+export async function total() {
+  return (await uno('SELECT COUNT(*) AS n FROM ordenes_compra')).n;
 }
 
 /** Filtros comunes a listar() y a los resúmenes: proveedor, rango de fechas, moneda y texto libre. */
@@ -74,34 +71,36 @@ function condiciones(f = {}) {
   if (f.hasta) { where.push('fecha_emision <= @hasta'); params.hasta = f.hasta; }
   if (f.moneda) { where.push('moneda = @moneda'); params.moneda = f.moneda; }
   if (f.q) {
-    where.push('(proveedor LIKE @q OR glosa LIKE @q OR numero_doc LIKE @q OR ruc LIKE @q)');
+    where.push('(proveedor ILIKE @q OR glosa ILIKE @q OR numero_doc ILIKE @q OR ruc ILIKE @q)');
     params.q = '%' + f.q + '%';
   }
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
 }
 
 /** Listado paginado, más reciente primero. */
-export function listar(f = {}) {
+export async function listar(f = {}) {
   const { sql, params } = condiciones(f);
   const pagina = Math.max(1, Number(f.pagina) || 1);
   const porPagina = Math.min(200, Math.max(1, Number(f.porPagina) || 50));
 
-  const totalFilas = db().prepare('SELECT COUNT(*) AS n FROM ordenes_compra ' + sql).get(params).n;
-  const filas = db().prepare(
-    'SELECT * FROM ordenes_compra ' + sql + ' ORDER BY fecha_emision DESC, id DESC LIMIT @limite OFFSET @offset'
-  ).all({ ...params, limite: porPagina, offset: (pagina - 1) * porPagina }).map(aCamel);
+  const totalFilas = (await uno('SELECT COUNT(*) AS n FROM ordenes_compra ' + sql, params)).n;
+  const filas = (await todos(
+    'SELECT * FROM ordenes_compra ' + sql + ' ORDER BY fecha_emision DESC, id DESC LIMIT @limite OFFSET @offset',
+    { ...params, limite: porPagina, offset: (pagina - 1) * porPagina }
+  )).map(aCamel);
 
   return { filas, total: totalFilas, pagina, porPagina };
 }
 
-function agregadoPorMoneda(sql, params) {
-  const f = db().prepare(
-    "SELECT SUM(CASE WHEN moneda = 'PEN' THEN 1 ELSE 0 END) AS comprobantesPen, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS totalPen, "
-    + "SUM(CASE WHEN moneda = 'USD' THEN 1 ELSE 0 END) AS comprobantesUsd, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS totalUsd "
-    + 'FROM ordenes_compra ' + sql
-  ).get(params);
+async function agregadoPorMoneda(sql, params) {
+  const f = await uno(
+    `SELECT SUM(CASE WHEN moneda = 'PEN' THEN 1 ELSE 0 END) AS "comprobantesPen", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS "totalPen", `
+    + `SUM(CASE WHEN moneda = 'USD' THEN 1 ELSE 0 END) AS "comprobantesUsd", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS "totalUsd" `
+    + 'FROM ordenes_compra ' + sql,
+    params
+  );
   return {
     pen: { comprobantes: f.comprobantesPen || 0, total: f.totalPen, ticketPromedio: f.comprobantesPen ? f.totalPen / f.comprobantesPen : 0 },
     usd: { comprobantes: f.comprobantesUsd || 0, total: f.totalUsd, ticketPromedio: f.comprobantesUsd ? f.totalUsd / f.comprobantesUsd : 0 }
@@ -109,27 +108,31 @@ function agregadoPorMoneda(sql, params) {
 }
 
 /** Tarjetas (separadas por moneda) y ranking de proveedores y meses (ordenados por el equivalente en soles). */
-export function resumen(f = {}) {
+export async function resumen(f = {}) {
   const { sql, params } = condiciones(f);
-  const totales = db().prepare(
-    'SELECT COUNT(*) AS comprobantes, COUNT(DISTINCT proveedor) AS proveedores FROM ordenes_compra ' + sql
-  ).get(params);
-  const porMoneda = agregadoPorMoneda(sql, params);
+  // Una consulta tras otra (sin Promise.all): dentro de una transacción todas
+  // comparten un mismo cliente de pg, que no admite consultas simultáneas.
+  const totales = await uno(
+    'SELECT COUNT(*) AS comprobantes, COUNT(DISTINCT proveedor) AS proveedores FROM ordenes_compra ' + sql, params
+  );
+  const porMoneda = await agregadoPorMoneda(sql, params);
 
-  const porProveedor = db().prepare(
+  const porProveedor = (await todos(
     'SELECT proveedor, COUNT(*) AS comprobantes, '
-    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS totalPen, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS totalUsd, "
-    + 'COALESCE(SUM(' + EXPR_EQUIVALENTE_PEN + '), 0) AS totalEquivalente '
-    + 'FROM ordenes_compra ' + sql + ' GROUP BY proveedor ORDER BY totalEquivalente DESC LIMIT 15'
-  ).all(params).map(aCamel);
+    + `COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS "totalPen", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS "totalUsd", `
+    + 'COALESCE(SUM(' + EXPR_EQUIVALENTE_PEN + '), 0) AS "totalEquivalente" '
+    + 'FROM ordenes_compra ' + sql + ' GROUP BY proveedor ORDER BY "totalEquivalente" DESC LIMIT 15',
+    params
+  )).map(aCamel);
 
-  const porMes = db().prepare(
+  const porMes = (await todos(
     'SELECT substr(fecha_emision, 1, 7) AS mes, COUNT(*) AS comprobantes, '
-    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS totalPen, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS totalUsd "
-    + 'FROM ordenes_compra ' + sql + ' GROUP BY mes ORDER BY mes'
-  ).all(params).map(aCamel);
+    + `COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS "totalPen", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS "totalUsd" `
+    + 'FROM ordenes_compra ' + sql + ' GROUP BY mes ORDER BY mes',
+    params
+  )).map(aCamel);
 
   return {
     comprobantes: totales.comprobantes,
@@ -142,17 +145,17 @@ export function resumen(f = {}) {
 }
 
 /** Los proveedores de la lista, para el selector de filtro/evolución (ordenados por el equivalente en soles). */
-export function proveedores() {
+export async function proveedores() {
   // ruc/primera/ultima: para el buscador de la sección Proveedores. "ultima"
   // ignora fechas futuras (hay comprobantes mal digitados, p. ej. año 2062).
-  return db().prepare(
+  return (await todos(
     'SELECT proveedor, MAX(ruc) AS ruc, COUNT(*) AS comprobantes, '
-    + "COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS totalPen, "
-    + "COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS totalUsd, "
-    + 'COALESCE(SUM(' + EXPR_EQUIVALENTE_PEN + '), 0) AS totalEquivalente, '
-    + "MIN(fecha_emision) AS primera, MAX(CASE WHEN fecha_emision <= date('now') THEN fecha_emision END) AS ultima "
-    + 'FROM ordenes_compra GROUP BY proveedor ORDER BY totalEquivalente DESC'
-  ).all().map(aCamel);
+    + `COALESCE(SUM(CASE WHEN moneda = 'PEN' THEN total ELSE 0 END), 0) AS "totalPen", `
+    + `COALESCE(SUM(CASE WHEN moneda = 'USD' THEN total ELSE 0 END), 0) AS "totalUsd", `
+    + 'COALESCE(SUM(' + EXPR_EQUIVALENTE_PEN + '), 0) AS "totalEquivalente", '
+    + 'MIN(fecha_emision) AS primera, MAX(CASE WHEN fecha_emision <= ' + HOY + ' THEN fecha_emision END) AS ultima '
+    + 'FROM ordenes_compra GROUP BY proveedor ORDER BY "totalEquivalente" DESC'
+  )).map(aCamel);
 }
 
 /**
@@ -161,14 +164,15 @@ export function proveedores() {
  * (errores de digitación en el registro) no cuentan como "última compra":
  * se informan aparte en `fechasFuturas`.
  */
-export function perfilProveedor(proveedor) {
-  const f = db().prepare(
+export async function perfilProveedor(proveedor) {
+  const f = await uno(
     'SELECT MAX(ruc) AS ruc, COUNT(*) AS comprobantes, MIN(fecha_emision) AS primera, '
-    + "MAX(CASE WHEN fecha_emision <= date('now') THEN fecha_emision END) AS ultima, "
-    + "SUM(CASE WHEN fecha_emision > date('now') THEN 1 ELSE 0 END) AS fechasFuturas, "
-    + 'COUNT(DISTINCT substr(fecha_emision, 1, 7)) AS mesesActivos '
-    + 'FROM ordenes_compra WHERE proveedor = ?'
-  ).get(proveedor);
+    + 'MAX(CASE WHEN fecha_emision <= ' + HOY + ' THEN fecha_emision END) AS ultima, '
+    + 'SUM(CASE WHEN fecha_emision > ' + HOY + ' THEN 1 ELSE 0 END) AS "fechasFuturas", '
+    + 'COUNT(DISTINCT substr(fecha_emision, 1, 7)) AS "mesesActivos" '
+    + 'FROM ordenes_compra WHERE proveedor = ?',
+    [proveedor]
+  );
   return {
     ruc: f.ruc || '', comprobantes: f.comprobantes || 0, primera: f.primera || null, ultima: f.ultima || null,
     fechasFuturas: f.fechasFuturas || 0, mesesActivos: f.mesesActivos || 0
@@ -182,10 +186,11 @@ export function perfilProveedor(proveedor) {
  * "evolución de precio" se lee como "cuánto cuesta en promedio cada
  * comprobante de este proveedor a lo largo del tiempo".
  */
-export function evolucionProveedor(proveedor) {
-  return db().prepare(
-    "SELECT substr(fecha_emision, 1, 7) AS mes, COUNT(*) AS comprobantes, "
-    + 'COALESCE(SUM(total), 0) AS totalNeto, COALESCE(AVG(total), 0) AS promedioNeto, moneda '
-    + 'FROM ordenes_compra WHERE proveedor = ? GROUP BY mes, moneda ORDER BY mes'
-  ).all(proveedor).map(aCamel);
+export async function evolucionProveedor(proveedor) {
+  return (await todos(
+    'SELECT substr(fecha_emision, 1, 7) AS mes, COUNT(*) AS comprobantes, '
+    + 'COALESCE(SUM(total), 0) AS "totalNeto", COALESCE(AVG(total), 0) AS "promedioNeto", moneda '
+    + 'FROM ordenes_compra WHERE proveedor = ? GROUP BY mes, moneda ORDER BY mes',
+    [proveedor]
+  )).map(aCamel);
 }

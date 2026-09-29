@@ -1,4 +1,4 @@
-import { db, aCamel, enTransaccion } from '../conexion.js';
+import { todos, uno, ejecutar, aCamel, enTransaccion } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -66,49 +66,57 @@ function normalizar(d) {
   return fila;
 }
 
-export function listar() {
-  return db().prepare('SELECT * FROM requerimientos_compra ORDER BY correlativo DESC').all().map(aCamel);
+export async function listar() {
+  return (await todos('SELECT * FROM requerimientos_compra ORDER BY correlativo DESC')).map(aCamel);
 }
 
-export function porId(id) {
-  return aCamel(db().prepare('SELECT * FROM requerimientos_compra WHERE id = ?').get(Number(id)));
+export async function porId(id) {
+  return aCamel(await uno('SELECT * FROM requerimientos_compra WHERE id = ?', [Number(id)]));
 }
 
-export function crear(datos, creadoPor) {
+export async function crear(datos, creadoPor) {
   const f = normalizar(datos);
-  return enTransaccion(base => {
-    const max = base.prepare('SELECT COALESCE(MAX(correlativo), 0) AS n FROM requerimientos_compra').get().n;
+  return enTransaccion(async () => {
+    // En SQLite la transacción ya serializaba a los escritores; en PostgreSQL
+    // (READ COMMITTED) dos altas simultáneas leerían el mismo MAX y repetirían
+    // correlativo. El candado de tabla (se suelta al COMMIT) las pone en fila
+    // sin bloquear las lecturas.
+    await ejecutar('LOCK TABLE requerimientos_compra IN EXCLUSIVE MODE');
+    const max = (await uno('SELECT COALESCE(MAX(correlativo), 0) AS n FROM requerimientos_compra')).n;
     const correlativo = max + 1;
-    const r = base.prepare(
+    const r = await ejecutar(
       'INSERT INTO requerimientos_compra (correlativo, fecha_solicitud, area_solicitante, descripcion, categoria, '
       + 'cantidad, unidad_medida, proveedor_sugerido, prioridad, fecha_requerida, estado, numero_oc, moneda, '
-      + 'costo_estimado, costo_real, observaciones, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(correlativo, f.fecha_solicitud, f.area_solicitante, f.descripcion, f.categoria, f.cantidad,
-          f.unidad_medida, f.proveedor_sugerido, f.prioridad, f.fecha_requerida, f.estado, f.numero_oc,
-          f.moneda, f.costo_estimado, f.costo_real, f.observaciones, String(creadoPor || ''));
-    tocar('app');
-    return aCamel(base.prepare('SELECT * FROM requerimientos_compra WHERE id = ?').get(r.lastInsertRowid));
+      + 'costo_estimado, costo_real, observaciones, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+      + 'RETURNING *',
+      [correlativo, f.fecha_solicitud, f.area_solicitante, f.descripcion, f.categoria, f.cantidad,
+        f.unidad_medida, f.proveedor_sugerido, f.prioridad, f.fecha_requerida, f.estado, f.numero_oc,
+        f.moneda, f.costo_estimado, f.costo_real, f.observaciones, String(creadoPor || '')]
+    );
+    await tocar('app');
+    return aCamel(r.filas[0]);
   });
 }
 
-export function actualizar(id, datos) {
-  const actual = porId(id);
+export async function actualizar(id, datos) {
+  const actual = await porId(id);
   if (!actual) throw error('No existe el requerimiento ' + id + '.', 404);
   const f = normalizar({ ...actual, ...datos });
-  db().prepare(
+  await ejecutar(
     'UPDATE requerimientos_compra SET fecha_solicitud=?, area_solicitante=?, descripcion=?, categoria=?, '
     + 'cantidad=?, unidad_medida=?, proveedor_sugerido=?, prioridad=?, fecha_requerida=?, estado=?, numero_oc=?, '
-    + 'moneda=?, costo_estimado=?, costo_real=?, observaciones=? WHERE id=?'
-  ).run(f.fecha_solicitud, f.area_solicitante, f.descripcion, f.categoria, f.cantidad, f.unidad_medida,
-        f.proveedor_sugerido, f.prioridad, f.fecha_requerida, f.estado, f.numero_oc, f.moneda,
-        f.costo_estimado, f.costo_real, f.observaciones, Number(id));
-  tocar('app');
+    + 'moneda=?, costo_estimado=?, costo_real=?, observaciones=? WHERE id=?',
+    [f.fecha_solicitud, f.area_solicitante, f.descripcion, f.categoria, f.cantidad, f.unidad_medida,
+      f.proveedor_sugerido, f.prioridad, f.fecha_requerida, f.estado, f.numero_oc, f.moneda,
+      f.costo_estimado, f.costo_real, f.observaciones, Number(id)]
+  );
+  await tocar('app');
   return porId(id);
 }
 
-export function eliminar(id) {
-  const r = db().prepare('DELETE FROM requerimientos_compra WHERE id = ?').run(Number(id));
+export async function eliminar(id) {
+  const r = await ejecutar('DELETE FROM requerimientos_compra WHERE id = ?', [Number(id)]);
   if (!r.changes) throw error('No existe el requerimiento ' + id + '.', 404);
-  tocar('app');
+  await tocar('app');
   return { id: Number(id) };
 }

@@ -18,7 +18,8 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // En Windows, import() con ruta absoluta necesita una URL file://.
 const mod = p => import(pathToFileURL(path.join(RAIZ, p)).href);
 const temporal = fs.mkdtempSync(path.join(os.tmpdir(), 'plansa-front-'));
-process.env.PLANSA_DB = path.join(temporal, 'prueba.sqlite');
+const { crearBaseTemporal } = await import('./pgTemporal.mjs');
+const borrarBase = await crearBaseTemporal();
 process.env.PLANSA_UPLOADS = path.join(temporal, 'uploads');
 
 let fallos = 0;
@@ -34,7 +35,7 @@ const { PERSONAL } = await mod('data/padron.js');
 const TOTAL_PADRON = PERSONAL.length;
 
 const { iniciar } = await import('../backend/servidor.js');
-const servidor = iniciar({ puerto: 0, silencioso: true });
+const servidor = await iniciar({ puerto: 0, silencioso: true });
 await new Promise(r => servidor.once('listening', r));
 const BASE = 'http://127.0.0.1:' + servidor.address().port;
 
@@ -45,7 +46,7 @@ const BASE = 'http://127.0.0.1:' + servidor.address().port;
 const credencialesArea = await import('../backend/db/repos/credencialesArea.js');
 const { hashClave } = await import('../backend/usuarios/claves.js');
 const CLAVE_AREA_PRUEBA = 'ClaveDeArea1';
-credencialesArea.cambiarClave('Logistica', hashClave(CLAVE_AREA_PRUEBA), { debeCambiar: false });
+await credencialesArea.cambiarClave('Logistica', hashClave(CLAVE_AREA_PRUEBA), { debeCambiar: false });
 
 // --- fetch del navegador, apuntado al servidor de prueba ---
 // Con cookie jar propia: el fetch de Node (a diferencia del de un navegador
@@ -217,7 +218,7 @@ try {
 
   await globalThis.enviarSolicitud();
   ok($('okTitle').textContent === 'Ticket ' + TICKET + ' registrado',
-     'la solicitud se guarda en SQLite y vuelve con su correlativo: ' + $('okTitle').textContent);
+     'la solicitud se guarda en la base y vuelve con su correlativo: ' + $('okTitle').textContent);
   ok($('listaParadas').innerHTML === '', 'y el formulario de paradas queda limpio para la próxima');
 
   // Consultar un ticket por id ya no es público: se verifica por la misma vía
@@ -231,9 +232,14 @@ try {
   ok(guardada.paradas.length === 1 && guardada.paradas[0].contacto === 'Recepción',
      'con la parada adicional que se cargó en el formulario');
 
-  $('qTicket').value = String(NUM);
-  globalThis.consultarTicket();
-  ok($('resTicket').innerHTML.includes(TICKET), 'el seguimiento por número la encuentra');
+  // "Seguimiento" ya no existe: se busca desde "Mis servicios", en todo el área.
+  ok(!document.getElementById('uSeguimiento'), 'la pestaña Seguimiento ya no está');
+  $('qMis').value = String(NUM);
+  await globalThis.buscarMisServicios();
+  ok($('misTickets').innerHTML.includes(TICKET), 'el buscador de Mis servicios la encuentra por número');
+  ok($('misTickets').innerHTML.includes('ticket-motivo'), 'y la tarjeta muestra el motivo al lado del REQ');
+  globalThis.limpiarBusquedaMis();
+  ok($('btnLimpiarMis').hidden && $('qMis').value === '', 'limpiar la búsqueda vuelve a los últimos 10');
   globalThis.salir();
 
   // ------------------------------------------------------------- logística
@@ -298,22 +304,49 @@ try {
   ok(!$('fBandeja').innerHTML.includes('Todos'), 'sin pestaña "Todos": ya se repite en Histórico');
   await globalThis.avanzar(TICKET); // En tránsito -> Concluido
   globalThis.tabAdmin('bandeja');
-  globalThis.setFiltroBandeja('Concluido');
-  ok($('tBandeja').innerHTML.includes(TICKET), 'recién concluido hoy, todavía aparece en la Bandeja');
-  const concluidosConHoy = ($('fBandeja').innerHTML.match(/Concluidos \((\d+)\)/) || [])[1];
+  globalThis.setFiltroBandeja('Cerrados');
+  ok($('tBandeja').innerHTML.includes(TICKET), 'recién concluido hoy, todavía aparece en la Bandeja ("Cerrados hoy")');
+  const cerrados = () => ($('fBandeja').innerHTML.match(/Cerrados hoy <span class="seg-n">(\d+)/) || [])[1];
+  const concluidosConHoy = cerrados();
+  ok(!$('fBandeja').innerHTML.includes('En curso'), 'sin el filtro "En curso", que repetía Por atender + En ruta');
+
+  // Búsqueda y filtro de acción de la bandeja.
+  globalThis.buscarEnBandeja(TICKET);
+  ok($('tBandeja').innerHTML.includes(TICKET), 'la búsqueda encuentra el ticket por su REQ');
+  globalThis.buscarEnBandeja('zzqq-no-existe');
+  ok($('tBandeja').innerHTML.includes('Nada coincide'), 'y avisa cuando nada coincide');
+  globalThis.buscarEnBandeja('');
+  globalThis.setFiltroAccionBandeja('Recoger');
+  ok(!$('tBandeja').innerHTML.includes(TICKET), '"Solo recojos" esconde un envío');
+  globalThis.setFiltroAccionBandeja('Entregar');
+  ok($('tBandeja').innerHTML.includes(TICKET), 'y "Solo envíos" lo muestra');
+  globalThis.setFiltroAccionBandeja('');
+  ok(!$('tBandeja').innerHTML.includes('<select class="mini-select"'), 'la fila ya no pide asignar vehículo');
 
   // Se lo "concluye ayer" directo en la base -sin pasar por avanzar(), que
   // pondría la hora de ahora- para probar la regla sin esperar un día real.
-  const { db } = await import('../backend/db/conexion.js');
+  const { ejecutar } = await import('../backend/db/conexion.js');
   const ayer = new Date(Date.now() - 86400000).toISOString();
-  db().prepare("UPDATE solicitudes SET ts_concluido = ? WHERE id = ?").run(ayer, TICKET);
+  await ejecutar('UPDATE solicitudes SET ts_concluido = ? WHERE id = ?', [ayer, TICKET]);
   await bd.cargar();
   globalThis.renderBandeja();
   ok(!$('tBandeja').innerHTML.includes(TICKET),
      'concluido AYER ya no aparece en la Bandeja -vive en el Histórico-');
-  const concluidosSinAyer = ($('fBandeja').innerHTML.match(/Concluidos \((\d+)\)/) || [])[1];
+  const concluidosSinAyer = cerrados();
   ok(Number(concluidosSinAyer) === Number(concluidosConHoy) - 1,
-     'y ya no cuenta en "Concluidos" tampoco');
+     'y ya no cuenta en "Cerrados hoy" tampoco');
+
+  // Materia Prima → Muestras: el formulario abre con la fecha de hoy (editable).
+  globalThis.tabAdmin('materiaPrima');
+  await globalThis.subtabMateriaPrima('muestras');
+  ok($('mpPanelMuestras').style.display === '' && $('mpPanelStock').style.display === 'none', 'la pestaña Muestras se abre dentro de Materia Prima');
+  ok($('muMetrics').innerHTML.includes('Muestras en'), 'y pinta sus indicadores');
+  globalThis.abrirNuevaMuestra();
+  const hoyLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  ok($('modalBody').innerHTML.includes('id="muFecha" type="date" value="' + hoyLocal + '"'), 'una muestra nueva trae la fecha de hoy, editable');
+  ok($('modalBody').innerHTML.includes('oninput="buscarProveedorMuestra()"'), 'y el RUC busca la razón social al escribirlo');
+  globalThis.cerrarModal();
+  await globalThis.subtabMateriaPrima('stock');
 
   $('qPadron').value = 'avalos';
   await globalThis.renderPadron();
@@ -553,7 +586,8 @@ try {
 } finally {
   servidor.close();
   const { cerrar } = await import('../backend/db/conexion.js');
-  cerrar();
+  await cerrar();
+  await borrarBase();
   fs.rmSync(temporal, { recursive: true, force: true });
 }
 

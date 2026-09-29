@@ -27,7 +27,18 @@ echo.
 rem Abre el navegador solo, sin esperar a que el servidor termine de arrancar.
 start "" cmd /c "timeout /t 2 >nul & start http://localhost:3000"
 
+rem Reinicio desde la plataforma: el boton "Reiniciar ahora" (logistica,
+rem admin) cierra el servidor con codigo 3 y esta ventana lo vuelve a
+rem levantar con el codigo nuevo. Cualquier otro cierre termina aqui.
+set PLANSA_SUPERVISADO=1
+:arrancar
 node server.js
+if %errorlevel%==3 (
+  echo.
+  echo   Reiniciando para aplicar la actualizacion...
+  echo.
+  goto arrancar
+)
 
 echo.
 echo El servidor se detuvo.

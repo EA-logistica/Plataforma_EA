@@ -15,10 +15,15 @@ import { cachearGet } from '../middleware/cache.js';
 import { usuarios } from '../usuarios/rutas.js';
 import { areas } from '../areas/rutas.js';
 import { compras } from './compras.js';
+import { mongo } from '../mongo/rutas.js';
+import { mapa } from './mapa.js';
+import * as destinos from '../db/repos/destinos.js';
+import { estadoVersion } from '../version.js';
 import { emitirTicket } from '../almacen/acceso.js';
 import { requiereSesion, requiereRol, sesionOpcional } from '../usuarios/middleware.js';
 import { log, eventosRecientes } from '../seguridad/log.js';
 import { CONFIG } from '../config.js';
+import { describir } from '../db/conexion.js';
 
 import { DESTINOS } from '#data/destinos.js';
 import { analizarDemanda } from '#shared/payback/demanda.js';
@@ -54,6 +59,13 @@ api.use(areas);
 // del coordinador de logística, ajeno a la mensajería. Solo admin.
 api.use(compras);
 
+// Lectura del MongoDB del bot de logística (solo lectura, solo admin).
+api.use(mongo);
+
+// Mapa del formulario de solicitud (origen "Otros" y destino): público,
+// como registrar un ticket, pero acotado (ver rutas/mapa.js).
+api.use(mapa);
+
 const error = (msg, status) => Object.assign(new Error(msg), { status });
 
 // ------------------------------------------------------------------ almacén
@@ -88,35 +100,38 @@ api.post('/almacen/ticket', requiereSesion, requiereRol('admin'), (req, res) => 
 // Cacheado por revisión (middleware/cache.js): con 50 pestañas abiertas, el
 // megabyte se arma y se comprime una vez por cambio, no una vez por pestaña,
 // y quien ya tiene la versión vigente recibe 304 por ETag.
-api.get('/estado', sesionOpcional, cachearGet(), (req, res) => {
+api.get('/estado', sesionOpcional, cachearGet(), asinc(async (req, res) => {
   const base = {
-    revision: ajustes.revision(),
-    versionDatos: ajustes.leer('version_datos', ''),
+    revision: await ajustes.revision(),
+    versionDatos: await ajustes.leer('version_datos', ''),
     // Aquí va el CONTEO del padrón, no el padrón. Mandarlo entero ponía los
     // 114 nombres con su DNI en la memoria de cualquier navegador que abriera
     // la página, lo que dejaba sin efecto la decisión de no listarlo en
     // pantalla: bastaba con abrir la consola. Las fichas se piden de a una
     // por /api/personal?q= y por /api/auth/solicitante/:doc.
-    totalPersonal: personal.total(),
-    destinos: DESTINOS
+    totalPersonal: await personal.total(),
+    destinos: DESTINOS,
+    // Direcciones nuevas que ya clasificó algún solicitante (Cliente o
+    // Proveedor): se suman a las sugerencias y no se vuelve a preguntar.
+    destinosRegistrados: await destinos.registrados()
   };
   if (!req.usuario) return res.json({ ...base, solicitudes: [], autorizaciones: [], adjuntos: [] });
 
   res.json({
     ...base,
-    solicitudes: solicitudes.listar(),
+    solicitudes: await solicitudes.listar(),
     // Nombre, celular y correo de quien pide acceso fuera del padrón: lo
     // mismo que /api/autorizaciones ya restringe a admin (ahí vive el "por
     // qué"). Antes esto viajaba a CUALQUIER sesión de logística -seguimiento
     // incluido- solo porque la pestaña de Padrón que lo pinta ya es
     // admin-only en el navegador; eso no evita leerlo desde la consola.
-    autorizaciones: req.usuario.rol === 'admin' ? autorizaciones.listar() : [],
-    adjuntos: adjuntos.listar()
+    autorizaciones: req.usuario.rol === 'admin' ? await autorizaciones.listar() : [],
+    adjuntos: await adjuntos.listar()
   });
-});
+}));
 
 // El testigo, para el sondeo entre pestañas: unos bytes en vez de la base.
-api.get('/revision', (req, res) => res.json({ revision: ajustes.revision() }));
+api.get('/revision', asinc(async (req, res) => res.json({ revision: await ajustes.revision() })));
 
 // -------------------------------------------------------------------- auth
 // El DNI por sí solo ya no basta para ver nada: solo detecta el área contra
@@ -128,33 +143,33 @@ api.get('/revision', (req, res) => res.json({ revision: ajustes.revision() }));
 // para probar documentos a ciegas uno tras otro.
 const frenoIngreso = limitarIntentos();
 
-api.get('/auth/solicitante/:doc', frenoIngreso, (req, res) => {
-  const p = personal.porDocumento(req.params.doc);
+api.get('/auth/solicitante/:doc', frenoIngreso, asinc(async (req, res) => {
+  const p = await personal.porDocumento(req.params.doc);
   if (!p) throw error('El documento no figura en el padrón de personal.', 404);
   res.json(p);
-});
+}));
 
 // ---------------------------------------------------------------- personal
 // Todo "Padrón y accesos" es cosa de admin: seguimiento no lo ve ni en la
 // pantalla ni por acá. Quien encuentra a alguien no identificado durante el
 // despacho lo reporta a admin, no lo agrega ni lo busca él mismo.
-api.get('/personal', requiereSesion, requiereRol('admin'), (req, res) => {
+api.get('/personal', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
   // Sin búsqueda no se devuelve el padrón completo: son datos personales de
   // todo el personal y no hay motivo para volcarlos por pedir la ruta.
   const q = req.query.q;
-  res.json(q ? personal.buscar(q) : { total: personal.total(), resultados: [] });
-});
+  res.json(q ? await personal.buscar(q) : { total: await personal.total(), resultados: [] });
+}));
 
-api.post('/personal', requiereSesion, requiereRol('admin'), (req, res) => {
-  const p = personal.agregar(req.body || {});
-  log('personal_agregado', req, 'DNI ' + p.dni + ' (' + p.nombre + ')');
+api.post('/personal', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  const p = await personal.agregar(req.body || {});
+  await log('personal_agregado', req, 'DNI ' + p.dni + ' (' + p.nombre + ')');
   res.status(201).json(p);
-});
-api.delete('/personal/:dni', requiereSesion, requiereRol('admin'), (req, res) => {
-  const r = personal.quitar(req.params.dni);
-  log('personal_eliminado', req, 'DNI ' + req.params.dni);
+}));
+api.delete('/personal/:dni', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  const r = await personal.quitar(req.params.dni);
+  await log('personal_eliminado', req, 'DNI ' + req.params.dni);
   res.json(r);
-});
+}));
 
 // ------------------------------------------------------------- solicitudes
 // El listado completo -y un ticket suelto por id- ya no son públicos: son el
@@ -162,7 +177,7 @@ api.delete('/personal/:dni', requiereSesion, requiereRol('admin'), (req, res) =>
 // llega a lo suyo por /solicitudes/mias; quien pide un ticket por id acá
 // tiene que estar en la sesión de logística (o ser un script con su token,
 // para Power BI o una hoja de cálculo, el mismo caso que /payback).
-api.get('/solicitudes', requiereSesion, cachearGet(), (req, res) => res.json(solicitudes.listar()));
+api.get('/solicitudes', requiereSesion, cachearGet(), asinc(async (req, res) => res.json(await solicitudes.listar())));
 
 /**
  * Reporte de viajes en Excel, con columnas tipadas (fecha, número) en vez del
@@ -179,7 +194,7 @@ api.get('/solicitudes/exportar', requiereSesion, asinc(async (req, res) => {
   if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) throw error('La fecha "hasta" no es válida.', 400);
   if (desde && hasta && desde > hasta) throw error('La fecha "desde" no puede ser posterior a "hasta".', 400);
 
-  const filas = filtrarPorRango(solicitudes.listar(), desde, hasta);
+  const filas = filtrarPorRango(await solicitudes.listar(), desde, hasta);
 
   const libro = new ExcelJS.Workbook();
   libro.creator = 'Plataforma EA';
@@ -202,11 +217,11 @@ api.get('/solicitudes/exportar', requiereSesion, asinc(async (req, res) => {
   res.end();
 }));
 
-api.get('/solicitudes/:id', requiereSesion, (req, res) => {
-  const s = solicitudes.porId(req.params.id);
+api.get('/solicitudes/:id', requiereSesion, asinc(async (req, res) => {
+  const s = await solicitudes.porId(req.params.id);
   if (!s) throw error('No existe el ticket ' + req.params.id + '.', 404);
   res.json(s);
-});
+}));
 
 // Crear un ticket sigue siendo autoservicio del solicitante: no lleva sesión
 // de logística (consultar uno solo ya no es público, ver arriba). Asignar
@@ -220,11 +235,11 @@ const frenoSolicitudes = limitarPeticiones({
   maximo: 20, ventanaMs: 5 * 60 * 1000, nombre: 'solicitudes',
   mensaje: 'Demasiados servicios registrados en poco tiempo. Espera unos minutos.'
 });
-api.post('/solicitudes', frenoSolicitudes, (req, res) => res.status(201).json(solicitudes.crear(req.body || {})));
-api.patch('/solicitudes/:id', requiereSesion, (req, res) =>
-  res.json(solicitudes.actualizar(req.params.id, req.body || {})));
-api.post('/solicitudes/:id/avanzar', requiereSesion, (req, res) =>
-  res.json(solicitudes.avanzar(req.params.id)));
+api.post('/solicitudes', frenoSolicitudes, asinc(async (req, res) => res.status(201).json(await solicitudes.crear(req.body || {}))));
+api.patch('/solicitudes/:id', requiereSesion, asinc(async (req, res) =>
+  res.json(await solicitudes.actualizar(req.params.id, req.body || {}))));
+api.post('/solicitudes/:id/avanzar', requiereSesion, asinc(async (req, res) =>
+  res.json(await solicitudes.avanzar(req.params.id))));
 
 /**
  * Cancela un ticket. Lo puede pedir tanto el solicitante (autoservicio, sin
@@ -247,9 +262,9 @@ const frenoCancelar = limitarPeticiones({
   maximo: 20, ventanaMs: 5 * 60 * 1000, nombre: 'cancelar',
   mensaje: 'Demasiadas cancelaciones en poco tiempo. Espera unos minutos.'
 });
-api.post('/solicitudes/:id/cancelar', frenoCancelar, sesionOpcional, (req, res) => {
+api.post('/solicitudes/:id/cancelar', frenoCancelar, sesionOpcional, asinc(async (req, res) => {
   if (!req.usuario) {
-    return res.json(solicitudes.cancelar(req.params.id, {
+    return res.json(await solicitudes.cancelar(req.params.id, {
       motivo: 'Usuario solicitó baja',
       canceladoPor: 'Solicitante',
       soloDesdeEspera: true
@@ -260,45 +275,45 @@ api.post('/solicitudes/:id/cancelar', frenoCancelar, sesionOpcional, (req, res) 
   if (!motivoValido(motivo)) throw error('Elige un motivo válido: ' + MOTIVOS_CANCELACION.join(', ') + '.', 400);
   if (motivo === 'Otros' && !String(detalle || '').trim()) throw error('Escribe el detalle del motivo.', 400);
 
-  const r = solicitudes.cancelar(req.params.id, { motivo, detalle, canceladoPor: req.usuario.usuario });
-  log('solicitud_cancelada', req, req.params.id + ' · ' + motivo + (detalle ? ': ' + detalle : ''));
+  const r = await solicitudes.cancelar(req.params.id, { motivo, detalle, canceladoPor: req.usuario.usuario });
+  await log('solicitud_cancelada', req, req.params.id + ' · ' + motivo + (detalle ? ': ' + detalle : ''));
   res.json(r);
-});
+}));
 
 // ---------------------------------------------------------- autorizaciones
 // Pedirla sigue siendo autoservicio: el solicitante cuyo DNI no está en el
 // padrón la pide él mismo, sin sesión. Verla y resolverla —"Padrón y
 // accesos"— es cosa de admin, igual que /personal.
-api.get('/autorizaciones', requiereSesion, requiereRol('admin'), (req, res) => res.json(autorizaciones.listar()));
+api.get('/autorizaciones', requiereSesion, requiereRol('admin'), asinc(async (req, res) => res.json(await autorizaciones.listar())));
 const frenoAutorizaciones = limitarPeticiones({
   maximo: 10, ventanaMs: 5 * 60 * 1000, nombre: 'autorizaciones',
   mensaje: 'Demasiados pedidos en poco tiempo. Espera unos minutos.'
 });
-api.post('/autorizaciones', frenoAutorizaciones, (req, res) =>
-  res.status(201).json(autorizaciones.pedir(req.body?.dni, req.body || {})));
-api.patch('/autorizaciones/:dni', requiereSesion, requiereRol('admin'), (req, res) => {
-  const r = autorizaciones.resolver(req.params.dni, req.body?.estado);
-  log('autorizacion_resuelta', req, 'DNI ' + req.params.dni + ' → ' + req.body?.estado);
+api.post('/autorizaciones', frenoAutorizaciones, asinc(async (req, res) =>
+  res.status(201).json(await autorizaciones.pedir(req.body?.dni, req.body || {}))));
+api.patch('/autorizaciones/:dni', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  const r = await autorizaciones.resolver(req.params.dni, req.body?.estado);
+  await log('autorizacion_resuelta', req, 'DNI ' + req.params.dni + ' → ' + req.body?.estado);
   res.json(r);
-});
+}));
 
 // ---------------------------------------------------------------- adjuntos
 // El solicitante ve los suyos en su tarjeta -sin poder tocarlos- a partir de
 // lo que ya le trajo /solicitudes/mias, no llamando a esto. Esta ruta la usa
 // solo la pantalla de logística (bandeja, "Gestionar", subir/borrar), así que
 // pide sesión igual que el resto de esa pantalla.
-api.get('/adjuntos', requiereSesion, (req, res) =>
-  res.json(req.query.ticket ? adjuntos.deTicket(req.query.ticket) : adjuntos.listar()));
+api.get('/adjuntos', requiereSesion, asinc(async (req, res) =>
+  res.json(req.query.ticket ? await adjuntos.deTicket(req.query.ticket) : await adjuntos.listar())));
 
 /**
  * Subida de una guía. multer deja el archivo en uploads/ con un nombre único y
  * aquí solo se registra dónde quedó. Si el registro falla, se borra el archivo:
  * sin esto, cada error dejaría basura en la carpeta.
  */
-api.post('/adjuntos', requiereSesion, conSubida, (req, res) => {
+api.post('/adjuntos', requiereSesion, conSubida, asinc(async (req, res) => {
   if (!req.file) throw error('No llegó ningún archivo en el campo "archivo".', 400);
   try {
-    res.status(201).json(adjuntos.registrar({
+    res.status(201).json(await adjuntos.registrar({
       ticketId: req.body.ticketId,
       archivo: req.file.filename,
       nombreOriginal: req.file.originalname,
@@ -310,11 +325,11 @@ api.post('/adjuntos', requiereSesion, conSubida, (req, res) => {
     try { fs.unlinkSync(req.file.path); } catch (_) { /* ya no estaba */ }
     throw e;
   }
-});
+}));
 
 /** Sirve el binario. El nombre en disco no se toma de la URL, sino de la base. */
-api.get('/adjuntos/:id/archivo', (req, res) => {
-  const a = adjuntos.porId(req.params.id);
+api.get('/adjuntos/:id/archivo', asinc(async (req, res) => {
+  const a = await adjuntos.porId(req.params.id);
   if (!a) throw error('No existe ese adjunto.', 404);
   const ruta = adjuntos.rutaDe(a.archivo);
   if (!fs.existsSync(ruta)) throw error('El archivo ya no está en el servidor.', 410);
@@ -323,15 +338,15 @@ api.get('/adjuntos/:id/archivo', (req, res) => {
   res.setHeader('Content-Disposition',
     'inline; filename*=UTF-8\'\'' + encodeURIComponent(a.nombreOriginal));
   res.sendFile(path.resolve(ruta));
-});
+}));
 
-api.delete('/adjuntos/:id', requiereSesion, (req, res) => {
+api.delete('/adjuntos/:id', requiereSesion, asinc(async (req, res) => {
   const motivo = String(req.body?.motivo || '').trim();
   if (motivo.length < 3) throw error('Escribe el motivo de la eliminación (mínimo 3 caracteres).', 400);
-  const r = adjuntos.eliminar(req.params.id);
-  log('adjunto_eliminado', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
+  const r = await adjuntos.eliminar(req.params.id);
+  await log('adjunto_eliminado', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
   res.json(r);
-});
+}));
 
 // ----------------------------------------------------------------- payback
 /**
@@ -343,8 +358,8 @@ api.delete('/adjuntos/:id', requiereSesion, (req, res) => {
  * cálculo, y por eso es la única "vista" de datos que se reserva a admin: es
  * el análisis de costos completo, no un ticket suelto.
  */
-api.get('/payback', requiereSesion, requiereRol('admin'), (req, res) => {
-  const demanda = analizarDemanda(solicitudes.listar());
+api.get('/payback', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  const demanda = analizarDemanda(await solicitudes.listar());
   if (!demanda.hay) throw error('Todavía no hay servicios registrados para analizar.', 409);
 
   const opciones = {
@@ -382,33 +397,57 @@ api.get('/payback', requiereSesion, requiereRol('admin'), (req, res) => {
       }
     }))
   });
-});
+}));
+
+// ----------------------------------------------------------------- versión
+// El .bat de arranque define PLANSA_SUPERVISADO y relanza el servidor si
+// sale con código 3. Sin él (npm start a mano), salir sería apagarlo del
+// todo: en ese caso no se ofrece el botón de reinicio.
+const SUPERVISADO = process.env.PLANSA_SUPERVISADO === '1';
+
+/**
+ * ¿El servidor corre el mismo código que hay en disco? Si no, hay una
+ * actualización instalada que todavía no se aplica (ver backend/version.js).
+ * Público y mínimo -dos fechas y un sí/no-: lo consulta la pantalla de
+ * logística para avisar.
+ */
+api.get('/version', (req, res) => res.json({ ...estadoVersion(), reinicioDisponible: SUPERVISADO }));
+
+api.post('/servidor/reiniciar', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  if (!SUPERVISADO) {
+    throw error('Este servidor no se inició con "Iniciar Plataforma EA": reinícialo a mano (cierra su ventana y ábrela otra vez).', 409);
+  }
+  await log('servidor_reiniciado', req, 'reinicio para aplicar una actualización');
+  res.json({ ok: true, mensaje: 'Reiniciando: la plataforma vuelve en unos segundos.' });
+  // Después de responder: si no, el navegador ve la conexión cortada como error.
+  setTimeout(() => process.emit('plansa:reiniciar'), 400);
+}));
 
 // ------------------------------------------------------------------- salud
 // Pública a propósito, para un chequeo rápido de "¿está vivo?": son conteos,
 // no dice nada de la máquina. Las rutas de archivos SÍ dicen algo de la
 // máquina (sistema operativo, usuario, si el proyecto vive en una carpeta
 // sincronizada a la nube) y se guardan para el detalle, que pide admin.
-api.get('/salud', (req, res) => res.json({
+api.get('/salud', asinc(async (req, res) => res.json({
   ok: true,
-  personal: personal.total(),
-  solicitudes: solicitudes.total(),
-  adjuntosHuerfanos: adjuntos.huerfanos().length
-}));
+  personal: await personal.total(),
+  solicitudes: await solicitudes.total(),
+  adjuntosHuerfanos: (await adjuntos.huerfanos()).length
+})));
 
-api.get('/salud/detalle', requiereSesion, requiereRol('admin'), (req, res) => res.json({
+api.get('/salud/detalle', requiereSesion, requiereRol('admin'), asinc(async (req, res) => res.json({
   ok: true,
-  baseDatos: CONFIG.baseDatos,
+  baseDatos: 'PostgreSQL ' + describir(),
   subidas: CONFIG.subidas,
-  personal: personal.total(),
-  solicitudes: solicitudes.total(),
-  adjuntosHuerfanos: adjuntos.huerfanos().length
-}));
+  personal: await personal.total(),
+  solicitudes: await solicitudes.total(),
+  adjuntosHuerfanos: (await adjuntos.huerfanos()).length
+})));
 
 // -------------------------------------------------------------- seguridad
 // Auditoría: quién entró, quién falló, qué cambió. Sirve para lo que en el
 // resto del sistema es "el log de seguridad" -ver backend/seguridad/log.js-,
 // sin necesitar herramientas aparte para leer la base a mano.
-api.get('/seguridad/eventos', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.json(eventosRecientes(req.query.limite));
-});
+api.get('/seguridad/eventos', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  res.json(await eventosRecientes(req.query.limite));
+}));

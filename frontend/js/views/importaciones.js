@@ -113,7 +113,9 @@ function pintar() {
   $('impAvisos').innerHTML = avisos.map(([c, t, d, fn]) => '<button class="aviso ' + c + '" onclick="' + fn + '"><b>' + esc(t) + '</b><span>' + esc(d) + '</span></button>').join('');
 
   const etapas = r.etapas.filter(e => e.k !== 'EN_PLANTA' && e.k !== 'COTIZACION_SOLICITADA');
-  $('impCuerpo').innerHTML = '<div class="grid2">'
+  // Orden de la página: primero la tabla (lo que se trabaja), debajo los
+  // gráficos que la resumen y al final pagos y proveedores.
+  const graficos = '<div class="grid2">'
     + '<div class="panel"><h3>En curso por etapa</h3><p class="sub">Valor puesto en planta (sin IGV) de lo que ya tiene OC y no llega. Clic para filtrar la tabla.</p>'
     + ranking(etapas, {
       nombre: e => e.t, valor: e => e.valor, texto: e => usdCorto(e.valor), detalle: e => entero(e.n) + ' OC',
@@ -130,11 +132,13 @@ function pintar() {
       tip: m => mesCorto(m.mes) + (m.futuro ? ' · programado' : m.actual ? ' · mes en curso' : ' · llegó') + '\n' + entero(m.n) + ' importaciones\n' + usd(m.valor) + ' puesto en planta',
       clic: m => 'impFiltrarMes(\'' + m.mes + '\')', aria: 'Valor de llegadas a planta por mes'
     })
-    + '</div></div>'
+    + '</div></div>';
 
-    + '<div class="panel"><div class="mp-cabecera"><div><h3>Seguimiento</h3><p class="sub" id="impResumenTabla"></p></div>'
+  $('impCuerpo').innerHTML = '<div class="panel imp-seguimiento"><div class="mp-cabecera"><div><h3>Seguimiento</h3><p class="sub" id="impResumenTabla"></p></div>'
     + '<div class="tools"><button class="btn btn-sm btn-ghost" onclick="impLimpiar()">Limpiar filtros</button></div></div>'
     + '<div id="impTabla"></div><div class="tools" id="impPaginacion" style="justify-content:center;margin-top:10px"></div></div>'
+
+    + graficos
 
     + '<div class="grid2">'
     + '<div class="panel"><h3>Calendario de pagos</h3><p class="sub">Proveedor (vencimiento de factura), impuestos al nacionalizar y servicio logístico. Montos en US$.</p><div id="impPagos"></div></div>'
@@ -174,8 +178,20 @@ function pintarPagos() {
 // ---------------------------------------------------------- tabla y filtros
 const normal = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+/**
+ * Búsqueda por palabras, en cualquier orden: "hdpe montachem", "montachem
+ * hdpe 4512" o "EBKG177" encuentran lo mismo. Cada palabra tiene que estar en
+ * algún lado -OC, proveedor, descripción o ítems, código, BL/booking, naviera,
+ * agente, país, almacén, comentarios-; sin tildes ni mayúsculas.
+ */
+const palabras = q => normal(q).split(/[\s,;]+/).filter(Boolean);
+const textoBuscable = i => normal([
+  i.oc, i.descripcion, i.proveedor, i.codigo, i.bl, i.naviera, i.agente, i.linea, i.familia, i.pais, i.incoterm,
+  i.almacen, i.etiquetaEstado, i.comentarios, i.nota, ...i.items.flatMap(x => [x.codigo, x.descripcion])
+].join(' '));
+
 function filtradas() {
-  const q = normal(filtro.q), per = rango();
+  const q = palabras(filtro.q), per = rango();
   return datos.filas.filter(i => {
     if (filtro.estado === 'curso' ? !i.enCurso : filtro.estado && i.estado !== filtro.estado) return false;
     if (filtro.familia && i.familia !== filtro.familia) return false;
@@ -187,7 +203,7 @@ function filtradas() {
     if (filtro.rapido === 'incompletas' && !i.faltantes.length) return false;
     if (filtro.periodo && !enRango(i.emision, per)) return false;
     if (filtro.mes && ((i.enCurso ? i.planta || i.eta : i.llegada) || '').slice(0, 7) !== filtro.mes) return false;
-    if (q && !normal([i.oc, i.descripcion, i.proveedor, i.codigo, i.bl, i.naviera, i.agente, i.linea, ...i.items.map(x => x.descripcion)].join(' ')).includes(q)) return false;
+    if (q.length) { const t = textoBuscable(i); if (!q.every(p => t.includes(p))) return false; }
     return true;
   });
 }
@@ -210,14 +226,24 @@ function fila(i) {
   const linea = (t, f, atraso, plan) => '<div class="tl-l' + (atraso ? ' tarde' : f && f <= hoyISO() ? ' ok' : '') + '"><span class="tl-i"></span><span class="tl-t">' + t + '</span><span class="tl-f">'
     + (f ? fechaCorta(f) : '<span class="muted">—</span>') + (atraso ? ' <b class="txt-bad">+' + atraso + 'd</b>' : '')
     + (plan && f && plan !== f ? ' <span class="muted" title="Fecha planificada">(plan ' + fechaCorta(plan) + ')</span>' : '') + '</span></div>';
-  const items = i.items.length > 1 ? i.items.length + ' ítems' : '';
+  // Varias líneas en la OC: se ven las dos primeras (lo que identifica la
+  // compra) y el resto en un "+N" con la lista en el tooltip.
+  const multi = i.items.length > 1;
+  const resto = i.items.slice(2);
+  const producto = !multi ? '<b>' + esc(i.descripcion) + '</b>'
+    : '<ul class="imp-items">' + i.items.slice(0, 2).map(x => '<li><b>' + esc(x.descripcion) + '</b>'
+        + (x.cantidad ? '<small>' + entero(x.cantidad) + ' ' + esc((x.um || '').toLowerCase()) + '</small>' : '') + '</li>').join('')
+      + (resto.length ? '<li class="imp-mas" data-tip="' + esc('Otros ' + resto.length + ' ítems\n' + resto.slice(0, 12).map(x => '· ' + x.descripcion).join('\n')
+        + (resto.length > 12 ? '\n… y ' + (resto.length - 12) + ' más' : '')) + '"><span>+' + resto.length + '</span> ' + (resto.length === 1 ? 'ítem más' : 'ítems más') + '</li>' : '')
+      + '</ul>';
+  const items = multi ? i.items.length + ' ítems' : '';
   return '<tr class="mp-fila' + (i.atraso ? ' fila-alerta' : '') + '" onclick="impDetalle(\'' + esc(i.id) + '\')">'
     + '<td>' + chip(CLASE_PRIORIDAD[i.prioridad] ?? '', i.prioridad) + '</td>'
     + '<td><div class="est-pila">' + chip(CLASE_ESTADO[i.estado] || '', i.etiquetaEstado) + '<div>' + chipPago(i) + chipDocs(i) + '</div>'
     + (i.posibleLlegada ? '<div class="muted small">ERP: ' + esc(i.ocEstadoErp) + '</div>' : '') + '</div></td>'
     + '<td class="envio" title="' + esc(ENVIOS[i.envio] || 'Vía sin definir') + '">' + (ICONO_ENVIO[i.envio] || '<span class="muted">—</span>') + '</td>'
     + '<td class="tk">' + (i.oc ? esc(i.oc) : chip('est-cot', 'Solicitud')) + '</td>'
-    + '<td class="imp-prod"><b>' + esc(i.descripcion) + '</b><span>' + esc(i.proveedor || '—') + '</span>'
+    + '<td class="imp-prod">' + producto + '<span>' + esc(i.proveedor || '—') + '</span>'
     + '<div class="imp-tags">' + [i.familia, i.linea, i.pais].filter(Boolean).map(t => '<em>' + esc(t) + '</em>').join('') + (items ? '<em>' + items + '</em>' : '')
     + (i.faltantes.length ? '<em class="falta" title="Falta: ' + esc(i.faltantes.join(', ')) + '">Faltan ' + i.faltantes.length + ' datos</em>' : '') + '</div></td>'
     + '<td class="num"><b>' + usd(i.costoPlanta) + '</b><div class="muted small">' + usd(i.valorUsd) + ' + ' + usd(i.servicioUsd) + (i.servicioEstimado ? ' est.' : '') + '</div>'

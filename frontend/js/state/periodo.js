@@ -14,10 +14,10 @@ import { fechaCorta, hoyISO } from '../utils/format.js';
 
 const CLAVE = 'plansa_periodo';
 export const OPCIONES = [
-  { k: 'mes', t: 'Este mes' },
-  { k: 'trimestre', t: 'Últimos 3 meses' },
-  { k: 'anio', t: 'Este año' },
-  { k: '12m', t: 'Últimos 12 meses' },
+  { k: 'mes', t: 'Este mes', corto: 'Mes' },
+  { k: 'trimestre', t: 'Últimos 3 meses', corto: '3 meses' },
+  { k: 'anio', t: 'Este año', corto: 'Año' },
+  { k: '12m', t: 'Últimos 12 meses', corto: '12 meses' },
   { k: 'rango', t: 'Personalizado' }
 ];
 
@@ -61,18 +61,84 @@ function guardar() {
   suscriptores.forEach(fn => { try { fn(rango()); } catch (e) { console.error(e); } });
 }
 
-export function setPeriodo(k) { estado.k = k; if (k !== 'rango') cerrarPeriodo(); guardar(); }
-export function setRangoPeriodo() { estado.k = 'rango'; estado.desde = $('perDesde').value; estado.hasta = $('perHasta').value; guardar(); }
+export function setPeriodo(k) {
+  estado.k = k;
+  seleccion = null;
+  if (k !== 'rango') { cerrarPeriodo(); mesVisto = null; }
+  guardar();
+}
 export function setCompararPeriodo(v) { estado.comparar = Boolean(v); guardar(); }
+
+// ------------------------------------------------------------ calendario
+// Como el de iOS: un mes a la vez, flechas para moverse, primer toque = desde,
+// segundo toque = hasta (y se aplica). Entre los dos, el día "desde" queda
+// marcado y el resto espera el segundo toque.
+const DIAS_SEMANA = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const NOMBRE_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+let mesVisto = null;    // 'YYYY-MM' del mes que se muestra
+let seleccion = null;   // 'YYYY-MM-DD' del primer toque, mientras falta el segundo
+
+export function perMes(delta) {
+  const [a, m] = (mesVisto || rango().hasta.slice(0, 7)).split('-').map(Number);
+  const d = new Date(Date.UTC(a, m - 1 + delta, 1));
+  mesVisto = d.toISOString().slice(0, 7);
+  pintarCalendario();
+}
+
+export function perDia(f) {
+  if (!seleccion) { seleccion = f; pintarCalendario(); return; }
+  const [desde, hasta] = seleccion <= f ? [seleccion, f] : [f, seleccion];
+  seleccion = null;
+  Object.assign(estado, { k: 'rango', desde, hasta });
+  guardar();
+}
+
+function pintarCalendario() {
+  const r = rango(), hoy = hoyISO();
+  const ym = mesVisto || r.hasta.slice(0, 7);
+  const [a, m] = ym.split('-').map(Number);
+  const primero = new Date(Date.UTC(a, m - 1, 1));
+  const diasMes = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  const hueco = (primero.getUTCDay() + 6) % 7; // lunes primero
+  const desde = seleccion || r.desde, hasta = seleccion ? '' : r.hasta;
+  let celdas = '';
+  for (let i = 0; i < hueco; i++) celdas += '<span></span>';
+  for (let d = 1; d <= diasMes; d++) {
+    const f = ym + '-' + String(d).padStart(2, '0');
+    const enRangoSel = hasta && f > desde && f < hasta;
+    const cls = [
+      f === desde ? 'ini' : '', f === hasta ? 'fin' : '', enRangoSel ? 'dentro' : '',
+      f === hoy ? 'hoy' : '', f > hoy ? 'futuro' : '',
+      hasta && desde !== hasta && f === desde ? 'con-fin' : '', hasta && desde !== hasta && f === hasta ? 'con-ini' : ''
+    ].filter(Boolean).join(' ');
+    celdas += '<button class="' + cls + '" onclick="perDia(\'' + f + '\')" aria-label="' + esc(fechaCorta(f)) + '"' + (f === desde || f === hasta ? ' aria-pressed="true"' : '') + '>' + d + '</button>';
+  }
+  $('periodoCal').innerHTML = '<div class="cal-cab"><b>' + NOMBRE_MES[m - 1] + ' ' + a + '</b>'
+    + '<span><button onclick="perMes(-1)" aria-label="Mes anterior">‹</button><button onclick="perMes(1)" aria-label="Mes siguiente">›</button></span></div>'
+    + '<div class="cal-sem">' + DIAS_SEMANA.map(x => '<span>' + x + '</span>').join('') + '</div>'
+    + '<div class="cal-dias">' + celdas + '</div>'
+    + '<div class="cal-pie">' + (seleccion ? 'Elige el día final' : '<span>' + esc(fechaCorta(r.desde)) + '</span> → <span>' + esc(fechaCorta(r.hasta)) + '</span>') + '</div>';
+}
+
+/** Queda dentro de la ventana aunque el botón esté cerca de un borde. */
+function ubicar() {
+  const p = $('periodoPopover'), b = $('btnPeriodo');
+  if (!p.getBoundingClientRect || !b.getBoundingClientRect) return;
+  const rb = b.getBoundingClientRect(), ancho = p.offsetWidth || 300;
+  const izquierda = Math.max(12, Math.min(rb.right - ancho, window.innerWidth - ancho - 12));
+  p.style.left = izquierda + 'px';
+  p.style.top = (rb.bottom + 8) + 'px';
+}
 
 export function alternarPeriodo() {
   const p = $('periodoPopover');
   const abrir = !p.classList.contains('on');
   p.classList.toggle('on', abrir);
   $('btnPeriodo').setAttribute('aria-expanded', String(abrir));
-  if (abrir) pintar();
+  if (abrir) { seleccion = null; mesVisto = null; pintar(); ubicar(); }
 }
 export function cerrarPeriodo() {
+  seleccion = null;
   $('periodoPopover').classList.remove('on');
   $('btnPeriodo').setAttribute('aria-expanded', 'false');
 }
@@ -81,8 +147,7 @@ export function pintar() {
   const r = rango();
   $('periodoTexto').textContent = r.etiqueta;
   $('periodoDetalle').textContent = fechaCorta(r.desde) + ' → ' + fechaCorta(r.hasta) + (r.comparar ? ' · vs. año anterior' : '');
-  $('periodoOpciones').innerHTML = OPCIONES.map(o => '<button class="fchip' + (o.k === estado.k ? ' on' : '') + '" onclick="setPeriodo(\'' + o.k + '\')">' + esc(o.t) + '</button>').join('');
-  $('perDesde').value = r.desde;
-  $('perHasta').value = r.hasta;
+  $('periodoOpciones').innerHTML = OPCIONES.filter(o => o.k !== 'rango').map(o => '<button class="' + (o.k === estado.k ? 'on' : '') + '" onclick="setPeriodo(\'' + o.k + '\')">' + esc(o.corto || o.t) + '</button>').join('');
   $('perComparar').checked = estado.comparar;
+  pintarCalendario();
 }

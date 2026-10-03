@@ -112,7 +112,7 @@ import { renderAbc, filtrarAbc, abcFiltrarMatriz, limpiarAbc, abcOrdenar, abcPag
 import { setPerfilDashboard, dashIr, dashImpEtapa, dashImpMes, verReporteSemanal } from './views/dashboard.js';
 // Herramientas transversales: buscador (Ctrl+K), período global, tablas, gráficos y frescura de datos.
 import { abrirBuscador, cerrarBuscador, escribirBuscador, marcarBuscador, elegirBuscador, iniciarBuscador } from './ui/buscador.js';
-import { alternarPeriodo, cerrarPeriodo, setPeriodo, setRangoPeriodo, setCompararPeriodo } from './state/periodo.js';
+import { alternarPeriodo, cerrarPeriodo, setPeriodo, setCompararPeriodo, perMes, perDia } from './state/periodo.js';
 import { menuColumnas, exportarExcel, exportarPdf, iniciarTablas } from './ui/tablas.js';
 import { iniciarTooltips } from './ui/graficos.js';
 import { iniciarFrescura } from './ui/frescura.js';
@@ -182,7 +182,7 @@ Object.assign(window, {
   renderAbc, filtrarAbc, abcFiltrarMatriz, limpiarAbc, abcOrdenar, abcPagina, exportarAbc,
   setPerfilDashboard, dashIr, dashImpEtapa, dashImpMes, verReporteSemanal,
   abrirBuscador, cerrarBuscador, escribirBuscador, marcarBuscador, elegirBuscador,
-  alternarPeriodo, setPeriodo, setRangoPeriodo, setCompararPeriodo,
+  alternarPeriodo, setPeriodo, setCompararPeriodo, perMes, perDia,
   menuColumnasTabla: menuColumnas, exportarExcelTabla: exportarExcel, exportarPdfTabla: exportarPdf
 });
 

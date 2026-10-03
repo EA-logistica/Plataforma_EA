@@ -2184,3 +2184,55 @@ td.abc-desc{min-width:300px}
 td.abc-desc span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* En celular la barra ya va justa y no hay Ctrl+K: el buscador y el período se quedan en escritorio. */
 @media (max-width:640px){.top-herramientas{display:none!important}}
+
+/* ---------- Período: calendario estilo iOS ---------- */
+.periodo-popover{position:fixed;right:auto;width:300px;max-width:calc(100vw - 24px);padding:14px 14px 12px;border-radius:16px}
+.periodo-t{margin-bottom:10px}
+.per-seg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:2px;border-radius:9px;background:var(--surface3)}
+.per-seg button{border:0;background:transparent;color:var(--text);font-size:12px;font-weight:600;padding:5px 0;border-radius:7px;transition:background-color .15s var(--ease)}
+.per-seg button.on{background:var(--surface);box-shadow:0 1px 3px rgba(16,24,40,.14)}
+.per-cal{margin-top:12px}
+.cal-cab{display:flex;align-items:center;justify-content:space-between;margin:0 2px 6px}
+.cal-cab b{font-size:14px;font-weight:700;text-transform:capitalize}
+.cal-cab span{display:flex;gap:2px}
+.cal-cab button{width:28px;height:28px;border:0;border-radius:50%;background:transparent;color:var(--primary);font-size:20px;line-height:1}
+.cal-cab button:hover{background:var(--primary-soft)}
+.cal-sem,.cal-dias{display:grid;grid-template-columns:repeat(7,1fr)}
+.cal-sem span{text-align:center;font-size:10.5px;font-weight:600;color:var(--muted2);padding:2px 0 4px}
+.cal-dias{row-gap:2px}
+.cal-dias button{position:relative;height:34px;border:0;background:transparent;color:var(--text);font-size:13px;font-variant-numeric:tabular-nums;z-index:0}
+.cal-dias button::before{content:"";position:absolute;inset:2px 4px;border-radius:50%;z-index:-1;transition:background-color .12s}
+.cal-dias button:hover::before{background:var(--surface3)}
+.cal-dias button.futuro{color:var(--muted2)}
+.cal-dias button.hoy{color:var(--primary);font-weight:800}
+/* el rango: una banda suave de punta a punta, con los extremos en círculo lleno */
+.cal-dias button.dentro{background:var(--primary-soft)}
+.cal-dias button.con-fin{background:linear-gradient(90deg,transparent 50%,var(--primary-soft) 50%)}
+.cal-dias button.con-ini{background:linear-gradient(90deg,var(--primary-soft) 50%,transparent 50%)}
+.cal-dias button.ini,.cal-dias button.fin{color:var(--on-primary);font-weight:700}
+.cal-dias button.ini::before,.cal-dias button.fin::before{background:var(--primary)}
+.cal-pie{margin-top:8px;text-align:center;font-size:12px;color:var(--muted)}
+.cal-pie span{font-family:var(--mono);color:var(--text);font-weight:600}
+.per-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line-soft);font-size:12.5px;cursor:pointer}
+.per-switch input{position:absolute;opacity:0;pointer-events:none}
+.per-switch i{position:relative;flex:none;width:38px;height:23px;border-radius:999px;background:var(--surface3);transition:background-color .18s var(--ease)}
+.per-switch i::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s var(--ease)}
+.per-switch input:checked + i{background:var(--accent)}
+.per-switch input:checked + i::after{transform:translateX(15px)}
+.per-switch input:focus-visible + i{outline:2px solid var(--primary);outline-offset:2px}
+.periodo-nota{margin-top:8px}
+
+/* ---------- Importaciones: ítems de la OC en la tabla ---------- */
+.imp-seguimiento{margin-bottom:16px}
+.imp-items{list-style:none;margin:0 0 2px;padding:0;display:grid;gap:3px}
+.imp-items li{display:flex;align-items:baseline;gap:8px;padding-left:10px;position:relative}
+.imp-items li::before{content:"";position:absolute;left:0;top:.55em;width:4px;height:4px;border-radius:50%;background:var(--muted2)}
+.imp-items li b{display:inline;font-size:12.5px;font-weight:650;line-height:1.3}
+.imp-items li small{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--muted2);white-space:nowrap}
+.imp-items li.imp-mas{font-size:11.5px;color:var(--primary);font-weight:600;cursor:help}
+.imp-items li.imp-mas::before{display:none}
+.imp-items li.imp-mas span{display:inline-grid;place-items:center;min-width:22px;height:18px;padding:0 5px;border-radius:999px;background:var(--primary-soft);border:1px solid var(--primary-line);font-family:var(--mono);font-size:11px;font-weight:700}
+
+/* El calendario debe tapar lo que tiene detrás: fondo casi opaco. */
+.periodo-popover{background:var(--surface);z-index:80}
+.tb-menu{background:var(--surface)}

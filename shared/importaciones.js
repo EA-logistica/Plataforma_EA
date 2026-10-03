@@ -89,7 +89,11 @@ export function normalizar(d) {
     id: String(d._id),
     oc: codigo(d.oc_numero),
     esSolicitud: d.es_solicitud === true || !codigo(d.oc_numero),
-    descripcion: txt(d.descripcion),
+    // "17 ítems consolidados" no identifica nada: con varias líneas, la
+    // descripción es la de la primera y cuántas más vienen.
+    descripcion: items.length > 1 && (/consolidad/i.test(txt(d.descripcion)) || !txt(d.descripcion))
+      ? items[0].descripcion + ' (+' + (items.length - 1) + (items.length === 2 ? ' ítem)' : ' ítems)')
+      : txt(d.descripcion),
     proveedor: txt(d.proveedor) || txt(erp.proveedor),
     codigo: codigo(d.codigo_producto),
     familia: txt(d.familia_nombre) || txt(erp.items?.[0]?.familia_nombre),

@@ -23,26 +23,39 @@ export const herramientas = Router();
 const soloAdmin = [requiereSesion, requiereRol('admin')];
 const error = (msg, status) => Object.assign(new Error(msg), { status });
 
-/** Texto de búsqueda → patrón ILIKE seguro (sin comodines del usuario). */
-const patron = q => '%' + q.replace(/[\\%_]/g, c => '\\' + c) + '%';
+/**
+ * Búsqueda por palabras, en cualquier orden: cada palabra tiene que aparecer
+ * en ALGÚN campo del registro ("montachem hdpe", "hdpe 4512944", un BL o un
+ * booking sueltos). Sin tildes ni mayúsculas en los dos lados.
+ */
+const SIN_TILDE = s => "translate(lower(" + s + "), 'áéíóúüñ', 'aeiouun')";
+const palabras = q => q.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .split(/[\s,;]+/).filter(Boolean).slice(0, 8)
+  .map(p => '%' + p.replace(/[\\%_]/g, c => '\\' + c) + '%');
+/** "AND (campos ILIKE p1) AND (campos ILIKE p2)…" con un parámetro por palabra. */
+const todasLasPalabras = (campos, ps) => ps.map(() => ' AND ' + SIN_TILDE(campos) + ' LIKE ?').join('');
 
 herramientas.get('/buscar', ...soloAdmin, cachearGet(), asinc(async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 80);
   if (q.length < 2) return res.json({ q, grupos: [] });
-  const p = patron(q);
+  const ps = palabras(q);
+  const primera = q.split(/\s+/)[0].replace(/[\\%_]/g, '');
+  const IMP = "concat_ws(' ', datos->>'oc', datos->>'descripcion', datos->>'proveedor', datos->>'bl', datos->>'codigo', "
+    + "datos->>'naviera', datos->>'agente', datos->>'pais', datos->>'familia', datos->>'linea', datos->>'comentarios', datos->'items'::text)";
   const [imp, oc, prod, prov] = await Promise.all([
     todos("SELECT id, datos->>'oc' AS oc, datos->>'descripcion' AS descripcion, datos->>'proveedor' AS proveedor, "
-      + "datos->>'estado' AS estado, datos->>'bl' AS bl FROM importaciones "
-      + "WHERE datos->>'oc' ILIKE ? OR datos->>'descripcion' ILIKE ? OR datos->>'proveedor' ILIKE ? OR datos->>'bl' ILIKE ? "
-      + "OR datos->>'codigo' ILIKE ? ORDER BY datos->>'emision' DESC NULLS LAST LIMIT 6", [p, p, p, p, p]),
-    todos('SELECT numero_oc AS oc, MAX(proveedor) AS proveedor, MAX(fecha_emision) AS fecha, COUNT(*) AS items, '
-      + 'MAX(descripcion_producto) AS descripcion FROM ordenes_compra_detalle WHERE numero_oc ILIKE ? '
-      + 'GROUP BY numero_oc ORDER BY MAX(fecha_emision) DESC LIMIT 5', [q.replace(/[\\%_]/g, '') + '%']),
-    todos('SELECT codigo, descripcion, familia, linea, stock, unidad_medida FROM productos '
-      + 'WHERE codigo ILIKE ? OR descripcion ILIKE ? ORDER BY (codigo ILIKE ?) DESC, stock DESC LIMIT 8', [p, p, q.replace(/[\\%_]/g, '') + '%']),
+      + "datos->>'estado' AS estado, datos->>'bl' AS bl FROM importaciones WHERE true" + todasLasPalabras(IMP, ps)
+      + " ORDER BY datos->>'emision' DESC NULLS LAST LIMIT 8", ps),
+    // Una OC del ERP se busca por su número (lo que la gente copia y pega).
+    /^\d{3,}$/.test(primera) ? todos('SELECT numero_oc AS oc, MAX(proveedor) AS proveedor, MAX(fecha_emision) AS fecha, COUNT(*) AS items, '
+      + 'MAX(descripcion_producto) AS descripcion FROM ordenes_compra_detalle WHERE numero_oc LIKE ? '
+      + 'GROUP BY numero_oc ORDER BY MAX(fecha_emision) DESC LIMIT 5', [primera + '%']) : [],
+    todos("SELECT codigo, descripcion, familia, linea, stock, unidad_medida FROM productos WHERE true"
+      + todasLasPalabras("concat_ws(' ', codigo, descripcion, familia, linea, marca)", ps)
+      + ' ORDER BY (codigo LIKE ?) DESC, stock DESC LIMIT 8', [...ps, primera + '%']),
     todos('SELECT proveedor, MAX(ruc_proveedor) AS ruc, COUNT(DISTINCT numero_oc) AS ordenes, MAX(fecha_emision) AS ultima '
-      + "FROM ordenes_compra_detalle WHERE proveedor <> '' AND (proveedor ILIKE ? OR ruc_proveedor ILIKE ?) "
-      + 'GROUP BY proveedor ORDER BY COUNT(DISTINCT numero_oc) DESC LIMIT 5', [p, p])
+      + "FROM ordenes_compra_detalle WHERE proveedor <> ''" + todasLasPalabras("concat_ws(' ', proveedor, ruc_proveedor)", ps)
+      + ' GROUP BY proveedor ORDER BY COUNT(DISTINCT numero_oc) DESC LIMIT 5', ps)
   ]);
   res.json({
     q,

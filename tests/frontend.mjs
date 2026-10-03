@@ -659,6 +659,11 @@ try {
       ok($('modalBody').innerHTML.includes('Zarpó de Houston') && $('modalBody').innerHTML.includes('Costo puesto en planta'), 'el detalle trae costo, embarque y rastreo');
       globalThis.cerrarModal();
       globalThis.impLimpiar();
+      globalThis.impBuscar('itochu inneos');
+      ok($('impTabla').innerHTML.includes('4499613') && !$('impTabla').innerHTML.includes('4512784'), 'buscar por palabras en cualquier orden (proveedor + producto)');
+      globalThis.impBuscar('NAM9320803');
+      ok($('impTabla').innerHTML.includes('4499613'), 'y por BL / booking');
+      globalThis.impLimpiar();
 
       console.log('\n-- Materia prima: ABC y reorden --');
       globalThis.tabAdmin('materiaPrima');
@@ -691,8 +696,13 @@ try {
     console.log('\n-- buscador global y período --');
     const busqueda = await (await fetch('/api/buscar?q=4499', { headers: auth })).json();
     ok(busqueda.grupos.some(g => g.tipo === 'importacion' && g.items.some(i => i.oc === '4499613')), 'el buscador encuentra la importación por número de OC');
+    const enOrden = await (await fetch('/api/buscar?q=' + encodeURIComponent('inneos itochu'), { headers: auth })).json();
+    ok(enOrden.grupos.some(g => g.tipo === 'importacion' && g.items.some(i => i.oc === '4499613')), 'el buscador global también acepta palabras en cualquier orden');
     globalThis.setPeriodo('anio');
     ok($('periodoTexto').textContent === 'Este año', 'el período global cambia y se muestra arriba');
+    ok($('periodoCal').innerHTML.includes('perDia(') && $('periodoCal').innerHTML.includes('cal-dias'), 'el período tiene calendario de un mes');
+    globalThis.perDia('2026-09-01'); globalThis.perDia('2026-09-15');
+    ok($('periodoTexto').textContent.includes('01-set-26') && $('periodoTexto').textContent.includes('15-set-26'), 'dos toques en el calendario fijan el rango');
     globalThis.setPeriodo('mes');
     const reporte = await (await fetch('/api/reportes/semanal', { headers: auth })).json();
     ok(reporte.html.includes('Reporte semanal') && reporte.html.includes('Importaciones') && !/NaN|undefined/.test(reporte.html), 'el reporte semanal se genera sin valores rotos');

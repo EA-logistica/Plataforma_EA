@@ -51,8 +51,10 @@ function locales(q) {
   const n = normal(q);
   const nav = SECCIONES.filter(([, t]) => !n || normal(t).includes(n)).slice(0, n ? 4 : 11)
     .map(([k, t]) => ({ tipo: 'nav', titulo: t, detalle: 'Ir a la sección', accion: () => window.tabAdmin(k) }));
+  // Palabras en cualquier orden, igual que el servidor.
+  const ps = n.split(/[\s,;]+/).filter(Boolean);
   const tickets = n.length < 2 ? [] : (DB.solicitudes || [])
-    .filter(s => normal([s.id, s.destino, s.nombre, s.area, s.servicio].join(' ')).includes(n)).slice(-6).reverse()
+    .filter(s => { const t = normal([s.id, s.destino, s.nombre, s.area, s.servicio, s.motivo].join(' ')); return ps.every(p => t.includes(p)); }).slice(-6).reverse()
     .map(s => ({ tipo: 'ticket', titulo: s.id + ' · ' + (s.destino || ''), detalle: [s.estado, s.nombre, fechaCorta(s.creado)].filter(Boolean).join(' · '),
       accion: () => { window.tabAdmin('historico'); window.verDetalle(s.id); } }));
   return [{ titulo: 'Secciones', items: nav }, { titulo: 'Tickets de mensajería', items: tickets }].filter(g => g.items.length);

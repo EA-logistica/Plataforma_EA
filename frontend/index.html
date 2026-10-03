@@ -55,13 +55,11 @@
       </button>
       <div class="periodo-popover" id="periodoPopover" role="dialog" aria-label="Período">
         <div class="periodo-t">Período de los indicadores</div>
-        <div class="tools" id="periodoOpciones"></div>
-        <div class="periodo-rango">
-          <label class="mp-campo"><span>Desde</span><input class="input" type="date" id="perDesde" onchange="setRangoPeriodo()"></label>
-          <label class="mp-campo"><span>Hasta</span><input class="input" type="date" id="perHasta" onchange="setRangoPeriodo()"></label>
-        </div>
-        <label class="periodo-comp"><input type="checkbox" id="perComparar" onchange="setCompararPeriodo(this.checked)"> Comparar con el mismo período del año anterior</label>
-        <p class="periodo-nota">Aplica al Dashboard y a Importaciones. Las fotos de stock y la clasificación ABC son siempre al día de hoy.</p>
+        <div class="per-seg" id="periodoOpciones" role="group" aria-label="Períodos rápidos"></div>
+        <div class="per-cal" id="periodoCal"></div>
+        <label class="per-switch"><span>Comparar con el año anterior</span>
+          <input type="checkbox" id="perComparar" onchange="setCompararPeriodo(this.checked)"><i aria-hidden="true"></i></label>
+        <p class="periodo-nota">Toca un día para el inicio y otro para el fin. Aplica al Dashboard y a Importaciones.</p>
       </div>
     </div>
   </div>  <div class="topbar-actions">
@@ -519,7 +517,7 @@
     <div class="kpis" id="impHero"></div>
     <div class="avisos" id="impAvisos"></div>
     <div class="filters mp-filtros imp-filtros">
-      <label class="mp-campo mp-campo-q"><span>Buscar</span><input class="input" id="impQ" type="search" placeholder="OC, producto, proveedor, BL, naviera…" autocomplete="off" oninput="filtrarImportaciones()"></label>
+      <label class="mp-campo mp-campo-q"><span>Buscar</span><input class="input" id="impQ" type="search" placeholder="Palabras en cualquier orden: OC, proveedor, producto, BL, booking…" autocomplete="off" oninput="filtrarImportaciones()"></label>
       <label class="mp-campo"><span>Etapa</span><select class="select" id="impEstado" onchange="filtrarImportaciones()"></select></label>
       <label class="mp-campo"><span>Familia</span><select class="select" id="impFamilia" onchange="filtrarImportaciones()"></select></label>
       <label class="mp-campo"><span>Vía</span><select class="select" id="impEnvio" onchange="filtrarImportaciones()"></select></label>

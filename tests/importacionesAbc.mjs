@@ -25,6 +25,8 @@ ok(n.oc === '4512784' && n.eta === '2026-07-28' && n.planta === '2026-07-31', 'O
 ok(n.incoterm === '', '"PENDIENTE" del bot no cuenta como dato');
 ok(normalizar(doc({ excluido: true })) === null && normalizar(doc({ fusionada_en: 'abc' })) === null, 'lo excluido o fusionado por el bot no entra');
 ok(normalizar(doc({ oc_numero: null, es_solicitud: true })).esSolicitud, 'sin OC es una solicitud');
+const consolidada = normalizar(doc({ descripcion: '3 ítems consolidados', erp: { items: [{ descripcion: 'TINTA ROJA' }, { descripcion: 'TINTA AZUL' }, { descripcion: 'THINNER' }] } }));
+ok(consolidada.descripcion === 'TINTA ROJA (+2 ítems)' && consolidada.items.length === 3, '"N ítems consolidados" se reemplaza por el primer ítem y cuántos más');
 
 console.log('\n-- importaciones: analizar --');
 const a = analizar(n, HOY, { OTRO: 0.06 });

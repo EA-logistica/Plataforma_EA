@@ -49,3 +49,14 @@ respaldos/
 
 # Accesos directos de Windows: son de cada PC, no del proyecto.
 *.lnk
+
+# Excel que el equipo deja para que la plataforma lea tal cual (homologados de
+# materia prima, etc.): datos internos del negocio, no código.
+Data_export/
+
+# Radar de Importaciones: originales SUNAT (GB, auditables por hash) y logs del
+# worker, y el entorno Python del ETL (se crea con npm run radar:instalar).
+radar-datos/
+backend/radar/etl/.venv/
+__pycache__/
+.pytest_cache/

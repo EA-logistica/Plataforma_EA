@@ -8,6 +8,8 @@ import { CONFIG } from './config.js';
 import { abrir, cerrar, describir } from './db/conexion.js';
 import { sembrar } from './db/sembrar.js';
 import { programarSincronizacion } from './mongo/sincronizar.js';
+import { iniciarRadar, detenerRadar } from './radar/worker.js';
+import { programarEnvio } from './reportes/semanal.js';
 import { api } from './rutas/index.js';
 import { noEncontrado, manejarErrores } from './middleware/errores.js';
 import { cabeceras, soloDatosPublicos } from './middleware/limites.js';
@@ -68,6 +70,9 @@ export function crearApp() {
   // flujos tienen más filo del que parece.
   app.use(compression());
 
+  // Exportar una tabla a Excel manda sus filas: una tabla completa (p. ej. la
+  // clasificación ABC, ~1500 códigos) pasa del megabyte del resto de la API.
+  app.use('/api/exportar', express.json({ limit: '12mb' }));
   app.use(express.json({ limit: '1mb' }));
   // Sin express.urlencoded(): nada en el frontend manda formularios
   // codificados así (todo va en JSON o multipart), y tenerlo montado dejaba
@@ -159,6 +164,10 @@ export async function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, sile
   await sembrar({ silencioso });
   // Fotos del ERP desde MongoDB: en segundo plano, no retrasa el arranque.
   programarSincronizacion({ silencioso });
+  // ETL del Radar de Importaciones: proceso hijo vigilado (ver radar/worker.js).
+  iniciarRadar({ silencioso });
+  // Reporte semanal por correo: solo si hay SMTP y destinatarios en .env.
+  if (!silencioso) programarEnvio();
 
   const app = crearApp();
   const servidor = app.listen(puerto, host, () => {
@@ -183,6 +192,7 @@ export async function iniciar({ puerto = CONFIG.puerto, host = CONFIG.host, sile
     if (apagando) return;
     apagando = true;
     if (!silencioso) console.log('\n  ' + senal + ': cerrando…');
+    detenerRadar();
     const salir = codigo => { cerrar().catch(() => { /* ya cerrada */ }).finally(() => process.exit(codigo)); };
     servidor.close(() => salir(codigoSalida));
     servidor.closeIdleConnections?.();

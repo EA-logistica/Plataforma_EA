@@ -184,6 +184,7 @@ export function salir() {
   $('viewUser').classList.remove('on');
   $('viewAdmin').classList.remove('on');
   $('session').style.display = 'none';
+  $('topHerramientas').hidden = true;
   $('loginStage').style.display = 'grid';
   $('btnLogisticaToggle').style.display = '';
   $('dniInput').value = '';

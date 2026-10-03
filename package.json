@@ -10,10 +10,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node tests/payback.mjs && node tests/api.mjs && node tests/frontend.mjs",
+    "test": "node tests/payback.mjs && node tests/importacionesAbc.mjs && node tests/api.mjs && node tests/frontend.mjs",
     "db:reiniciar": "node backend/db/sembrar.js --forzar",
     "db:importar-sqlite": "node backend/db/importarSqlite.js",
-    "db:respaldo": "node backend/db/respaldar.js"
+    "db:respaldo": "node backend/db/respaldar.js",
+    "radar:importar": "node backend/radar/importar.js",
+    "radar:instalar": "node backend/radar/instalar.js",
+    "radar:test": "node backend/radar/instalar.js --probar"
   },
   "imports": {
     "#shared/*": "./shared/*",
@@ -25,6 +28,7 @@
     "express": "^4.21.2",
     "mongodb": "^7.7.0",
     "multer": "^1.4.5-lts.1",
+    "nodemailer": "^7.0.13",
     "pg": "^8.23.0"
   }
 }

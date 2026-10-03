@@ -1,4 +1,4 @@
-import { todos, uno, aCamel, enTransaccion, insertarLote } from '../conexion.js';
+import { todos, uno, ejecutar, aCamel, enTransaccion, insertarLote } from '../conexion.js';
 import { tocar } from './ajustes.js';
 
 /**
@@ -24,7 +24,7 @@ import { tocar } from './ajustes.js';
 const COLUMNAS = [
   'codigo', 'codigo_alterno', 'descripcion', 'unidad_medida', 'familia', 'linea', 'marca', 'modelo',
   'peso', 'origen', 'tipo_producto', 'estado', 'ubicacion', 'stock_minimo', 'lead_time', 'stock',
-  'tiene_ficha_tecnica', 'tiene_materia_prima'
+  'tiene_ficha_tecnica', 'tiene_materia_prima', 'fecha_registro'
 ];
 
 export function cargarInicial(filas) {
@@ -52,7 +52,8 @@ export function cargarInicial(filas) {
         lead_time: p.leadTime || 0,
         stock: p.stock || 0,
         tiene_ficha_tecnica: p.tieneFichaTecnica || 'NO',
-        tiene_materia_prima: p.tieneMateriaPrima || 'NO'
+        tiene_materia_prima: p.tieneMateriaPrima || 'NO',
+        fecha_registro: p.fechaRegistro || ''
       });
     }
     await insertarLote('productos', COLUMNAS, [...porCodigo.values()],
@@ -63,6 +64,25 @@ export function cargarInicial(filas) {
     return filas.length;
   });
 }
+
+/**
+ * Anota los códigos que la plataforma ve por primera vez (productos_alta):
+ * es la fecha de alta de respaldo cuando el ERP no trae fecha_registro. La
+ * primera vez la tabla está vacía y todo el catálogo entra sin fecha -no es
+ * "nuevo", es lo que ya había-; desde ahí, cada código que aparece queda con
+ * el día en que llegó. Devuelve cuántos códigos nuevos entraron.
+ */
+export async function registrarAltas() {
+  const base = Number((await uno('SELECT COUNT(*) AS n FROM productos_alta')).n) === 0;
+  const r = await ejecutar(
+    "INSERT INTO productos_alta (codigo, visto_en) SELECT codigo, " + (base ? "''" : "to_char(now(), 'YYYY-MM-DD')")
+    + ' FROM productos ON CONFLICT (codigo) DO NOTHING'
+  );
+  return base ? 0 : r.changes;
+}
+
+/** Fecha de alta de un código: la del ERP y, si no trae, la primera vez que se vio. */
+export const SQL_FECHA_ALTA = "COALESCE(NULLIF(p.fecha_registro, ''), a.visto_en, '')";
 
 export async function total() {
   return (await uno('SELECT COUNT(*) AS n FROM productos')).n;

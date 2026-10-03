@@ -1,5 +1,6 @@
 import { todos, uno, ejecutar, aCamel, enTransaccion } from '../conexion.js';
 import { tocar } from './ajustes.js';
+import { coincidencias } from '#shared/homologados.js';
 
 /**
  * Muestras de materia prima que llegan al almacén (pestaña "Muestras" de
@@ -13,11 +14,20 @@ import { tocar } from './ajustes.js';
  *
  * El subtotal no se guarda: es cantidad × precio y se calcula al leer, así
  * nunca queda desalineado si se corrige uno de los dos.
+ *
+ * Código interno: si no se escribe, se detecta por la descripción contra el
+ * catálogo de materia prima del ERP (shared/homologados.js, coincidencias())
+ * y queda con codigo_auto = 1. Solo se asigna cuando la coincidencia es
+ * clara; si no, queda vacío y el formulario ofrece los candidatos. Las que
+ * quedan vacías se reintentan en cada sincronización con Mongo
+ * (completarCodigos): el material nuevo suele darse de alta después de que
+ * llega la muestra.
  */
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
 
-export const ESTADOS = ['Recibida', 'En evaluación', 'Aprobada', 'Rechazada'];
+export const ESTADOS = ['Recibida', 'En evaluación', 'Aprobada', 'Aprobada c/restricción', 'Rechazada'];
+const APROBADAS = new Set(['Aprobada', 'Aprobada c/restricción']);
 const LARGO_MAX = { descripcion: 300, familia: 120, proveedor: 200, observaciones: 800, codigoProducto: 30 };
 
 const numero = (v, campo) => {
@@ -44,6 +54,7 @@ function normalizar(d) {
     descripcion: String(d.descripcion || '').trim(),
     familia: String(d.familia || '').trim().toUpperCase(),
     codigo_producto: String(d.codigoProducto || '').trim(),
+    codigo_auto: d.codigoAuto ? 1 : 0,
     cantidad_kg: numero(d.cantidadKg, 'cantidad'),
     precio_kg: numero(d.precioKg, 'precio por kg'),
     moneda: d.moneda === 'PEN' ? 'PEN' : 'USD',
@@ -61,7 +72,46 @@ function normalizar(d) {
   return f;
 }
 
-const conSubtotal = m => m && ({ ...m, subtotal: Math.round(m.cantidadKg * m.precioKg * 100) / 100 });
+const conSubtotal = m => m && ({ ...m, codigoAuto: Boolean(m.codigoAuto), subtotal: Math.round(m.cantidadKg * m.precioKg * 100) / 100 });
+
+const MP = "('MATERIA PRIMA', 'MATERIA PRIMA - TINTAS')";
+
+/** Catálogo de materia prima del ERP contra el que se emparejan las descripciones. */
+async function catalogoMp() {
+  return todos('SELECT codigo, descripcion, linea, unidad_medida, stock FROM productos WHERE familia IN ' + MP);
+}
+
+/** Candidatos de código para una descripción (lo que ofrece el formulario). */
+export async function sugerirCodigos(descripcion) {
+  const d = String(descripcion || '').trim();
+  if (d.length < 3) return { candidatos: [], seguro: false };
+  const r = coincidencias(d, await catalogoMp());
+  return { ...r, candidatos: r.candidatos.map(aCamel) };
+}
+
+/** Si la fila no trae código, lo pone cuando la coincidencia es clara. */
+function detectarCodigo(f, catalogo) {
+  if (f.codigo_producto) return f;
+  const r = coincidencias(f.descripcion, catalogo, 2);
+  if (r.seguro) { f.codigo_producto = r.candidatos[0].codigo; f.codigo_auto = 1; }
+  return f;
+}
+
+/** Las muestras sin código: se reintenta emparejarlas (tras cada sincronización con Mongo). */
+export async function completarCodigos() {
+  const sinCodigo = await todos("SELECT id, descripcion FROM muestras_mp WHERE codigo_producto = ''");
+  if (!sinCodigo.length) return 0;
+  const catalogo = await catalogoMp();
+  let n = 0;
+  for (const m of sinCodigo) {
+    const f = detectarCodigo({ descripcion: m.descripcion, codigo_producto: '' }, catalogo);
+    if (!f.codigo_producto) continue;
+    await ejecutar("UPDATE muestras_mp SET codigo_producto = ?, codigo_auto = 1 WHERE id = ? AND codigo_producto = ''", [f.codigo_producto, m.id]);
+    n++;
+  }
+  if (n) await tocar();
+  return n;
+}
 
 /** Nombre del proveedor por su RUC, tomado del historial de OC (si le hemos comprado alguna vez). */
 export async function proveedorPorRuc(ruc) {
@@ -86,7 +136,7 @@ export async function porId(id) {
   return conSubtotal(aCamel(await uno('SELECT * FROM muestras_mp WHERE id = ?', [Number(id)])));
 }
 
-const COLS = ['fecha_llegada', 'ruc_proveedor', 'proveedor', 'descripcion', 'familia', 'codigo_producto',
+const COLS = ['fecha_llegada', 'ruc_proveedor', 'proveedor', 'descripcion', 'familia', 'codigo_producto', 'codigo_auto',
   'cantidad_kg', 'precio_kg', 'moneda', 'estado', 'observaciones'];
 
 async function insertar(f, creadoPor) {
@@ -98,7 +148,7 @@ async function insertar(f, creadoPor) {
 }
 
 export async function crear(datos, creadoPor) {
-  const f = await completarProveedor(normalizar(datos));
+  const f = detectarCodigo(await completarProveedor(normalizar(datos)), await catalogoMp());
   const id = await insertar(f, creadoPor);
   await tocar();
   return porId(id);
@@ -112,8 +162,9 @@ export async function crearLote(filas, creadoPor) {
   if (!Array.isArray(filas) || !filas.length) throw error('No llegó ninguna fila.');
   if (filas.length > 500) throw error('Son demasiadas filas de una vez (máximo 500).');
   const normalizadas = [];
+  const catalogo = await catalogoMp();
   for (let i = 0; i < filas.length; i++) {
-    try { normalizadas.push(await completarProveedor(normalizar(filas[i]))); }
+    try { normalizadas.push(detectarCodigo(await completarProveedor(normalizar(filas[i])), catalogo)); }
     catch (e) { throw error('Fila ' + (i + 1) + ': ' + e.message); }
   }
   const ids = await enTransaccion(async () => {
@@ -130,6 +181,11 @@ export async function actualizar(id, datos) {
   if (!actual) throw error('No existe la muestra ' + id + '.', 404);
   const f = normalizar({ ...actual, ...datos });
   if (!('proveedor' in datos) || f.ruc_proveedor !== actual.rucProveedor) await completarProveedor(f);
+  // Código escrito o elegido a mano: manda. Si era automático y cambió la
+  // descripción, se vuelve a detectar.
+  if ('codigoProducto' in datos && f.codigo_producto !== actual.codigoProducto) f.codigo_auto = 0;
+  else if (actual.codigoAuto && f.descripcion !== actual.descripcion) { f.codigo_producto = ''; f.codigo_auto = 0; }
+  detectarCodigo(f, await catalogoMp());
   await ejecutar(
     'UPDATE muestras_mp SET ' + COLS.map(c => c + ' = ?').join(', ') + ', actualizado_en = ahora_txt() WHERE id = ?',
     [...COLS.map(c => f[c]), Number(id)]
@@ -199,7 +255,8 @@ export async function resumen(mesPedido) {
 
   // Embudo de evaluación (sobre el año).
   const estados = Object.fromEntries(ESTADOS.map(e => [e, delAnio.filter(x => x.estado === e).length]));
-  const evaluadas = estados['Aprobada'] + estados['Rechazada'];
+  const aprobadas = estados['Aprobada'] + estados['Aprobada c/restricción'];
+  const evaluadas = aprobadas + estados['Rechazada'];
   const pendientes = todas.filter(x => x.estado === 'Recibida' || x.estado === 'En evaluación')
     .map(x => ({ id: x.id, descripcion: x.descripcion, proveedor: x.proveedor, fechaLlegada: x.fechaLlegada,
       dias: Math.max(0, Math.floor((hoy - new Date(x.fechaLlegada + 'T00:00:00')) / 86400000)) }))
@@ -228,7 +285,7 @@ export async function resumen(mesPedido) {
     const costo = costoDe(familia);
     return {
       familia, ...acumular(lista),
-      aprobadas: lista.filter(x => x.estado === 'Aprobada').length,
+      aprobadas: lista.filter(x => APROBADAS.has(x.estado)).length,
       precioPromedioUsd: precio, costoStockUsd: costo,
       diferenciaPct: precio != null && costo ? (precio - costo) / costo * 100 : null
     };
@@ -242,7 +299,7 @@ export async function resumen(mesPedido) {
   }
   const porProveedor = [...proveedores].map(([k, lista]) => ({
     ruc: lista[0].rucProveedor, proveedor: lista.find(x => x.proveedor)?.proveedor || (lista[0].rucProveedor ? 'RUC ' + k : k),
-    ...acumular(lista), aprobadas: lista.filter(x => x.estado === 'Aprobada').length
+    ...acumular(lista), aprobadas: lista.filter(x => APROBADAS.has(x.estado)).length
   })).sort((a, b) => b.muestras - a.muestras || b.kg - a.kg).slice(0, 10);
 
   return {
@@ -253,7 +310,7 @@ export async function resumen(mesPedido) {
     anioActual: acumular(delAnio),
     proveedoresNuevos,
     porMes, estados,
-    tasaAprobacion: evaluadas ? estados['Aprobada'] / evaluadas * 100 : null,
+    tasaAprobacion: evaluadas ? aprobadas / evaluadas * 100 : null,
     pendientes: pendientes.slice(0, 8), totalPendientes: pendientes.length,
     porFamilia, porProveedor
   };

@@ -1,5 +1,6 @@
 import { todos, uno, ejecutar, insertarLote, aCamel, enTransaccion } from '../conexion.js';
 import { tocar } from './ajustes.js';
+import { SQL_FECHA_ALTA } from './productos.js';
 
 /**
  * Stock valorizado de materia prima (data/materiaPrimaStock.js): es una foto
@@ -155,12 +156,51 @@ export async function productosDeAlmacen(almacen, tipo) {
   )).map(aCamel);
 }
 
+const MP = "('MATERIA PRIMA', 'MATERIA PRIMA - TINTAS')";
+
+/**
+ * Búsqueda por código o descripción. Primero lo que tiene stock; después,
+ * los códigos de materia prima del catálogo que no tienen stock -los recién
+ * dados de alta en el ERP, sobre todo-, para que también se encuentren.
+ */
 export async function buscarProductos(q) {
-  return (await todos(
+  const conStock = (await todos(
     'SELECT codigo, MAX(descripcion) AS descripcion, MAX(categoria) AS categoria, MAX(familia) AS familia, '
     + 'unidad_medida, COUNT(DISTINCT almacen) AS almacenes, SUM(stock) AS stock, COALESCE(SUM(valorizado_usd), 0) AS "valorizadoUsd" '
     + 'FROM materia_prima_stock WHERE codigo ILIKE @q OR descripcion ILIKE @q '
     + 'GROUP BY codigo, unidad_medida ORDER BY "valorizadoUsd" DESC LIMIT 50',
     { q: '%' + q + '%' }
+  )).map(aCamel);
+  if (conStock.length >= 50) return conStock;
+  const sinStock = (await todos(
+    "SELECT p.codigo, p.descripcion, 'SIN STOCK' AS categoria, p.linea AS familia, p.unidad_medida, "
+    + '0 AS almacenes, 0 AS stock, 0 AS "valorizadoUsd" '
+    + 'FROM productos p WHERE p.familia IN ' + MP + ' AND (p.codigo ILIKE @q OR p.descripcion ILIKE @q) '
+    + 'AND NOT EXISTS (SELECT 1 FROM materia_prima_stock s WHERE s.codigo = p.codigo) '
+    + 'ORDER BY p.codigo DESC LIMIT ' + (50 - conStock.length),
+    { q: '%' + q + '%' }
+  )).map(aCamel);
+  return [...conStock, ...sinStock];
+}
+
+/**
+ * Códigos de materia prima dados de alta en los últimos `dias` (fecha del
+ * ERP o, si no la trae, la primera vez que la plataforma los vio), tengan o
+ * no stock todavía, con la última muestra registrada para ese código.
+ */
+export async function codigosNuevos(dias = 90) {
+  const n = Math.min(Math.max(Math.trunc(Number(dias)) || 90, 1), 730);
+  const desde = new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  return (await todos(
+    'SELECT p.codigo, p.descripcion, p.familia AS tipo, p.linea, p.unidad_medida, ' + SQL_FECHA_ALTA + ' AS fecha_alta, '
+    + 'COALESCE(s.stock, 0) AS stock, COALESCE(s.valorizado, 0) AS valorizado_usd, '
+    + 'm.estado AS estado_muestra, m.fecha_llegada AS fecha_muestra '
+    + 'FROM productos p LEFT JOIN productos_alta a ON a.codigo = p.codigo '
+    + 'LEFT JOIN (SELECT codigo, SUM(stock) AS stock, SUM(valorizado_usd) AS valorizado FROM materia_prima_stock GROUP BY codigo) s ON s.codigo = p.codigo '
+    + 'LEFT JOIN LATERAL (SELECT estado, fecha_llegada FROM muestras_mp WHERE codigo_producto = p.codigo '
+    + '  ORDER BY fecha_llegada DESC, id DESC LIMIT 1) m ON true '
+    + 'WHERE p.familia IN ' + MP + ' AND ' + SQL_FECHA_ALTA + ' >= @desde '
+    + 'ORDER BY fecha_alta DESC, p.codigo DESC LIMIT 300',
+    { desde }
   )).map(aCamel);
 }

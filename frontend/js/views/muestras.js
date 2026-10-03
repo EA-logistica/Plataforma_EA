@@ -4,6 +4,8 @@ import { toast } from '../utils/toast.js';
 import * as api from '../api/estado.js';
 import { abrirModal, cerrarModal, confirmarEliminacion } from './dispatch.js';
 import { renderMateriaPrima } from './materiaPrima.js';
+import { renderHomologados } from './homologados.js';
+import { renderAbc } from './abc.js';
 
 /**
  * Pestaña "Muestras" de Materia Prima: registro de las muestras que llegan al
@@ -13,8 +15,11 @@ import { renderMateriaPrima } from './materiaPrima.js';
  * (backend/db/repos/muestrasMp.js, resumen()); aquí solo se pintan.
  */
 
-const ESTADOS = ['Recibida', 'En evaluación', 'Aprobada', 'Rechazada'];
-const CLASE_ESTADO = { 'Recibida': 'st-espera', 'En evaluación': 'st-transito', 'Aprobada': 'st-concluido', 'Rechazada': 'st-cancelado' };
+// "Aprobada", "Aprobada c/restricción" y "Rechazada" pasan a la pestaña Homologados (ver backend/db/repos/homologadosMp.js).
+const ESTADOS = ['Recibida', 'En evaluación', 'Aprobada', 'Aprobada c/restricción', 'Rechazada'];
+const CLASE_ESTADO = {
+  'Recibida': 'st-espera', 'En evaluación': 'st-transito', 'Aprobada': 'st-concluido', 'Aprobada c/restricción': 'st-restriccion', 'Rechazada': 'st-cancelado'
+};
 const FAMILIAS_BASE = ['HDPE SOPLADO', 'HDPE INYECCION', 'PP COPO', 'PP HOMO', 'PP RANDOM', 'LLDPE', 'PETG', 'PVC', 'MASTERBATCH', 'PIGMENTOS', 'ADITIVOS'];
 
 let muestras = [];
@@ -39,8 +44,14 @@ export function subtabMateriaPrima(k = subtab) {
   subtab = k;
   $('mpSubStock').classList.toggle('on', k === 'stock');
   $('mpSubMuestras').classList.toggle('on', k === 'muestras');
+  $('mpSubHomologados').classList.toggle('on', k === 'homologados');
+  $('mpSubAbc').classList.toggle('on', k === 'abc');
   $('mpPanelStock').style.display = k === 'stock' ? '' : 'none';
   $('mpPanelMuestras').style.display = k === 'muestras' ? '' : 'none';
+  $('mpPanelHomologados').style.display = k === 'homologados' ? '' : 'none';
+  $('mpPanelAbc').style.display = k === 'abc' ? '' : 'none';
+  if (k === 'homologados') return renderHomologados();
+  if (k === 'abc') return renderAbc();
   return k === 'stock' ? renderMateriaPrima() : renderMuestras();
 }
 
@@ -169,7 +180,11 @@ export function filtrarMuestras() {
     + lista.map(m => '<tr>'
       + '<td class="nowrap">' + fechaCorta(m.fechaLlegada) + '</td>'
       + '<td class="cell-2">' + esc(corta(m.proveedor || '—', 34)) + '<span>' + (m.rucProveedor ? 'RUC ' + esc(m.rucProveedor) : 'Sin RUC') + '</span></td>'
-      + '<td class="cell-2">' + esc(m.descripcion) + (m.observaciones ? '<span>' + esc(corta(m.observaciones, 60)) + '</span>' : '') + '</td>'
+      + '<td class="cell-2">' + esc(m.descripcion)
+      + '<span>' + (m.codigoProducto
+        ? 'Cód. <b class="mu-codigo">' + esc(m.codigoProducto) + '</b>' + (m.codigoAuto ? ' · detectado por la descripción' : '')
+        : '<span class="txt-bad">Sin código interno</span> · Editar para elegirlo')
+      + (m.observaciones ? ' · ' + esc(corta(m.observaciones, 60)) : '') + '</span></td>'
       + '<td>' + esc(m.familia || '—') + '</td>'
       + '<td class="num">' + kg(m.cantidadKg) + '</td>'
       + '<td class="num">' + (m.precioKg ? dinero(m.precioKg, m.moneda) : '<span class="muted">Sin costo</span>') + '</td>'
@@ -201,7 +216,11 @@ function formularioHTML(m) {
     + '<div class="field"><label for="muProveedor">Razón social</label>'
     + '<input class="input" id="muProveedor" placeholder="Se completa sola con el RUC" value="' + v('proveedor') + '"></div>'
     + '<div class="field"><label for="muDescripcion">Descripción del material <span class="req">*</span></label>'
-    + '<input class="input" id="muDescripcion" placeholder="Ej.: HDPE SOPLADO SNETOR HD-5502 (MUESTRA)" value="' + v('descripcion') + '"></div>'
+    + '<input class="input" id="muDescripcion" placeholder="Ej.: HDPE SOPLADO SNETOR HD-5502 (MUESTRA)" value="' + v('descripcion') + '" oninput="detectarCodigoMuestra()"></div>'
+    + '<div class="field"><label for="muCodigo">Código interno (ERP)</label>'
+    + '<input class="input" id="muCodigo" inputmode="numeric" maxlength="30" placeholder="Se detecta solo por la descripción" value="' + v('codigoProducto') + '" oninput="this.dataset.manual=1">'
+    + '<div class="hint" id="muCodigoAyuda">Al escribir la descripción se busca en el catálogo de materia prima del ERP.</div>'
+    + '<div id="muCandidatos" class="mu-candidatos"></div></div>'
     + '<div class="row">'
     + '<div class="field"><label for="muFamilia">Familia</label>'
     + '<input class="input" id="muFamilia" list="muFamilias" placeholder="HDPE SOPLADO" value="' + v('familia') + '">'
@@ -238,6 +257,44 @@ export function editarMuestra(id) {
   const m = muestras.find(x => x.id === id); if (!m) return;
   abrirModal('Editar muestra', formularioHTML(m));
   subtotalMuestra();
+  if (!m.codigoProducto) detectarCodigoMuestra(true);
+}
+
+// ------------------------------------------------ código interno por descripción
+let codigoPedido = 0;
+let codigoTimer = null;
+
+/**
+ * Busca en el catálogo de materia prima del ERP el código que corresponde a
+ * la descripción. Si la coincidencia es clara y nadie escribió el código a
+ * mano, lo completa; si hay duda, deja los candidatos para elegir con un clic.
+ */
+export function detectarCodigoMuestra(ya = false) {
+  clearTimeout(codigoTimer);
+  codigoTimer = setTimeout(async () => {
+    const desc = $('muDescripcion')?.value.trim() || '';
+    if (desc.length < 4) { $('muCandidatos').innerHTML = ''; return; }
+    const n = ++codigoPedido;
+    let r;
+    try { r = await api.sugerirCodigosMuestra(desc); } catch (_) { return; }
+    if (n !== codigoPedido || !$('muCodigo')) return;
+    const inp = $('muCodigo');
+    const manual = inp.dataset.manual === '1';
+    if (r.seguro && !manual) inp.value = r.candidatos[0].codigo;
+    $('muCodigoAyuda').textContent = !r.candidatos.length ? 'No se encontró en el catálogo del ERP: escribe el código si ya lo tiene.'
+      : r.seguro && !manual ? '✓ Detectado en el catálogo del ERP. Puedes cambiarlo eligiendo otro.'
+        : 'Hay más de un candidato: elige el que corresponde.';
+    $('muCandidatos').innerHTML = r.candidatos.map(c => '<button type="button" class="mu-candidato' + (c.codigo === inp.value ? ' on' : '') + '" onclick="elegirCodigoMuestra(\'' + esc(c.codigo) + '\')">'
+      + '<span>' + esc(c.descripcion) + '<small>' + esc(c.linea || 'Sin línea') + ' · stock ' + (Number(c.stock) || 0).toLocaleString('es-PE') + ' ' + esc(c.unidadMedida || '') + ' · coincidencia ' + Math.round(c.puntaje * 100) + '%</small></span>'
+      + '<b>' + esc(c.codigo) + '</b></button>').join('');
+  }, ya ? 0 : 350);
+}
+
+export function elegirCodigoMuestra(codigo) {
+  $('muCodigo').value = codigo;
+  $('muCodigo').dataset.manual = '1';
+  document.querySelectorAll('.mu-candidato').forEach(b => b.classList.toggle('on', b.querySelector('b').textContent === codigo));
+  $('muCodigoAyuda').textContent = '✓ Código elegido.';
 }
 
 export function subtotalMuestra() {
@@ -272,7 +329,7 @@ export async function buscarProveedorMuestra() {
 export async function guardarMuestra(id, otra = false) {
   const datos = {
     fechaLlegada: $('muFecha').value, rucProveedor: $('muRuc').value, proveedor: $('muProveedor').value,
-    descripcion: $('muDescripcion').value, familia: $('muFamilia').value, estado: $('muEstadoF').value,
+    descripcion: $('muDescripcion').value, codigoProducto: $('muCodigo').value.trim(), familia: $('muFamilia').value, estado: $('muEstadoF').value,
     cantidadKg: $('muCantidad').value, precioKg: $('muPrecio').value || 0, moneda: $('muMoneda').value,
     observaciones: $('muObs').value
   };

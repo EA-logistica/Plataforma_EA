@@ -17,6 +17,9 @@ import { subtabMateriaPrima } from './muestras.js';
 import { renderProveedores } from './proveedores.js';
 import { renderServiciosLogistica } from './serviciosLogistica.js';
 import { abrirAlmacen } from './almacen.js';
+import { renderRadar } from './radar/index.js';
+import { renderImportaciones } from './importaciones.js';
+import { pintar as pintarPeriodo } from '../state/periodo.js';
 import { cerrarMenu } from '../ui/sidebar.js';
 import { cerrarMenuCuenta } from '../ui/cuentaPopover.js';
 
@@ -30,9 +33,16 @@ export function tabUser(k) {
 
 /** Pestañas reservadas a rol admin: dashboard, payback, padrón, usuarios y el grupo de compras/logística. */
 const TABS_SOLO_ADMIN = [
-  'dashboard', 'payback', 'padron', 'usuarios',
+  'dashboard', 'payback', 'padron', 'usuarios', 'radar', 'importaciones',
   'almacen', 'exportaciones', 'productos', 'materiaPrima', 'requerimientos', 'ordenesCompra', 'proveedores', 'servicios'
 ];
+
+/**
+ * Secciones inhabilitadas: no aparecen en el menú y, si algo las invoca (un
+ * enlace interno, la consola), se cae al Dashboard. Su código y sus rutas
+ * siguen ahí: para reactivar una basta con sacarla de esta lista.
+ */
+export const SECCIONES_INHABILITADAS = new Set(['requerimientos', 'ordenesCompra', 'proveedores']);
 
 /**
  * Oculta del todo, no solo deshabilita, las pestañas que el rol de la sesión
@@ -48,6 +58,11 @@ export function aplicarPermisosAdmin() {
   $('btnMenuPadron').style.display = esAdmin ? '' : 'none';
   $('btnMenuUsuarios').style.display = esAdmin ? '' : 'none';
   $('navCompras').style.display = esAdmin ? '' : 'none';
+  $('navRadar').style.display = esAdmin ? '' : 'none';
+  // Buscador global y período: herramientas de análisis, solo para admin.
+  $('topHerramientas').hidden = !esAdmin;
+  if (esAdmin) pintarPeriodo();
+  SECCIONES_INHABILITADAS.forEach(k => document.querySelectorAll('[data-atab="' + k + '"]').forEach(b => { b.style.display = 'none'; }));
   document.querySelectorAll('[data-atab="dashboard"], [data-atab="payback"]')
     .forEach(b => { b.style.display = esAdmin ? '' : 'none'; });
   // "Indicadores" ya no es una pestaña aparte -es una sub-pestaña dentro de
@@ -77,6 +92,7 @@ export function tabAdmin(k) {
   // (por ejemplo, un enlace viejo), se cae a la bandeja en vez de abrir algo
   // que el servidor le va a rechazar de todos modos.
   if (TABS_SOLO_ADMIN.includes(k) && sesion && sesion.rol !== 'admin') k = 'bandeja';
+  if (SECCIONES_INHABILITADAS.has(k)) k = 'dashboard';
 
   document.querySelectorAll('[data-atab]').forEach(b => b.classList.toggle('on', b.dataset.atab === k));
   $('aDashboard').classList.toggle('on', k === 'dashboard');
@@ -93,6 +109,8 @@ export function tabAdmin(k) {
   $('aOrdenesCompra').classList.toggle('on', k === 'ordenesCompra');
   $('aProveedores').classList.toggle('on', k === 'proveedores');
   $('aServiciosLogistica').classList.toggle('on', k === 'servicios');
+  $('aRadar').classList.toggle('on', k === 'radar');
+  $('aImportaciones').classList.toggle('on', k === 'importaciones');
   // El botón de payback vive fuera de la fila de pestañas, así que se marca aparte.
   $('btnPayback').classList.toggle('on', k === 'payback');
   if (k === 'dashboard') renderDashboard();
@@ -110,6 +128,8 @@ export function tabAdmin(k) {
   if (k === 'ordenesCompra') subtabCompras();
   if (k === 'proveedores') renderProveedores();
   if (k === 'servicios') renderServiciosLogistica();
+  if (k === 'radar') renderRadar();
+  if (k === 'importaciones') renderImportaciones();
   cerrarMenu();
   cerrarMenuCuenta();
 }

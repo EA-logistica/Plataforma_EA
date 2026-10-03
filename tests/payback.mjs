@@ -27,6 +27,9 @@ const { analizarDemanda } = await mod('shared/payback/demanda.js');
 const { minutosRequeridos, minutosDisponibles } = await mod('shared/payback/capacidad.js');
 const { construir } = await mod('shared/payback/escenarios.js');
 const { comparar } = await mod('shared/payback/payback.js');
+const { evaluar: evaluarCapacidad } = await mod('shared/payback/capacidad.js');
+const plan = await mod('shared/payback/plan.js');
+const rutas = await mod('data/payback/rutas.js');
 const { historico2026, RESUMEN } = await mod('data/historico.js');
 
 // ---------------------------------------------------------------- jornada
@@ -206,19 +209,20 @@ ok(minutosRequeridos(0, d.mezcla).total === 0, 'sin encargos no hay ruta que pag
 // ------------------------------------------------------------ escenarios
 console.log('\n-- escenarios --');
 const esc = construir(d);
-ok(esc.length === 3, `los tres escenarios pedidos (${esc.length})`);
+ok(esc.length === 2, `los dos escenarios en evaluación: tercero y dos part time (${esc.length})`);
 ok(esc.map(e => e.id).join(',') === Object.keys(ESCENARIOS).join(','), 'salen en el orden en que se plantearon');
 
-const [tercero, dosMotorizados, propia] = esc;
-ok(propia.cfg.personas === 1 && propia.cfg.sueldoBase === 1800 && propia.cfg.bono === 300,
-   'escenario 3: una persona, S/1800 + S/300, moto suya');
-ok(dosMotorizados.cfg.personas === 2 && dosMotorizados.cfg.sueldoBase === 900
+const [tercero, dosMotorizados] = esc;
+ok(dosMotorizados.cfg.personas === 2 && dosMotorizados.cfg.sueldoBase === 1100
    && dosMotorizados.cfg.bono === 0 && !dosMotorizados.cfg.jornadaCompleta,
-   'escenario 2: dos personas part time en planilla, S/900 cada una, sin bono aparte');
+   'escenario 2: dos personas part time en planilla, S/1100 cada una (básico competitivo), sin bono aparte');
 
 console.log('\n-- tercerizar a cuota fija --');
 ok(tercero.cfg.modelo === 'tercero' && tercero.cfg.cuotaMensualSinIgv === 3500,
-   'escenario 1: proveedor externo, cuota fija de S/3500 sin IGV');
+   'escenario 1: proveedor externo, presupuesto ideal de S/3500 sin IGV');
+ok(construir(d, { cuotaTercero: 3800 })[0].tercero.cuotaMensualSinIgv === 3800, 'se puede simular la cuota tope de S/3800');
+ok(construir(d, { cuotaTercero: 2000 })[0].tercero.cuotaMensualSinIgv === 3500, 'una cuota fuera de las planteadas cae al presupuesto ideal');
+ok(/S\/ 3[ ,.]?500 /.test(tercero.detalle), 'el detalle del proveedor muestra la cuota elegida');
 ok(tercero.persona === null, 'no es planilla propia: no calcula costo de persona');
 ok(cerca(tercero.tercero.igv, 3500 * IGV.tasa), `el IGV es el 18% de la cuota (${tercero.tercero.igv.toFixed(2)})`);
 ok(cerca(tercero.tercero.total, 3500 * 1.18), `la cuota con IGV es S/${(3500 * 1.18).toFixed(2)} (${tercero.tercero.total.toFixed(2)})`);
@@ -252,15 +256,17 @@ ok(cerca(cmpSinCredito.filas.find(f => f.escenario.id === 'tercero').costoMensua
 console.log('\n-- uno o dos motorizados en planilla --');
 // Dos personas a media jornada suman las mismas horas que una completa: la
 // capacidad no se duplica solo por ser dos, hay que salir a la vez.
-ok(cerca(dosMotorizados.capacidad.techoDiario, propia.capacidad.techoDiario),
-   `dos motorizados part time aguantan lo mismo que uno solo a tiempo completo (${dosMotorizados.capacidad.techoDiario.toFixed(1)} contra ${propia.capacidad.techoDiario.toFixed(1)})`);
-ok(propia.riesgos.some(r => r.nivel === 'alto'), 'depender de una sola persona se marca como riesgo alto');
-ok(!dosMotorizados.riesgos.some(r => r.nivel === 'alto'), 'con dos personas ese riesgo puntual desaparece');
-// S/900 de básico a media jornada SÍ supera la mínima proporcional (a
+const unoCompleto = evaluarCapacidad({ personas: 1, fraccionJornada: 1, viajesPorDia: d.viajesPorDia.entreSemana, viajesPico: d.viajesPorDia.p90, mezcla: d.mezcla });
+ok(cerca(dosMotorizados.capacidad.techoDiario, unoCompleto.techoDiario),
+   `dos part time aguantan lo mismo que una sola moto a tiempo completo (${dosMotorizados.capacidad.techoDiario.toFixed(1)} contra ${unoCompleto.techoDiario.toFixed(1)})`);
+ok(!dosMotorizados.riesgos.some(r => r.nivel === 'alto' && /una sola persona/.test(r.texto)),
+   'con dos personas el riesgo de depender de una sola desaparece');
+ok([dosMotorizados].every(e => e.riesgos.some(r => r.nivel === 'alto' && /accidente/.test(r.texto))),
+   'en planilla, la responsabilidad por accidentes es de la empresa: riesgo alto');
+// S/1100 de básico a media jornada SÍ supera la mínima proporcional (a
 // diferencia de a tiempo completo, donde no alcanzaría la RMV de S/1130).
 ok(dosMotorizados.persona.avisos.every(a => a.nivel !== 'alto'),
-   'S/900 a media jornada no dispara ningún aviso legal grave: supera la mínima proporcional a esa jornada');
-ok(!propia.persona.avisos.some(a => a.nivel === 'alto'), 'S/1800 sí supera la RMV para jornada completa');
+   'S/1100 a media jornada no dispara ningún aviso legal grave: supera la mínima proporcional a esa jornada');
 
 // --------------------------------------------------------------- payback
 console.log('\n-- comparación y retorno --');
@@ -270,7 +276,8 @@ cmp.filas.forEach(f => {
   // El proveedor a cuota fija no se arma de planilla + moto + respaldo: su
   // "suma de partes" es la cuota más el IGV, ya verificado más abajo.
   if (f.escenario.cfg.modelo !== 'tercero') {
-    const suma = f.planilla + f.gastoMoto + f.coberturaVacaciones + f.courierResidual;
+    const suma = f.planilla + f.gastoMoto + f.coberturaVacaciones + f.courierResidual
+      + f.margen + f.costosOcultos.total;
     ok(cerca(suma, f.costoMensual), `[${f.escenario.id}] el costo mensual es la suma de sus partes`);
   }
   ok(cerca(f.ahorroMensual, cmp.gastoActual - f.costoMensual), `[${f.escenario.id}] el ahorro es gasto actual menos costo`);
@@ -287,8 +294,23 @@ ok(fTercero.coberturaVacaciones === 0 && fTercero.courierResidual === 0,
 ok(cmp.filas.every(f => f.inversion === 0 && f.mesesRetorno === 0),
    'ningún escenario tiene ya inversión inicial que recuperar (ni personal propio, ni el proveedor)');
 ok(cmp.filas.filter(f => f.escenario.cfg.modelo !== 'tercero').every(f => f.coberturaVacaciones > 0),
-   'los dos escenarios de personal propio sí provisionan los días de vacaciones en que no hay motorizado');
+   'el escenario de personal propio sí provisiona los días de vacaciones en que no hay motorizado');
 ok(cmp.recomendacion.mejor, 'hay un escenario recomendado');
+ok(cmp.recomendacion.mejor.escenario.id === 'tercero',
+   'se recomienda tercerizar: es el único escenario sin responsabilidad por accidentes');
+const fDos = cmp.filas.find(f => f.escenario.id === 'dosMotorizados');
+ok(fDos.margen === 160, 'dos part time llevan el margen de gasto de logística (S/160)');
+const conBasico = b => comparar(construir(d, { basicoPartTime: b }), d).filas.find(f => f.escenario.id === 'dosMotorizados');
+ok(conBasico(900).escenario.cfg.sueldoBase === 900 && conBasico(1000).escenario.cfg.sueldoBase === 1000,
+   'el básico del part time se puede elegir entre S/900, 1000 y 1100');
+ok(conBasico(1234).escenario.cfg.sueldoBase === 1100, 'un básico fuera de las opciones cae al recomendado');
+ok(conBasico(900).costoMensual < conBasico(1000).costoMensual && conBasico(1000).costoMensual < fDos.costoMensual,
+   'subir el básico sube el costo del escenario');
+ok(/S\/ 1[ ,.]?100 /.test(fDos.escenario.detalle), 'el detalle del escenario muestra el básico elegido');
+ok(comparar(construir(d, { basicoPartTime: 900 }), d).recomendacion.mejor.escenario.id === 'tercero',
+   'aun con el básico más bajo se recomienda tercerizar: la responsabilidad pesa más que la diferencia');
+ok(fDos.costosOcultos.total > 0 && fTercero.costosOcultos === null,
+   'solo el personal propio carga lo que no sale en la boleta');
 ok(cmp.condiciones.length >= 3, 'se listan las condiciones que valen para cualquier escenario');
 ok(cmp.condiciones.some(c => /agrupan por zona/.test(c.titulo)), 'la primera condición es programar por zona');
 
@@ -310,11 +332,71 @@ const conModelo = filas => filas.find(f => f.escenario.cfg.modelo !== 'tercero')
 ok(conModelo(enEnero.filas).flujo.costoPrimerAnio !== conModelo(conFecha.filas).flujo.costoPrimerAnio,
    'cambiar la fecha de ingreso cambia el costo del primer año');
 
+// --------------------------------------------------------- plan de rutas
+console.log('\n-- plan de rutas semanal --');
+const enLima = p => p.lat > -13.2 && p.lat < -11.2 && p.lon > -77.9 && p.lon < -76.2;
+ok(enLima(rutas.PLANTA) && rutas.PUNTOS.every(enLima), `la planta y los ${rutas.PUNTOS.length} puntos están en Lima`);
+ok(rutas.PUNTOS.every(p => p.dias.length && p.dias.every(x => rutas.DIAS.some(dd => dd.id === x))), 'cada punto sale al menos un día del plan');
+ok(new Set(rutas.PUNTOS.map(p => p.id)).size === rutas.PUNTOS.length, 'los ids de los puntos no se repiten');
+ok(rutas.DIAS.map(x => x.id).join(',') === 'lun,mar,mie,jue,vie', 'cinco días, de lunes a viernes');
+ok(rutas.DIAS.filter(x => x.tipo === 'fija').map(x => x.id).join(',') === 'lun,mie,vie', 'rutas fijas lunes, miércoles y viernes');
+
+const pl = plan.analizarPlan(historico2026());
+ok(pl.viajes === RESUMEN.servicios, `el plan se mide con los ${RESUMEN.servicios} viajes del histórico`);
+ok(pl.cobertura > 0.6, `los puntos recurrentes cubren la mayoría de encargos (${(pl.cobertura * 100).toFixed(0)}%)`);
+const e = pl.espera;
+ok(cerca(e.mismoDia + e.unDia + e.dosDias + e.tresOMas, 1), 'la distribución de espera suma 100%');
+ok(e.mismoDia + e.unDia > 0.85, `casi todo sale el mismo día o al siguiente (${((e.mismoDia + e.unDia) * 100).toFixed(0)}%)`);
+ok(e.urgenciasSemana <= rutas.POLITICA.maxUrgenciasPorDia * 5,
+   `las urgencias que quedan (${e.urgenciasSemana.toFixed(1)}/sem) caben en el cupo de las tardes`);
+ok(cerca(pl.dias.reduce((a, x) => a + x.encargosSemana, 0), pl.encargosSemana), 'todo encargo cae en algún día del plan');
+ok(pl.salidasPlanSemana === 5 && pl.salidasHoySemana > 30, 'de una salida por encargo a cinco rutas por semana');
+
+const bohler = rutas.PUNTOS.find(p => p.id.startsWith('bohler'));
+ok(plan.espera('2026-09-14', bohler.destino).dias === 0, 'un lunes, Bohler sale ese mismo día (núcleo)');
+ok(plan.espera('2026-09-15', bohler.destino).dias === 1, 'un martes, Bohler espera al miércoles');
+ok(plan.espera('2026-09-19', bohler.destino).dias === 0, 'lo del sábado se adelanta al viernes, que es día de núcleo');
+ok(plan.diasDe('UN SITIO SUELTO, ATE').join(',') === rutas.ZONA_DIAS.este.join(','), 'un destino suelto sale el día de su zona');
+
+const lun = pl.dias.find(x => x.id === 'lun');
+const selLun = plan.seleccionInicial('lun', pl.puntos, { objetivo: lun.paradasSemana });
+ok(selLun.length >= pl.puntos.filter(p => p.dias.includes('lun') && p.fija).length, 'la ruta típica lleva al menos todas las paradas fijas');
+const jue = plan.seleccionInicial('jue', pl.puntos, { objetivo: 8 });
+const jueChilca = plan.seleccionInicial('jue', pl.puntos, { objetivo: 8, conQuincenales: true });
+ok(!jue.some(i => i.startsWith('prochilca')) && jueChilca.some(i => i.startsWith('prochilca')), 'Chilca entra solo la semana que toca');
+ok(jueChilca.length <= jue.length, 'la semana de Chilca el jueves no carga paradas "a pedido"');
+const par = plan.paradasDelDia('lun', { ids: selLun, extra: [{ nombre: 'Urgencia', lat: -12.1, lon: -77.0 }] });
+ok(par[0].id === 'planta' && par.length === selLun.length + 2, 'las paradas arrancan en planta y suman las urgencias');
+const enl = plan.enlacesGoogleMaps(Array.from({ length: 22 }, (_, i) => ({ lat: -12 - i / 100, lon: -77 })));
+ok(enl.length === 3 && enl.every(u => u.startsWith('https://www.google.com/maps/dir/?api=1')), 'una ruta larga se parte en tramos de Google Maps');
+
+console.log('\n-- buscador del histórico de envíos --');
+const nuevos = [
+  { destino: 'maps.google.com/maps?q=-12.0168152%2C-76.9610026&z=17&hl=es', fechaProg: '2026-09-29', estado: 'Concluido' },
+  { destino: 'av. los alisos 945', fechaProg: '2026-09-29', estado: 'En espera' },
+  { destino: 'SITIO CANCELADO, LIMA', fechaProg: '2026-09-30', estado: 'Cancelado' }
+];
+const hist = plan.destinosHistorico([...historico2026(), ...nuevos]);
+const distintos = new Set(historico2026().map(x => x.destino.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim())).size;
+ok(hist.length === distintos + 2, `el buscador ve todos los destinos del histórico, no solo los del plan (${hist.length})`);
+ok(hist[0].viajes >= hist[1].viajes, 'van del más al menos visitado');
+ok(!hist.some(h => /CANCELADO/.test(h.destino)), 'lo cancelado no cuenta como destino');
+ok(plan.buscarDestinos(hist, 'alisos').length === 1, 'un ticket nuevo de la app ya se encuentra en el buscador');
+ok(plan.buscarDestinos(hist, 'bohler')[0].punto && plan.buscarDestinos(hist, 'bohler')[0].lat, 'Bohler aparece primero, como punto del plan y con coordenadas');
+ok(plan.buscarDestinos(hist, 'plus cosmetica').length >= 2, 'busca sin tildes ni mayúsculas');
+const conUrl = hist.find(h => h.destino.startsWith('maps.google'));
+ok(conUrl && cerca(conUrl.lat, -12.0168152, 1e-6) && cerca(conUrl.lon, -76.9610026, 1e-6), 'un enlace de Google Maps trae sus coordenadas');
+ok(plan.coordsEnTexto('sin coordenadas') === null, 'un texto sin coordenadas no inventa un punto');
+ok(/^Luis Carranza 777/.test(plan.direccionParaBuscar('https://www.google.com/maps/dir//ACEROS+BOHLER,+Luis+Carranza+777,+Lima+15081/data=!4m6')),
+   'de un enlace de "cómo llegar" se saca la dirección');
+ok(plan.direccionParaBuscar('UNIBELL, JR. VARELA 352, BREÑA').startsWith('Jirón VARELA 352, BREÑA'), 'para ubicar se quita el nombre de la empresa');
+
 // ------------------------------------------------------------ la pantalla
 console.log('\n-- pantalla --');
-const ids = ['pbCuerpo'];
+const ids = ['pbCuerpo', 'pbPlanDias', 'pbPlanLado', 'pbPlanSemana', 'pbMapa', 'pbPlanQ', 'pbPlanBusqueda'];
 const registro = new Map(ids.map(i => [i, { id: i, innerHTML: '', textContent: '', value: '', style: {}, classList: { add() {}, remove() {}, toggle() {}, contains: () => false } }]));
 globalThis.document = {
+  body: { contains: () => false },
   getElementById: id => registro.get(id) || null,
   documentElement: { setAttribute() {}, getAttribute: () => null },
   querySelectorAll: () => [], addEventListener() {}
@@ -330,13 +412,24 @@ globalThis.localStorage = {
 // La pantalla pide el estado al servidor. Aquí se le responde con el histórico
 // real sin levantar uno: lo que se prueba es la vista, no la red.
 const { DESTINOS } = await mod('data/destinos.js');
-globalThis.fetch = async ruta => {
+globalThis.fetch = async (ruta, op = {}) => {
   if (String(ruta).endsWith('/api/estado')) {
     return new Response(JSON.stringify({
       revision: 'prueba',
       personal: [], autorizaciones: [], adjuntos: [],
       solicitudes: historico2026(),
       destinos: DESTINOS
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  // La ruta por calles se simula: lo que se prueba es la pantalla, no OSRM.
+  if (String(ruta).endsWith('/api/payback/ruta')) {
+    const { paradas } = JSON.parse(op.body);
+    return new Response(JSON.stringify({
+      distanciaKm: 60, duracionEstimadaMin: 150, servicioMin: 12 * (paradas.length - 1), fin: '13:10', excedeJornada: false, avisos: [],
+      geometria: { type: 'LineString', coordinates: paradas.map(p => [p.lon, p.lat]) },
+      cronograma: [{ indice: 0, salida: '08:10' },
+        ...paradas.slice(1).map((p, i) => ({ indice: i + 1, llegada: '09:0' + (i % 10), tramo: { distanciaKm: 5, duracionEstimadaMin: 15 } })),
+        { indice: 0, regreso: true, llegada: '13:10', tramo: { distanciaKm: 8, duracionEstimadaMin: 25 } }]
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   return new Response(JSON.stringify({ error: 'ruta no simulada: ' + ruta }), { status: 404 });
@@ -352,43 +445,58 @@ ok(html.length > 2000, `la pantalla se arma (${html.length} caracteres)`);
 ok(/Escenario recomendado/.test(html), 'muestra el escenario recomendado arriba');
 esc.forEach(e => ok(html.includes(e.nombre), `aparece el escenario "${e.nombre}"`));
 ok(/S\/\s/.test(html), 'muestra importes en soles');
+ok(/Por qué el básico del part time sube/.test(html) && html.includes('id="pbBasico"'),
+   'sustenta la subida del básico y deja elegirlo');
+ok(/para que PLANSA no se responsabilice/.test(html), 'el recomendado explica que tercerizar evita la responsabilidad');
 ok(/¿Alcanza una sola moto\?/.test(html), 'responde si alcanza una sola moto');
-ok(/Cómo se dejan de tener urgencias/.test(html), 'incluye las medidas contra las urgencias');
-ok(/Hora de corte diaria/.test(html), 'la primera medida es la hora de corte');
+ok(/Plan de rutas semanal/.test(html) && html.includes('id="pbMapa"'), 'incluye el plan de rutas con su mapa');
+ok(/Urgencias: con rutas fijas casi desaparecen/.test(html), 'incluye el análisis de urgencias');
+ok(/Hora de corte: 16:00/.test(html), 'la primera regla es la hora de corte');
+ok(html.includes('id="pbCuota"') && /presupuesto ideal/.test(html), 'deja elegir la cuota del proveedor, con S/3500 como presupuesto ideal');
+ok(!/Un motorizado con moto propia/.test(html), 'el escenario de un motorizado a tiempo completo ya no se muestra');
 ok(/Cuota del proveedor/.test(html) && /IGV/.test(html), 'el escenario de tercerizar muestra la cuota y el IGV, no un desglose de planilla');
 ok(!/undefined|NaN|\[object/.test(html), 'no se cuela ningún undefined, NaN ni [object Object]');
 
-ok(/Simulador de una salida/.test(html), 'incluye el simulador de una salida');
-ok(/Sale de planta/.test(html) && /Vuelve a planta/.test(html), 'la cronología arranca y termina en planta');
 ok(/Beneficios sociales según la fecha de ingreso/.test(html), 'incluye el calendario de beneficios');
 ok(/id="pbInicio"/.test(html), 'deja elegir la fecha de ingreso');
-ok(/Ajustar los tiempos de viaje/.test(html), 'deja editar los tiempos de viaje');
 
 vista.setBonoPayback('no');
-ok(/Condición de trabajo/.test(registro.get('pbCuerpo').innerHTML),
-   'cambiar el tratamiento del bono se refleja en el desglose');
+ok(/value="no" selected/.test(registro.get('pbCuerpo').innerHTML),
+   'cambiar el tratamiento del bono se refleja en el control');
 
-console.log('\n-- controles del simulador --');
+console.log('\n-- plan de rutas en pantalla --');
 const leer = () => registro.get('pbCuerpo').innerHTML;
-vista.pbReiniciarSimulador();
-const antes = leer();
-vista.pbAgregarParada();
-ok(leer() !== antes, 'agregar una zona repinta la pantalla');
-vista.pbCuantasParadas(0, 7);
-ok(/value="7"/.test(leer()), 'cambiar el número de entregas se refleja');
-vista.pbZonaParada(0, 'lejos');
-ok(/Fuera de Lima/.test(leer()), 'cambiar la zona de una parada se refleja');
-vista.pbHoraSalida('09:30');
-ok(/value="09:30"/.test(leer()), 'cambiar la hora de salida se refleja');
-vista.pbTiempoZona('norte', 99);
-ok(/99 min desde planta/.test(leer()), 'editar el tiempo de una zona se refleja en la lista');
-vista.pbDiaSimulado('sabado');
-ok(/12:30/.test(leer()), 'el sábado cambia el fin de jornada');
-vista.pbOrdenarMejor();
-ok(leer().length > 1000, 'ordenar por el camino más corto no rompe la pantalla');
-vista.pbQuitarParada(0);
-vista.pbReiniciarSimulador();
-ok(/value="08:00"/.test(leer()), 'reiniciar devuelve el simulador a su estado inicial');
+const lado = () => registro.get('pbPlanLado').innerHTML;
+const espera50 = () => new Promise(r => setTimeout(r, 50));
+await espera50();
+ok(/Sale de planta/.test(lado()) && /Vuelve a planta/.test(lado()), 'la ruta del día arranca y termina en planta');
+ok(/Abrir en Google Maps|Google Maps, tramo/.test(lado()), 'ofrece navegar la ruta en Google Maps');
+ok(/Entra: vuelve a planta a las 13:10/.test(lado()), 'dice a qué hora vuelve y cuánto queda para urgencias');
+ok(/Vuelve a planta/.test(registro.get('pbPlanSemana').innerHTML), 'el resumen de la semana muestra a qué hora vuelve cada día');
+vista.pbPlanDia('jue');
+await espera50();
+ok(/Jueves/.test(lado()) && /Semana de Chilca/.test(lado()), 'el jueves deja marcar la semana de Chilca');
+const marcadas = () => (lado().match(/checked/g) || []).length;
+const antes = marcadas();
+vista.pbPlanChilca(true);
+await espera50();
+ok(marcadas() !== antes, 'la semana de Chilca cambia las paradas del jueves');
+const unoMenos = marcadas();
+const primero = pl.dias.find(x => x.id === 'jue').puntos.find(p => lado().includes("pbPlanParada('" + p.id + "'"));
+vista.pbPlanParada(primero.id, !lado().includes('checked onchange="pbPlanParada(\'' + primero.id + '\''));
+await espera50();
+ok(marcadas() !== unoMenos, 'marcar o desmarcar una parada recalcula la ruta');
+registro.get('pbPlanQ').value = 'bohler';
+vista.pbPlanBuscar();
+const buscador = registro.get('pbPlanBusqueda').innerHTML;
+ok(/En el histórico de envíos/.test(buscador) && /BOHLER, CASTRO RONCEROS 777/.test(buscador), 'el buscador del plan encuentra destinos del histórico');
+ok(/como dirección en el mapa/.test(buscador), 'y deja buscar la dirección en el mapa si no está');
+vista.pbPlanAgregar(0);
+await espera50();
+ok(/pbPlanQuitarExtra|BOHLER/.test(lado()), 'agregar un destino del histórico lo suma a la ruta');
+ok(/Otros destinos del histórico que salen este día/.test(lado()), 'cada día lista los demás destinos del histórico que le tocan');
+vista.setCuotaPayback('3800');
+ok(/S\/ 3,800|S\/ 3800/.test(leer()), 'cambiar la cuota se refleja en la pantalla');
 
 vista.setInicioPayback('2027-01-01');
 ok(/value="2027-01-01"/.test(leer()), 'cambiar la fecha de ingreso se refleja en el control');

@@ -16,10 +16,13 @@ import { usuarios } from '../usuarios/rutas.js';
 import { areas } from '../areas/rutas.js';
 import { compras } from './compras.js';
 import { mongo } from '../mongo/rutas.js';
+import { rutasRadar } from '../radar/rutas.js';
 import { mapa } from './mapa.js';
+import { herramientas } from './herramientas.js';
 import * as destinos from '../db/repos/destinos.js';
 import { estadoVersion } from '../version.js';
 import { emitirTicket } from '../almacen/acceso.js';
+import { computeStopsRoute, MAX_PARADAS } from '../almacen/src/services/routing.js';
 import { requiereSesion, requiereRol, sesionOpcional } from '../usuarios/middleware.js';
 import { log, eventosRecientes } from '../seguridad/log.js';
 import { CONFIG } from '../config.js';
@@ -61,6 +64,10 @@ api.use(compras);
 
 // Lectura del MongoDB del bot de logística (solo lectura, solo admin).
 api.use(mongo);
+api.use(rutasRadar);
+
+// Buscador global, exportar tablas a Excel y reporte semanal (solo admin).
+api.use(herramientas);
 
 // Mapa del formulario de solicitud (origen "Otros" y destino): público,
 // como registrar un ticket, pero acotado (ver rutas/mapa.js).
@@ -365,6 +372,8 @@ api.get('/payback', requiereSesion, requiereRol('admin'), asinc(async (req, res)
   const opciones = {
     bonoRemunerativo: req.query.bono !== 'no',
     creditoFiscalIgv: req.query.creditoFiscal !== 'no',
+    cuotaTercero: Number(req.query.cuota) || undefined,
+    basicoPartTime: Number(req.query.basico) || undefined,
     inicio: req.query.inicio
   };
   const cmp = comparar(construir(demanda, opciones), demanda, opciones);
@@ -397,6 +406,35 @@ api.get('/payback', requiereSesion, requiereRol('admin'), asinc(async (req, res)
       }
     }))
   });
+}));
+
+/**
+ * Ruta por calles de un día del plan (shared/payback/plan.js): orden óptimo,
+ * recorrido y hora estimada de llegada a cada parada, con el tráfico de Lima
+ * por franja horaria. Reusa el planificador del módulo de Almacén (OSRM sobre
+ * OpenStreetMap, con caché), así que la misma ruta no vuelve a pedirse afuera.
+ * La primera parada es la planta: de ahí sale y ahí vuelve.
+ */
+const enLima = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon) && lat > -13.2 && lat < -11.2 && lon > -77.9 && lon < -76.2;
+api.post('/payback/ruta', requiereSesion, requiereRol('admin'), asinc(async (req, res) => {
+  const b = req.body || {};
+  const paradas = Array.isArray(b.paradas) ? b.paradas : [];
+  if (paradas.length < 2) throw error('La ruta necesita la planta y al menos una parada.', 400);
+  if (paradas.length > MAX_PARADAS) throw error('Una ruta admite hasta ' + MAX_PARADAS + ' puntos: saca alguna parada.', 400);
+  const limpias = paradas.map(p => ({
+    lat: Number(p?.lat), lon: Number(p?.lon),
+    nombre: String(p?.nombre || '').slice(0, 160),
+    servicioMin: Math.max(0, Math.min(120, Number(p?.servicioMin) || 0))
+  }));
+  if (!limpias.every(p => enLima(p.lat, p.lon))) throw error('Hay una parada fuera de Lima o sin coordenadas.', 400);
+  const hora = v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? v : undefined;
+  res.json(await computeStopsRoute(limpias, {
+    optimizar: b.optimizar !== false,
+    regreso: true,
+    salida: hora(b.salida) || '08:00',
+    finJornada: hora(b.finJornada) || '17:30',
+    fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(b.fecha || '')) ? b.fecha : undefined
+  }));
 }));
 
 // ----------------------------------------------------------------- versión

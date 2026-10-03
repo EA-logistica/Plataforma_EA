@@ -19,6 +19,15 @@ if not exist "node_modules" (
   )
 )
 
+rem Radar de Importaciones: su ETL es Python. Si esta PC aun no lo tiene
+rem preparado, se intenta una vez; si no hay Python, la plataforma arranca igual
+rem (Radar muestra los datos ya cargados, sin actualizar).
+if not exist "backend\radar\etl\.venv" (
+  echo Preparando el ETL de Radar de Importaciones...
+  call npm run radar:instalar
+  echo.
+)
+
 echo Iniciando el servidor...
 echo Esta ventana muestra el registro del servidor: no la cierres mientras
 echo trabajes. Para apagarlo, cierra la ventana o presiona Ctrl+C.

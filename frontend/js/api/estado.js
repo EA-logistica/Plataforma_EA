@@ -323,9 +323,25 @@ export const resumenStockValorizadoGlobal = () => obtener('/stock-valorizado/res
 // embebido en un iframe propio; ver backend/almacen/acceso.js).
 export const emitirTicketAlmacen = () => crear('/almacen/ticket');
 
+// ------------------------------------------------------------ importaciones
+// Seguimiento de las OC importadas (bot de logística vía Mongo). Solo lectura.
+export const listarImportaciones = () => obtener('/importaciones');
+export const detalleImportacion = id => obtener('/importaciones/' + encodeURIComponent(id));
+
+// Clasificación ABC de materia prima con cobertura y punto de reorden.
+export const abcMateriaPrima = tipo => obtener('/materia-prima/abc' + aQuery({ tipo }));
+
+// Buscador global (Ctrl+K) y reporte semanal.
+export const buscarGlobal = q => obtener('/buscar?q=' + encodeURIComponent(q));
+export const reporteSemanal = () => obtener('/reportes/semanal');
+export const enviarReporteSemanal = () => crear('/reportes/semanal/enviar');
+
 // ------------------------------------------------ muestras de materia prima
+export const listarHomologados = () => obtener('/materia-prima/homologados');
 export const listarMuestras = () => obtener('/materia-prima/muestras');
 export const resumenMuestras = mes => obtener('/materia-prima/muestras/resumen' + (mes ? '?mes=' + encodeURIComponent(mes) : ''));
+export const sugerirCodigosMuestra = descripcion => obtener('/materia-prima/muestras/codigos?descripcion=' + encodeURIComponent(descripcion));
+export const codigosNuevosMateriaPrima = dias => obtener('/materia-prima/codigos-nuevos' + (dias ? '?dias=' + dias : ''));
 export const proveedorPorRuc = ruc => obtener('/materia-prima/muestras/proveedor?ruc=' + encodeURIComponent(ruc));
 export const crearMuestra = datos => crear('/materia-prima/muestras', datos);
 export const crearMuestrasLote = filas => crear('/materia-prima/muestras/lote', { filas });

@@ -61,6 +61,9 @@ Variables de entorno, para mover la base a un disco de red o cerrar el acceso:
 | `PLANSA_DB` | SQLite de antes de la migración: solo lo lee `db:importar-sqlite`. |
 | `PLANSA_RESPALDOS` | Carpeta de respaldos. Por defecto `respaldos/`. |
 | `PLANSA_UPLOADS` | Carpeta de las guías. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USUARIO`, `SMTP_CLAVE`, `SMTP_DE` | Servidor de correo para el reporte semanal (opcional). |
+| `REPORTE_PARA` | Destinatarios del reporte semanal, separados por coma. Sin esto, el reporte solo se abre a mano desde el Dashboard. |
+| `REPORTE_DIA`, `REPORTE_HORA` | Cuándo sale el correo (hora de Lima). Por defecto lunes (1) a las 8. |
 
 ```bash
 PLANSA_PUERTO=8080 PLANSA_UPLOADS=D:/datos/guias npm start
@@ -95,6 +98,8 @@ backend/                     ← NODE.JS. Nada de esto llega al navegador.
       autorizaciones.js        pedidos de acceso
       adjuntos.js              metadatos de las guías
       ajustes.js               testigo de revisión
+      importaciones.js         importaciones del bot (Mongo) y sus hitos de rastreo
+      mpPlaneacion.js          consumo / lead time por materia prima → ABC y reorden
   usuarios/                   Cuentas de logística: quién puede ENTRAR
     claves.js                  hash de claves (scrypt) y clave temporal
     repositorio.js              SQL de la tabla usuarios
@@ -108,6 +113,15 @@ backend/                     ← NODE.JS. Nada de esto llega al navegador.
     errores.js                Formato uniforme de errores
   rutas/
     index.js                  La API REST completa (monta usuarios/rutas.js)
+    compras.js                Compras y Logística: importaciones, materia prima, ABC…
+    herramientas.js           Buscador global, exportar a Excel, reporte semanal
+  reportes/semanal.js         Reporte semanal (HTML / PDF) y su envío por correo
+  radar/                      Radar de Importaciones SUNAT (ver docs/radar/INTEGRACION.md)
+    consultas.js               lectura del esquema "radar": panel, histórico, explorar…
+    rutas.js                   /api/radar/*
+    worker.js                  lanza y vigila el ETL Python; actualización diaria
+    importar.js / instalar.js  migración única desde RADAR-EA · preparar el ETL
+    etl/                       ETL Python (SUNAT → esquema radar), con sus pruebas
 
 frontend/                    ← NAVEGADOR
   index.html                  Marcado de las vistas + import map
@@ -121,15 +135,28 @@ frontend/                    ← NAVEGADOR
       cliente.js               fetch, errores, URL base, token de sesión
       estado.js                Copia local del estado + escrituras
       adjuntos.js              Subida y descarga de guías
-    state/ ui/ utils/          Sesión, tema y utilidades
+    state/ ui/ utils/          Sesión, tema, período global y utilidades
+      ui/graficos.js            Gráficos SVG con tooltip y clic (una serie, un eje)
+      ui/tablas.js              Toda tabla: encabezado fijo, columnas, Excel y PDF
+      ui/buscador.js            Buscador global (Ctrl+K)
+      ui/esqueleto.js           Carga con la forma de lo que llega
+      ui/frescura.js            "Actualizado hace X min"
     views/                     Una vista por pestaña
       usuarios.js               Alta y gestión de cuentas (solo admin)
+      dashboard.js              Dashboard por perfil: metas, tendencias, acciones pendientes
+      importaciones.js          Seguimiento de importaciones (de la OC a la planta)
+      abc.js                    Materia Prima → ABC y reorden
+      radar/                   Radar: panel, histórico, explorar, productos, empresas
       payback/                 Pantalla del análisis payback
 
 shared/                      ← CÁLCULO PURO. Lo usan el servidor Y el navegador.
   documento.js                Validar y normalizar un DNI, sin el padrón al lado
   exportarViajes.js           Columnas del reporte Excel (hoy solo las usa el servidor)
   cancelacion.js              Los tres motivos de cancelación, en un solo lugar
+  radar.js                    Búsqueda de Radar (sinónimos, MI, grados), igual que el ETL
+  homologados.js              Clasificación de materias primas homologadas
+  importaciones.js            Atrasos, costo puesto en planta, pagos y completitud
+  abc.js                      Clasificación ABC, cobertura y punto de reorden
   payback/                    Sin DOM, sin base de datos, sin red: se verifica
     planilla.js               en Node número por número.
     flota.js  demanda.js  capacidad.js  ruta.js  devengos.js
@@ -142,8 +169,9 @@ data/                        ← DATOS DE REFERENCIA (código versionado)
   payback/                    Supuestos del análisis: jornada, ley, motos, zonas
 
 uploads/                     ← Guías de entrega subidas (fuera de git)
+radar-datos/                 ← Originales SUNAT de Radar y log del worker (fuera de git)
 .env                         ← PLANSA_PG_URL con la clave de PostgreSQL (fuera de git)
-tests/                       node tests/payback.mjs · api.mjs · frontend.mjs
+tests/                       node tests/payback.mjs · importacionesAbc.mjs · api.mjs · frontend.mjs
 docs/payback.md              El análisis payback, escrito
 ```
 

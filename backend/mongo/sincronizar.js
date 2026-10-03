@@ -7,6 +7,10 @@ import * as productos from '../db/repos/productos.js';
 import * as materiaPrima from '../db/repos/materiaPrimaStock.js';
 import * as stockValorizado from '../db/repos/stockValorizado.js';
 import * as ajustes from '../db/repos/ajustes.js';
+import * as muestras from '../db/repos/muestrasMp.js';
+import * as importaciones from '../db/repos/importaciones.js';
+import * as mpPlaneacion from '../db/repos/mpPlaneacion.js';
+import { normalizar as normalizarImportacion } from '#shared/importaciones.js';
 
 /**
  * Trae del MongoDB del bot de logística las fotos del ERP que antes llegaban
@@ -23,6 +27,10 @@ import * as ajustes from '../db/repos/ajustes.js';
  *   - ordenes_compra     ítems de OC del ERP → ordenes_compra_detalle
  *                        (historial de OC, proveedores y rotación ABC).
  *   - requerimientos_compra_detalle → historial de requerimientos de compra.
+ *   - importaciones (+ importaciones_tracking_eventos) → apartado
+ *                        Importaciones: seguimiento de cada OC importada.
+ *   - productos_maestro, otra vez: consumo, lead time y compra sugerida de
+ *                        cada materia prima → mp_planeacion (ABC y reorden).
  *
  * Cada tabla se recarga solo si su contenido cambió (huella en ajustes,
  * mismo criterio que backend/db/sembrar.js): la copia corre cada 30 minutos
@@ -100,7 +108,11 @@ async function leerMongo() {
       origen: 1, tipo_producto: 1, estado_erp: 1, ubicacion: 1, stock_seguridad: 1,
       lead_time_dias: 1, lead_time_promedio: 1, stock_actual: 1, tiene_ficha_tecnica: 1,
       tiene_materia_prima: 1, costo_unitario: 1, tc_utilizado: 1, total_valorizado: 1, cat3: 1,
-      ultimo_update: 1
+      ultimo_update: 1, fecha_registro: 1,
+      // Planeación (mp_planeacion): lo calcula el bot en cada corrida.
+      prom_12m: 1, p95_12m: 1, lt_meses: 1, safety_pct: 1, on_order: 1, compra_sugerida: 1,
+      valor_compra_sugerida_usd: 1, status: 1, proveedor_ultima_compra: 1, fecha_ultima_compra: 1,
+      ultimo_costo_compra: 1, moneda_ultimo_costo: 1
     } }).toArray(),
     d.collection('stock_mp_almacen').find({}, { projection: { _id: 0 } }).toArray(),
     d.collection('ordenes_compra').find({}, { projection: { _id: 0 } }).toArray(),
@@ -110,11 +122,19 @@ async function leerMongo() {
       { $group: { _id: '$almacen_codigo', nombre: { $last: '$almacen_nombre' } } }
     ], { allowDiskUse: true }).toArray()
   ]);
+  // Importaciones aparte: si el usuario de Mongo todavía no puede leerlas,
+  // el resto de la copia sigue igual.
+  const [imp, eventos] = await Promise.all([
+    d.collection('importaciones').find({}).toArray().catch(() => null),
+    d.collection('importaciones_tracking_eventos').find({}, { projection: { _id: 0 } }).toArray().catch(() => [])
+  ]);
   return {
     maestro: maestro.filter(esSku),
     porAlmacen,
     oc,
     requerimientos,
+    importaciones: imp,
+    eventosImportacion: eventos,
     nombresAlmacen: new Map(almacenesErp.filter(a => txt(a.nombre)).map(a => [codigoTxt(a._id), txt(a.nombre)]))
   };
 }
@@ -132,6 +152,10 @@ const nombreAlmacen = s => nombresAlmacen.get(codigoTxt(s.codigo_almacen)) || tx
 /**
  * Ítems de OC. La clave es OC + producto + orden de aparición: como la tabla
  * se reemplaza entera en cada recarga, nunca queda duplicada.
+ *
+ * El bot renombró varios campos (usuario_oc, oc_tipo, oc_area, doc_ref /
+ * serie_ref / numero_ref, glosa_cabecera_req_compras…): se lee el nombre
+ * antiguo y, si no viene, el nuevo.
  */
 function aOrdenesCompraDetalle(oc) {
   const vistos = new Map();
@@ -143,15 +167,16 @@ function aOrdenesCompraDetalle(oc) {
     vistos.set(base, n);
     return {
       clave: 'mongo:' + base + '|' + n,
-      codigoArea: codigoTxt(o.codigo_area), area: txt(o.area) || txt(o.area_nombre),
+      codigoArea: codigoTxt(o.codigo_area), area: txt(o.area) || txt(o.area_nombre) || txt(o.oc_area),
       fechaEntrega: fechaTxt(o.entrega),
       docSerie: txt(o.doc_serie), docNumero: txt(o.doc_numero),
       numeroOc,
       fechaEmision: fechaTxt(o.emision),
       rucProveedor: codigoTxt(o.proveedor_ruc) || codigoTxt(o.proveedor_codigo),
       proveedor: txt(o.proveedor_razon),
-      tipoOrden: txt(o.tipo_orden),
-      refTipo: txt(o.ref_tipo), refSerie: txt(o.ref_serie), refNumero: codigoTxt(o.ref_numero),
+      tipoOrden: txt(o.tipo_orden) || txt(o.oc_tipo),
+      refTipo: txt(o.ref_tipo) || txt(o.doc_ref), refSerie: txt(o.ref_serie) || txt(o.serie_ref),
+      refNumero: codigoTxt(o.ref_numero) || codigoTxt(o.numero_ref),
       estado: txt(o.oc_estado),
       tipoCambio: num(o.tc),
       codigoProducto: codigoTxt(o.codigo), descripcionProducto: txt(o.producto),
@@ -164,10 +189,11 @@ function aOrdenesCompraDetalle(oc) {
       montoSaldo: num(o.monto_saldo),
       valorCompraMn: num(o.v_compra_mn), valorCompraMe: num(o.v_compra_me),
       codMolde: codigoTxt(o.codigo_molde), nombreMolde: txt(o.nombre_molde),
-      glosaCabReqCompra: txt(o.glosa_oc), glosaDetReqCompra: txt(o.observacion),
+      glosaCabReqCompra: txt(o.glosa_cabecera_req_compras) || txt(o.glosa_oc),
+      glosaDetReqCompra: txt(o.glosa_detalle_req_compras) || txt(o.observacion),
       incoterm: txt(o.incoterm), tipoTransporte: txt(o.tipo_trans),
       agenteAduana: txt(o.agente_aduana), numeroContrato: txt(o.nro_contrato),
-      usuario: txt(o.usuario)
+      usuario: txt(o.usuario) || txt(o.usuario_oc)
     };
   });
 }
@@ -237,7 +263,8 @@ function aProductos(maestro) {
     leadTime: num(p.lead_time_dias) || num(p.lead_time_promedio),
     stock: num(p.stock_actual),
     tieneFichaTecnica: siNo(p.tiene_ficha_tecnica),
-    tieneMateriaPrima: siNo(p.tiene_materia_prima)
+    tieneMateriaPrima: siNo(p.tiene_materia_prima),
+    fechaRegistro: fechaTxt(p.fecha_registro)
   }));
 }
 
@@ -320,6 +347,50 @@ function aStockValorizado(porAlmacen, maestro, porCodigo) {
   ];
 }
 
+/** Importaciones normalizadas (sin las excluidas ni fusionadas) y sus hitos de rastreo. */
+function aImportaciones(docs, eventos) {
+  return {
+    importaciones: docs.map(normalizarImportacion).filter(Boolean),
+    eventos: eventos.map(e => ({
+      importacionId: txt(e.importacion_id), oc: codigoTxt(e.oc_numero), fecha: txt(e.fecha_evento instanceof Date ? e.fecha_evento.toISOString() : e.fecha_evento),
+      hito: txt(e.hito), descripcion: txt(e.descripcion), transportista: txt(e.transportista),
+      referencia: txt(e.referencia), ubicacion: txt(e.ubicacion)
+    }))
+  };
+}
+
+/**
+ * Planeación de cada materia prima (incluye tintas), con montos en US$: el
+ * costo del maestro viene en soles; si un código no tiene costo (sin stock),
+ * se usa el de su última compra.
+ */
+function aPlaneacion(maestro) {
+  return maestro.filter(p => MP.has(txt(p.familia) || txt(p.familia_nombre))).map(p => {
+    const tc = num(p.tc_utilizado) || 3.44;
+    const ultimo = num(p.ultimo_costo_compra) / (txt(p.moneda_ultimo_costo).toUpperCase() === 'PEN' ? tc : 1);
+    return {
+      codigo: txt(p.codigo),
+      descripcion: txt(p.descripcion) || txt(p.nombre),
+      tipo: txt(p.familia) || txt(p.familia_nombre),
+      linea: txt(p.linea) || txt(p.linea_nombre),
+      unidadMedida: txt(p.unidad_medida),
+      stock: num(p.stock_actual),
+      consumoMes: num(p.prom_12m),
+      consumoP95: num(p.p95_12m),
+      costoUsd: costoUsd(p) || ultimo,
+      leadTimeMeses: num(p.lt_meses),
+      seguridadPct: num(p.safety_pct),
+      enCamino: num(p.on_order),
+      compraSugerida: num(p.compra_sugerida),
+      compraSugeridaUsd: num(p.valor_compra_sugerida_usd),
+      estadoDemanda: txt(p.status),
+      proveedorUltima: txt(p.proveedor_ultima_compra),
+      fechaUltimaCompra: fechaTxt(p.fecha_ultima_compra),
+      ultimoCostoUsd: ultimo
+    };
+  });
+}
+
 /** La fecha más reciente de carga en Mongo: es "de cuándo es la foto", no de cuándo se copió. */
 function fechaDatos(porAlmacen, maestro) {
   // Mongo trae unas como Date y otras como texto ISO: se comparan en milisegundos.
@@ -360,6 +431,17 @@ export function sincronizar() {
       // vieja que un historial de OC que desaparece por un fallo del bot.
       if (filasOc.length && await recargarSiCambio('ordenes_compra', filasOc, ordenesCompraDetalle.cargarInicial, 'ordenes_compra_detalle')) recargadas.push('órdenes de compra');
       if (filasRq.length && await recargarSiCambio('requerimientos', filasRq, requerimientosHistorico.cargarInicial, 'requerimientos_compra_detalle')) recargadas.push('requerimientos');
+      const filasPlan = aPlaneacion(maestro);
+      if (filasPlan.length && await recargarSiCambio('mp_planeacion', filasPlan, mpPlaneacion.cargarInicial)) recargadas.push('planeación MP');
+      // null = no se pudo leer la colección (permiso): se deja la última copia.
+      const imp = leido.importaciones ? aImportaciones(leido.importaciones, leido.eventosImportacion) : null;
+      if (imp && imp.importaciones.length && await recargarSiCambio('importaciones', imp, importaciones.cargarInicial)) recargadas.push('importaciones');
+
+      // Códigos que llegaron con esta foto (Materia Prima → "Códigos nuevos",
+      // Homologados) y muestras sin código que ahora sí tienen con quién
+      // emparejarse: el material de una muestra suele darse de alta después.
+      const codigosNuevos = await productos.registrarAltas();
+      const muestrasConCodigo = await muestras.completarCodigos();
 
       const resultado = {
         ok: true,
@@ -370,6 +452,10 @@ export function sincronizar() {
         stockValorizado: filasSv.length,
         ordenesCompra: filasOc.length,
         requerimientos: filasRq.length,
+        importaciones: imp ? imp.importaciones.length : null,
+        planeacionMp: filasPlan.length,
+        codigosNuevos,
+        muestrasConCodigo,
         recargadas,
         ms: Date.now() - inicio
       };
@@ -405,7 +491,8 @@ export function programarSincronizacion({ silencioso = false } = {}) {
   const correr = () => sincronizar()
     .then(r => { siguiente(CADA_MS); return r; }, e => { siguiente(REINTENTO_MS); throw e; })
     .then(r => { if (!silencioso) console.log('  mongo        ' + r.productos + ' productos, ' + r.materiaPrima + ' filas MP, ' + r.stockValorizado + ' filas valorizado, '
-      + r.ordenesCompra + ' ítems de OC, ' + r.requerimientos + ' requerimientos · '
+      + r.ordenesCompra + ' ítems de OC, ' + r.requerimientos + ' requerimientos, '
+      + (r.importaciones ?? 0) + ' importaciones · '
       + (r.recargadas.length ? 'actualizado: ' + r.recargadas.join(', ') : 'sin cambios') + ' (' + r.ms + ' ms)'); })
     .catch(e => console.error('[mongo] sincronización fallida:', e.message));
   correr();

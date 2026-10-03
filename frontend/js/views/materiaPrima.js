@@ -1,5 +1,5 @@
 import { $, esc } from '../utils/dom.js';
-import { corta } from '../utils/format.js';
+import { corta, fechaCorta } from '../utils/format.js';
 import * as api from '../api/estado.js';
 import { abrirModal } from './dispatch.js';
 
@@ -134,6 +134,7 @@ export function filaMateriaPrima(id, i) {
   if (id === 'cat') return abrirCategoriaMateriaPrima(f.categoria);
   if (id === 'lin') return abrirLineaMateriaPrima(f.familia);
   if (id === 'alm') return verProductosDeAlmacenMateriaPrima(f.almacen);
+  if (id === 'nuevos') return verAlmacenesProductoMateriaPrima(f.codigo);
   return verAlmacenesProductoMateriaPrima(f.codigo);
 }
 
@@ -155,7 +156,9 @@ const colsProducto = (conUbicacion) => [
 
 // ------------------------------------------------------------ carga
 async function asegurarTipos() {
-  if (tiposCache) return;
+  // Una lista vacía se vuelve a pedir: si la pestaña se abrió antes de que
+  // llegara la primera foto del ERP, se quedaba en "Sin stock" hasta recargar.
+  if (tiposCache && tiposCache.length) return;
   tiposCache = await api.tiposMateriaPrima();
   $('mpTipo').innerHTML = tiposCache.map(t =>
     '<option value="' + esc(t.tipo) + '">' + esc(t.tipo) + ' (' + entero(t.productos) + ' prod.)</option>').join('');
@@ -187,6 +190,7 @@ export async function renderMateriaPrima() {
     if (miToken !== tokenNivel) return;
     pintarMetricas(resumen, categorias);
     pintarAlmacenes(almacenes);
+    pintarCodigosNuevosMateriaPrima();
     if ($('mpQ').value.trim()) { buscarProductosMateriaPrima(); return; }
     if (nivel === 'categorias') { pintarBreadcrumb(); pintarCategorias(categorias); } else if (nivel === 'lineas') await cargarLineas();
     else await cargarProductos();
@@ -262,7 +266,7 @@ export function volverACategoriaMateriaPrima() { return abrirCategoriaMateriaPri
 async function cargarLineas() {
   const miToken = ++tokenNivel;
   pintarBreadcrumb();
-  $('mpNivel').innerHTML = '<div class="empty mp-empty"><strong>Cargando…</strong></div>';
+  $('mpNivel').innerHTML = '<div class="empty cargando mp-empty"><strong>Cargando…</strong></div>';
   let lineas;
   try {
     lineas = await api.lineasDeCategoriaMateriaPrima(categoriaActual, tipoActual);
@@ -287,7 +291,7 @@ export async function abrirLineaMateriaPrima(familia) {
 async function cargarProductos() {
   const miToken = ++tokenNivel;
   pintarBreadcrumb();
-  $('mpNivel').innerHTML = '<div class="empty mp-empty"><strong>Cargando…</strong></div>';
+  $('mpNivel').innerHTML = '<div class="empty cargando mp-empty"><strong>Cargando…</strong></div>';
   let productos;
   try {
     productos = await api.productosDeLineaMateriaPrima(familiaActual, tipoActual);
@@ -336,6 +340,31 @@ function pintarAlmacenes(almacenes) {
   ], { sort: 'valor', clic: 'Ver qué productos tiene este almacén', vacio: 'Sin almacenes con stock' });
 }
 
+/**
+ * Códigos de materia prima recién dados de alta en el ERP, con o sin stock:
+ * la foto de stock no los muestra hasta que entran al almacén, y aquí se ven
+ * desde el día en que Mongo los trae. Clic en uno: dónde tiene stock.
+ */
+export async function pintarCodigosNuevosMateriaPrima() {
+  let filas;
+  try {
+    filas = await api.codigosNuevosMateriaPrima($('mpNuevosDias').value);
+  } catch (e) {
+    $('mpNuevos').innerHTML = '<div class="empty mp-empty"><strong>No se pudo cargar</strong>' + esc(e.message) + '</div>';
+    return;
+  }
+  filas.forEach(f => { f.valorizadoUsd = f.valorizadoUsd || 0; });
+  $('mpNuevos').innerHTML = tabla('nuevos', 'mpNuevos', filas, [
+    { k: 'alta', t: 'Alta', texto: true, v: f => f.fechaAlta, h: f => '<span class="nowrap">' + esc(fechaCorta(f.fechaAlta)) + '</span>' },
+    { k: 'codigo', t: 'Código', texto: true, cls: 'tk', v: f => f.codigo || '', h: f => esc(f.codigo) },
+    { k: 'desc', t: 'Descripción', texto: true, v: f => f.descripcion || '', h: f => '<div class="cell-2">' + esc(corta(f.descripcion, 54)) + '<span>' + esc(f.linea || '—') + ' · ' + esc(f.tipo) + '</span></div>' },
+    { k: 'stock', t: 'Stock', num: true, v: f => f.stock, h: f => (f.stock > 0 ? cantidad(f.stock) + ' ' + esc(f.unidadMedida || 'UND') : '<span class="muted">Sin stock aún</span>') },
+    colValor,
+    { k: 'muestra', t: 'Muestra', texto: true, v: f => f.estadoMuestra || '', h: f => (f.estadoMuestra ? esc(f.estadoMuestra) + '<div class="muted small">' + esc(fechaCorta(f.fechaMuestra)) + '</div>' : '<span class="muted">—</span>') }
+  ], { sort: 'alta', clic: 'Ver en qué almacenes está',
+    vacio: 'Sin códigos nuevos en este periodo. La fecha de alta llega con la sincronización de Mongo.' });
+}
+
 /** Clic directo en un almacén: qué SKU tiene (del tipo elegido), sin pasar por Categoría → Línea. */
 export async function verProductosDeAlmacenMateriaPrima(almacen) {
   let filas;
@@ -366,7 +395,7 @@ export async function buscarProductosMateriaPrima() {
   const miToken = ++tokenBusqueda;
   if (!q) { tokenNivel++; renderNivelActual(); return; }
   pintarBreadcrumb(q);
-  $('mpNivel').innerHTML = '<div class="empty mp-empty"><strong>Buscando…</strong></div>';
+  $('mpNivel').innerHTML = '<div class="empty cargando mp-empty"><strong>Buscando…</strong></div>';
   try {
     const resultados = await api.buscarMateriaPrima(q);
     if (miToken !== tokenBusqueda) return; // llegó una búsqueda más nueva antes que esta

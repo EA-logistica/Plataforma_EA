@@ -53,7 +53,7 @@ let dia = '';
  * ámbito, incluidas las cargas del ERP y cualquier escritura nueva que nadie
  * marque- vacía los dos: ante la duda, se recalcula.
  */
-const ERP = /^\/api\/(ordenes-compra|oc|productos|requerimientos-compra-historico|materia-prima|stock-valorizado|proveedores)(\/|\?|$)/;
+const ERP = /^\/api\/(ordenes-compra|oc|productos|requerimientos-compra-historico|materia-prima|stock-valorizado|proveedores|importaciones|buscar)(\/|\?|$)/;
 const generacion = { app: 0, erp: 0 };
 
 export function invalidar(grupo) {

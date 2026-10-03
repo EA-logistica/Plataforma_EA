@@ -42,7 +42,18 @@ export async function crearBaseTemporal() {
   return async function borrar() {
     const c = new pg.Client({ connectionString: admin.href });
     await c.connect();
-    await c.query(`DROP DATABASE IF EXISTS ${nombre} WITH (FORCE)`);
-    await c.end();
+    // Un autovacuum (de otro rol) conectado a la base temporal hace fallar el
+    // FORCE con "permiso denegado": termina solo en segundos, así que se reintenta.
+    try {
+      for (let intento = 1; ; intento++) {
+        try { await c.query(`DROP DATABASE IF EXISTS ${nombre} WITH (FORCE)`); break; }
+        catch (e) {
+          if (e.code !== '42501' || intento >= 10) throw e;
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+    } finally {
+      await c.end();
+    }
   };
 }

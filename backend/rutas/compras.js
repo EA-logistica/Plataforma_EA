@@ -9,6 +9,9 @@ import * as requerimientosHistorico from '../db/repos/requerimientosCompraHistor
 import * as materiaPrima from '../db/repos/materiaPrimaStock.js';
 import * as stockValorizado from '../db/repos/stockValorizado.js';
 import * as muestras from '../db/repos/muestrasMp.js';
+import * as homologados from '../db/repos/homologadosMp.js';
+import * as importaciones from '../db/repos/importaciones.js';
+import * as mpPlaneacion from '../db/repos/mpPlaneacion.js';
 import { requiereSesion, requiereRol } from '../usuarios/middleware.js';
 import { log } from '../seguridad/log.js';
 import { cachearGet } from '../middleware/cache.js';
@@ -167,6 +170,9 @@ compras.get('/materia-prima/tipos', ...soloAdmin, asinc(async (req, res) => res.
 compras.get('/materia-prima/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.resumen(req.query.tipo))));
 compras.get('/materia-prima/categorias', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.categorias(req.query.tipo))));
 compras.get('/materia-prima/almacenes', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.almacenes(req.query.tipo))));
+// Códigos de materia prima dados de alta en los últimos ?dias (90 por defecto), con o sin stock.
+compras.get('/materia-prima/codigos-nuevos', ...soloAdmin, asinc(async (req, res) =>
+  res.json(await materiaPrima.codigosNuevos(req.query.dias))));
 compras.get('/materia-prima/buscar', ...soloAdmin, asinc(async (req, res) => res.json(await materiaPrima.buscarProductos(req.query.q || ''))));
 compras.get('/materia-prima/categorias/:categoria/lineas', ...soloAdmin, asinc(async (req, res) =>
   res.json(await materiaPrima.lineasDeCategoria(req.params.categoria, req.query.tipo))));
@@ -185,12 +191,20 @@ compras.get('/materia-prima/lineas/productos', ...soloAdmin, asinc(async (req, r
 compras.get('/materia-prima/productos/:codigo/almacenes', ...soloAdmin, asinc(async (req, res) =>
   res.json(await materiaPrima.almacenesDeProducto(req.params.codigo))));
 
+// ------------------------------------------------------ materias primas homologadas
+// Del Excel de CONFIG.homologados, cruzado con el ERP. Sin cachearGet: el
+// Excel cambia por fuera de PostgreSQL y la caché por revisión no se enteraría.
+compras.get('/materia-prima/homologados', requiereSesion, requiereRol('admin'), asinc(async (req, res) => res.json(await homologados.listar())));
+
 // ------------------------------------------------------- muestras de materia prima
 // Registro propio de logística (no viene del ERP): cada muestra que llega al
 // almacén, con su costo y su evaluación. Van antes de /materia-prima/:algo
 // para que "muestras" no se lea como un parámetro.
 compras.get('/materia-prima/muestras', ...soloAdmin, asinc(async (req, res) => res.json(await muestras.listar())));
 compras.get('/materia-prima/muestras/resumen', ...soloAdmin, asinc(async (req, res) => res.json(await muestras.resumen(req.query.mes))));
+// Candidatos de código interno para la descripción de una muestra.
+compras.get('/materia-prima/muestras/codigos', ...soloAdmin, asinc(async (req, res) =>
+  res.json(await muestras.sugerirCodigos(req.query.descripcion))));
 // Razón social a partir del RUC, para completar el formulario al escribirlo.
 compras.get('/materia-prima/muestras/proveedor', ...soloAdmin, asinc(async (req, res) =>
   res.json({ ruc: String(req.query.ruc || ''), proveedor: await muestras.proveedorPorRuc(req.query.ruc) })));
@@ -211,6 +225,18 @@ compras.delete('/materia-prima/muestras/:id', ...soloAdmin, asinc(async (req, re
   await log('muestra_mp_eliminada', req, 'id ' + req.params.id + ' · motivo: ' + motivo);
   res.json(r);
 }));
+
+// -------------------------------------------------------------- importaciones
+// Seguimiento de las OC importadas (colección importaciones del bot, copiada
+// por la sincronización de Mongo). Solo lectura: se editan en el bot. Los
+// atrasos dependen de la fecha, así que la caché también varía por día (Lima).
+const porDia = [requiereSesion, requiereRol('admin'), cachearGet({ variar: () => importaciones.hoyLima() })];
+compras.get('/importaciones', ...porDia, asinc(async (req, res) => res.json(await importaciones.listar())));
+compras.get('/importaciones/:id', ...porDia, asinc(async (req, res) => res.json(await importaciones.detalle(req.params.id))));
+
+// ------------------------------------------------- clasificación ABC de materia prima
+// Por consumo valorizado anual, con cobertura y punto de reorden (shared/abc.js).
+compras.get('/materia-prima/abc', ...soloAdmin, asinc(async (req, res) => res.json(await mpPlaneacion.abc(req.query.tipo || ''))));
 
 // ------------------------------------------------------- stock valorizado (global)
 // Todos los almacenes y tipos de producto juntos (Producto Terminado + Materia

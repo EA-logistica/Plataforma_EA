@@ -42,7 +42,29 @@
     <span class="mongo-texto"><span id="mongoEstadoTexto">Conectado a MongoDB</span><span id="mongoEstadoFecha"></span></span>
   </div>
   <div class="topbar-spacer"></div>
-  <div class="topbar-actions">
+  <!-- Herramientas de la vista de logística (solo admin): buscador global y período. -->
+  <div class="top-herramientas" id="topHerramientas" hidden>
+    <button class="buscar-btn" id="btnBuscar" onclick="abrirBuscador()" title="Buscar en toda la plataforma (Ctrl+K)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span>Buscar OC, BL, producto, proveedor…</span><kbd>Ctrl K</kbd>
+    </button>
+    <div class="periodo-anchor" id="periodoAnchor">
+      <button class="periodo-btn" id="btnPeriodo" onclick="alternarPeriodo()" aria-expanded="false" aria-haspopup="true" title="Período de los indicadores">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <span><b id="periodoTexto">Este mes</b><small id="periodoDetalle"></small></span>
+      </button>
+      <div class="periodo-popover" id="periodoPopover" role="dialog" aria-label="Período">
+        <div class="periodo-t">Período de los indicadores</div>
+        <div class="tools" id="periodoOpciones"></div>
+        <div class="periodo-rango">
+          <label class="mp-campo"><span>Desde</span><input class="input" type="date" id="perDesde" onchange="setRangoPeriodo()"></label>
+          <label class="mp-campo"><span>Hasta</span><input class="input" type="date" id="perHasta" onchange="setRangoPeriodo()"></label>
+        </div>
+        <label class="periodo-comp"><input type="checkbox" id="perComparar" onchange="setCompararPeriodo(this.checked)"> Comparar con el mismo período del año anterior</label>
+        <p class="periodo-nota">Aplica al Dashboard y a Importaciones. Las fotos de stock y la clasificación ABC son siempre al día de hoy.</p>
+      </div>
+    </div>
+  </div>  <div class="topbar-actions">
     <div class="theme-switch" id="themeSwitch">
       <button class="theme-toggle" id="themeLight" onclick="aplicarTema('light')" aria-label="Modo claro" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -394,19 +416,26 @@
       <button class="nav-item on" data-atab="dashboard" onclick="tabAdmin('dashboard')">Dashboard</button>
     </div>
 
+    <div class="nav-section" id="navRadar">
+      <div class="nav-section-title">Mercado</div>
+      <button class="nav-item" data-atab="radar" onclick="tabAdmin('radar')">Radar de Importaciones</button>
+    </div>
+
     <div class="nav-section nav-group" id="navCompras">
       <button class="nav-group-toggle" onclick="toggleNavGroup('navCompras')">
         <span>Compras y Logística</span>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="nav-group-body">
+        <button class="nav-item" data-atab="importaciones" onclick="tabAdmin('importaciones')">Importaciones</button>
         <button class="nav-item" data-atab="almacen" onclick="tabAdmin('almacen')">Control de Almacenes</button>
         <button class="nav-item" data-atab="exportaciones" onclick="tabAdmin('exportaciones')">Exportaciones</button>
         <button class="nav-item" data-atab="productos" onclick="tabAdmin('productos')">Productos</button>
         <button class="nav-item" data-atab="materiaPrima" onclick="tabAdmin('materiaPrima')">Materia Prima</button>
-        <button class="nav-item" data-atab="requerimientos" onclick="tabAdmin('requerimientos')">Requerimientos de compra</button>
-        <button class="nav-item" data-atab="ordenesCompra" onclick="tabAdmin('ordenesCompra')">Órdenes de compra</button>
-        <button class="nav-item" data-atab="proveedores" onclick="tabAdmin('proveedores')">Proveedores</button>
+        <!-- Requerimientos de compra, Órdenes de compra y Proveedores: inhabilitadas (ver SECCIONES_INHABILITADAS en views/tabs.js). -->
+        <button class="nav-item" data-atab="requerimientos" style="display:none" hidden onclick="tabAdmin('requerimientos')">Requerimientos de compra</button>
+        <button class="nav-item" data-atab="ordenesCompra" style="display:none" hidden onclick="tabAdmin('ordenesCompra')">Órdenes de compra</button>
+        <button class="nav-item" data-atab="proveedores" style="display:none" hidden onclick="tabAdmin('proveedores')">Proveedores</button>
         <button class="nav-item" data-atab="servicios" onclick="tabAdmin('servicios')">Servicios</button>
       </div>
     </div>
@@ -430,8 +459,11 @@
     <div class="section-head">
       <div>
         <h2>Dashboard</h2>
+        <p class="head-meta"><span id="dashSello"></span></p>
       </div>
       <div class="tools">
+        <div class="tools segmentado" id="dashPerfiles" role="group" aria-label="Perfil"></div>
+        <button class="btn btn-ghost btn-sm" id="btnReporte" onclick="verReporteSemanal()" title="Resumen de la semana para gerencia, listo para guardar como PDF">Reporte semanal</button>
         <button class="btn btn-ghost btn-sm" onclick="renderDashboard()">Actualizar</button>
       </div>
     </div>
@@ -439,8 +471,66 @@
     <div id="dashboardBody"></div>
   </section>
 
-  <section class="view" id="aBandeja">
+  <!-- Radar de Importaciones (SUNAT), integrado: datos en el esquema radar de
+       PostgreSQL, ETL Python vigilado por el servidor. Ver views/radar/. -->
+  <section class="view" id="aRadar">
     <div class="section-head">
+      <div>
+        <h2>Radar de Importaciones</h2>
+        <p id="riEstado">Importaciones peruanas de polímeros, masterbatch y aditivos (SUNAT).</p>
+      </div>
+      <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="renderRadar()">Refrescar</button>
+        <button class="btn btn-sm" onclick="abrirActualizarRadar()">Actualizar datos</button>
+      </div>
+    </div>
+    <div class="filters">
+      <button class="fchip on" id="riSubPanel" onclick="subtabRadar('panel')">Panel general</button>
+      <button class="fchip" id="riSubHistorico" onclick="subtabRadar('historico')">Histórico</button>
+      <button class="fchip" id="riSubExplorar" onclick="subtabRadar('explorar')">Explorar</button>
+      <button class="fchip" id="riSubProductos" onclick="subtabRadar('productos')">Productos</button>
+      <button class="fchip" id="riSubEmpresas" onclick="subtabRadar('empresas')">Empresas</button>
+    </div>
+    <!-- Filtros comunes a todas las pestañas: se aplican al cambiar. -->
+    <div class="filters mp-filtros ri-filtros">
+      <label class="mp-campo"><span>Desde</span><input class="input" id="riDesde" type="date" onchange="filtrarRadar()"></label>
+      <label class="mp-campo"><span>Hasta</span><input class="input" id="riHasta" type="date" onchange="filtrarRadar()"></label>
+      <label class="mp-campo"><span>Material</span><select class="select" id="riMaterial" onchange="filtrarRadar()"><option value="">Todos</option></select></label>
+      <label class="mp-campo"><span>Origen</span><select class="select" id="riOrigen" onchange="filtrarRadar()"><option value="">Todos</option></select></label>
+      <label class="mp-campo"><span>Alcance</span><select class="select" id="riAlcance" onchange="filtrarRadar()">
+        <option value="plastics">Materias primas plásticas</option><option value="all">Todos los registros cargados</option></select></label>
+      <button class="btn btn-sm btn-ghost" onclick="limpiarFiltrosRadar()">Limpiar</button>
+    </div>
+    <div id="riCuerpo"></div>
+  </section>
+
+  <!-- Importaciones: seguimiento de las OC importadas (bot de logística vía
+       Mongo, copiado por backend/mongo/sincronizar.js). Ver views/importaciones.js. -->
+  <section class="view" id="aImportaciones">
+    <div class="section-head">
+      <div>
+        <h2>Importaciones</h2>
+        <p class="head-meta">De la OC a la planta: atrasos, llegadas, pagos y costo puesto en planta (US$ sin IGV). <span id="impSello"></span></p>
+      </div>
+      <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="renderImportaciones()">Actualizar</button>
+      </div>
+    </div>
+    <div class="kpis" id="impHero"></div>
+    <div class="avisos" id="impAvisos"></div>
+    <div class="filters mp-filtros imp-filtros">
+      <label class="mp-campo mp-campo-q"><span>Buscar</span><input class="input" id="impQ" type="search" placeholder="OC, producto, proveedor, BL, naviera…" autocomplete="off" oninput="filtrarImportaciones()"></label>
+      <label class="mp-campo"><span>Etapa</span><select class="select" id="impEstado" onchange="filtrarImportaciones()"></select></label>
+      <label class="mp-campo"><span>Familia</span><select class="select" id="impFamilia" onchange="filtrarImportaciones()"></select></label>
+      <label class="mp-campo"><span>Vía</span><select class="select" id="impEnvio" onchange="filtrarImportaciones()"></select></label>
+      <label class="mp-campo"><span>Prioridad</span><select class="select" id="impPrioridad" onchange="filtrarImportaciones()"></select></label>
+      <label class="muted small"><input type="checkbox" id="impAtrasadas" onchange="filtrarImportaciones()"> Solo atrasadas</label>
+      <label class="muted small" title="Usa el período elegido arriba, en la barra superior"><input type="checkbox" id="impPeriodo" onchange="filtrarImportaciones()"> Solo emitidas en el período</label>
+    </div>
+    <div id="impCuerpo"></div>
+  </section>
+
+  <section class="view" id="aBandeja">    <div class="section-head">
       <div>
         <h2>Bandeja de despacho</h2>
         <p id="bandejaResumen">Servicios de hoy y pendientes.</p>
@@ -723,6 +813,8 @@
     <div class="filters">
       <button class="fchip on" id="mpSubStock" onclick="subtabMateriaPrima('stock')">Stock</button>
       <button class="fchip" id="mpSubMuestras" onclick="subtabMateriaPrima('muestras')">Muestras</button>
+      <button class="fchip" id="mpSubHomologados" onclick="subtabMateriaPrima('homologados')">Homologados</button>
+      <button class="fchip" id="mpSubAbc" onclick="subtabMateriaPrima('abc')">ABC y reorden</button>
     </div>
 
     <div id="mpPanelStock">
@@ -741,10 +833,71 @@
       <p class="sub">Dónde está físicamente el stock de este tipo. Clic en un almacén para ver sus productos.</p>
       <div id="mpAlmacenes"></div>
     </div>
+    <div class="panel">
+      <div class="mp-cabecera">
+        <div>
+          <h3>Códigos nuevos</h3>
+          <p class="sub">Materiales dados de alta en el ERP (llegan con la sincronización de Mongo), tengan o no stock todavía.</p>
+        </div>
+        <label class="mp-campo"><span>Alta en los últimos</span><select class="select" id="mpNuevosDias" onchange="pintarCodigosNuevosMateriaPrima()">
+          <option value="30">30 días</option><option value="90" selected>90 días</option><option value="180">180 días</option><option value="365">1 año</option></select></label>
+      </div>
+      <div id="mpNuevos"></div>
+    </div>
     </div>
 
-    <!-- Muestras de materia prima que llegan al almacén. Ver views/muestras.js. -->
-    <div id="mpPanelMuestras" style="display:none">
+    <!-- Materias primas homologadas (Excel de Data_export) categorizadas por código. Ver views/homologados.js. -->
+    <div id="mpPanelHomologados" style="display:none">
+      <p class="mp-intro" id="hoIntro">Resinas homologadas según el Excel de calidad. La <b>categoría</b> sale de la línea del ERP de cada código (si no está, de su descripción: polímero, proceso y tipo) y se contrasta con la descripción y el grupo equivalente del Excel: si alguno la contradice, la fila queda para <b>revisar</b> con el motivo.</p>
+      <div class="kpis" id="hoMetrics"></div>
+      <div class="panel">
+        <h3>Por categoría</h3>
+        <p class="sub">Clic en una categoría para filtrar la tabla.</p>
+        <div id="hoCategorias"></div>
+      </div>
+      <div class="panel">
+        <h3>Homologados</h3>
+        <div class="filters mp-filtros">
+          <label class="mp-campo mp-campo-q"><span>Descripción</span><input class="input" id="hoQ" type="search" placeholder="Descripción, código, marca o grado" autocomplete="off" oninput="filtrarHomologados()"></label>
+          <label class="mp-campo"><span>Categoría</span><select class="select" id="hoCategoria" onchange="filtrarHomologados()"></select></label>
+          <label class="mp-campo"><span>Estado</span><select class="select" id="hoEstado" onchange="filtrarHomologados()"></select></label>
+          <label class="mp-campo"><span>Preferencia</span><select class="select" id="hoPreferencia" onchange="filtrarHomologados()"></select></label>
+          <label class="mp-campo"><span>Origen</span><select class="select" id="hoOrigen" onchange="filtrarHomologados()">
+            <option value="">Todos</option><option value="excel">Del Excel</option><option value="erp">Del ERP, fuera del Excel</option>
+            <option value="nuevo">Códigos nuevos</option><option value="muestra">Evaluados por muestra</option></select></label>
+          <label class="muted small"><input type="checkbox" id="hoRevisar" onchange="filtrarHomologados()"> Solo por revisar</label>
+          <label class="muted small"><input type="checkbox" id="hoConStock" onchange="filtrarHomologados()"> Solo con stock</label>
+          <button class="btn btn-sm btn-ghost" onclick="limpiarFiltrosHomologados()">Limpiar filtros</button>
+        </div>
+        <div id="hoTabla"></div>
+      </div>
+    </div>
+
+    <!-- Clasificación ABC por consumo valorizado y punto de reorden. Ver views/abc.js. -->
+    <div id="mpPanelAbc" style="display:none">
+      <p class="mp-intro">Clasificación <b>ABC</b> por consumo valorizado anual (consumo promedio de 12 meses × costo en US$): <b>A</b> son los pocos códigos que hacen el 80% del gasto, <b>B</b> el siguiente 15% y <b>C</b> el 5% restante. Junto a cada código, su <b>cobertura</b> y si ya llegó a su <b>punto de reorden</b>. <span id="abcSello"></span></p>
+      <div class="filters mp-filtros">
+        <label class="mp-campo"><span>Tipo</span><select class="select" id="abcTipo" onchange="renderAbc()">
+          <option value="">Materia prima y tintas</option><option value="MATERIA PRIMA">Materia prima</option><option value="MATERIA PRIMA - TINTAS">Tintas</option></select></label>
+      </div>
+      <div class="kpis" id="abcMetrics"></div>
+      <div id="abcCuerpo"></div>
+      <div class="panel">
+        <div class="mp-cabecera"><div><h3>Códigos</h3><p class="sub" id="abcResumen"></p></div></div>
+        <div class="filters mp-filtros">
+          <label class="mp-campo mp-campo-q"><span>Buscar</span><input class="input" id="abcQ" type="search" placeholder="Código, descripción o proveedor" autocomplete="off" oninput="filtrarAbc()"></label>
+          <label class="mp-campo"><span>Clase</span><select class="select" id="abcClase" onchange="filtrarAbc()"><option value="">Todas</option><option>A</option><option>B</option><option>C</option></select></label>
+          <label class="mp-campo"><span>Situación</span><select class="select" id="abcEstado" onchange="filtrarAbc()"><option value="">Todas</option>
+            <option value="pedir">Pedir ya</option><option value="pronto">Pedir pronto</option><option value="ok">Cubierto</option><option value="exceso">Exceso</option><option value="inmovilizado">Sin consumo</option></select></label>
+          <label class="mp-campo"><span>Línea</span><select class="select" id="abcLinea" onchange="filtrarAbc()"></select></label>
+          <button class="btn btn-sm btn-ghost" onclick="limpiarAbc()">Limpiar filtros</button>
+        </div>
+        <div id="abcTabla"></div>
+        <div class="tools" id="abcPaginacion" style="justify-content:center;margin-top:10px"></div>
+      </div>
+    </div>
+
+    <!-- Muestras de materia prima que llegan al almacén. Ver views/muestras.js. -->    <div id="mpPanelMuestras" style="display:none">
       <div class="filters mu-barra">
         <label class="mp-campo"><span>Mes</span><input class="input" id="muMes" type="month" onchange="renderMuestras()"></label>
         <div class="mu-acciones">
@@ -778,9 +931,9 @@
       <div class="panel">
         <h3>Registro de muestras</h3>
         <div class="filters">
-          <input class="input" id="muQ" type="search" placeholder="Buscar descripción, familia, proveedor o RUC" style="flex:1;min-width:220px" oninput="filtrarMuestras()">
+          <input class="input" id="muQ" type="search" placeholder="Buscar descripción, código, familia, proveedor o RUC" style="flex:1;min-width:220px" oninput="filtrarMuestras()">
           <select class="select" id="muEstado" style="width:180px" onchange="filtrarMuestras()">
-            <option value="">Todos los estados</option><option>Recibida</option><option>En evaluación</option><option>Aprobada</option><option>Rechazada</option>
+            <option value="">Todos los estados</option><option>Recibida</option><option>En evaluación</option><option>Aprobada</option><option>Aprobada c/restricción</option><option>Rechazada</option>
           </select>
           <label class="muted small"><input type="checkbox" id="muSoloMes" onchange="filtrarMuestras()"> Solo el mes elegido</label>
         </div>
@@ -968,8 +1121,20 @@
   </div>
 </div>
 
-<div class="overlay" id="overlay" onclick="if(event.target===this)cerrarModal()">
-  <div class="modal" id="modal">
+<!-- Buscador global (Ctrl+K). Ver ui/buscador.js. -->
+<div class="overlay buscador" id="buscador" onclick="if(event.target===this)cerrarBuscador()">
+  <div class="buscador-caja" role="dialog" aria-modal="true" aria-label="Buscar">
+    <div class="buscador-entrada">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="buscadorQ" type="search" placeholder="Buscar OC, BL, código, producto, proveedor, RUC o ticket…" autocomplete="off" oninput="escribirBuscador()">
+      <kbd>Esc</kbd>
+    </div>
+    <div class="buscador-res" id="buscadorResultados"></div>
+    <div class="buscador-pie"><span><kbd>↑</kbd><kbd>↓</kbd> moverse</span><span><kbd>Enter</kbd> abrir</span><span><kbd>Ctrl K</kbd> desde cualquier pantalla</span></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)cerrarModal()">  <div class="modal" id="modal">
     <div class="modal-head"><h3 id="modalTitle">Detalle</h3><button class="x" onclick="cerrarModal()">×</button></div>
     <div class="modal-body" id="modalBody"></div>
   </div>

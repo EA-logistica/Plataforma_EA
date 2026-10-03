@@ -21,6 +21,13 @@ const { crearBaseTemporal } = await import('./pgTemporal.mjs');
 const borrarBase = await crearBaseTemporal();
 process.env.PLANSA_UPLOADS = path.join(temporal, 'uploads');
 process.env.PLANSA_PUERTO = '0';                 // puerto libre que elija el sistema
+process.env.PLANSA_HOMOLOGADOS = path.join(temporal, 'homologados.xlsx');
+// Sin Mongo: el servidor de pruebas no debe leer el Mongo de producción del .env
+// (la sincronización corría en segundo plano y llenaba la base de prueba a destiempo).
+process.env.MONGO_URI = '';
+process.env.MONGO_URI_ALTERNATIVA = '';
+// Sin worker de Radar: las pruebas siembran sus propias series.
+process.env.RADAR_WORKER = '0';
 
 const { iniciar } = await import('../backend/servidor.js');
 const { nombreUnico, marcaDeTiempo } = await import('../backend/middleware/subida.js');
@@ -506,7 +513,18 @@ try {
   ok((await api('GET', '/api/payback?inicio=2026-10-01', undefined, tokenSeg)).status === 403,
      'ni con sesión de seguimiento: es análisis de costos, cosa de admin');
   const pb = await api('GET', '/api/payback?inicio=2026-10-01', undefined, tokenAdmin);
-  ok(pb.status === 200 && pb.datos.escenarios.length === 3, 'admin sí, y devuelve los tres escenarios');
+  ok(pb.status === 200 && pb.datos.escenarios.length === 2, 'admin sí, y devuelve los dos escenarios (tercero y dos part time)');
+  const pb38 = await api('GET', '/api/payback?cuota=3800', undefined, tokenAdmin);
+  ok(pb38.datos.escenarios.find(e => e.id === 'tercero').costoMensual === 3800, 'la cuota del proveedor se puede pedir por parámetro');
+
+  // Ruta por calles del plan: solo admin, y se valida antes de ir a OSRM.
+  const paradaLima = { lat: -12.05, lon: -77.05, nombre: 'x', servicioMin: 12 };
+  ok((await api('POST', '/api/payback/ruta', { paradas: [paradaLima, paradaLima] })).status === 401, 'la ruta del plan pide sesión');
+  ok((await api('POST', '/api/payback/ruta', { paradas: [paradaLima, paradaLima] }, tokenSeg)).status === 403, 'y de admin');
+  ok((await api('POST', '/api/payback/ruta', { paradas: [paradaLima] }, tokenAdmin)).status === 400, 'una ruta necesita planta y al menos una parada');
+  ok((await api('POST', '/api/payback/ruta', { paradas: [paradaLima, { lat: 40.4, lon: -3.7 }] }, tokenAdmin)).status === 400,
+     'una parada fuera de Lima se rechaza sin consultar a nadie');
+  ok((await api('POST', '/api/payback/ruta', { paradas: Array(30).fill(paradaLima) }, tokenAdmin)).status === 400, 'y más de 25 puntos también');
   ok(pb.datos.gastoActual > 0 && pb.datos.recomendado, 'con el gasto actual y un recomendado');
   // El proveedor a cuota fija no es planilla: no tiene calendario de
   // beneficios, así que ese único escenario no trae costo de primer año.
@@ -921,6 +939,165 @@ try {
   ok((await api('DELETE', '/api/materia-prima/muestras/' + m1.datos.id, {}, tokenAdmin)).status === 400, 'eliminar exige motivo');
   ok((await api('DELETE', '/api/materia-prima/muestras/' + m1.datos.id, { motivo: 'Registro de prueba' }, tokenAdmin)).status === 200,
      'y con motivo la elimina');
+
+  // ------------------------------------------- materias primas homologadas
+  console.log('\n-- homologados de materia prima --');
+  ok((await api('GET', '/api/materia-prima/homologados')).status === 401, 'los homologados piden sesión');
+  ok((await api('GET', '/api/materia-prima/homologados', undefined, tokenSeg)).status === 403, 'y solo de admin');
+  const sinExcel = await api('GET', '/api/materia-prima/homologados', undefined, tokenAdmin);
+  ok(sinExcel.status === 200 && sinExcel.datos.disponible === false, 'sin el Excel, responde vacío en vez de fallar');
+  {
+    const ExcelJS = (await import('exceljs')).default;
+    const libro = new ExcelJS.Workbook();
+    const hoja = libro.addWorksheet('Hoja1');
+    hoja.addRow([]);
+    hoja.addRow(['Código', 'Nombre', 'Familia', 'Grupo Equiv.', 'Estado', 'Preferencia', 'Fecha']);
+    hoja.addRow(['10003018📝', 'HDPE INYECCION SABIC M80064S P/BALDES M.I.8', 'MATERIA PRIMA', 'HDPE INYECCION', 'Aprobado', '🥇Principal', '"2026-05-07T00:00:00.000Z"', 'Cambiar']);
+    hoja.addRow([10002998, 'PPNI COPO IMPAC PROPILCO 08C01T', 'MATERIA PRIMA', 'PP COPO', 'Sin registro', null, '—']);
+    hoja.addRow([10021647, 'PPNI COPO IMPACTO BOROUGE BE961MO M.I. 12', 'MATERIA PRIMA', 'hdpe-iny-g-02', 'Sin registro', null, '—']);
+    hoja.addRow([10017603, 'PPNI COPOLIMERO PROPILCO 12R88A', 'MATERIA PRIMA', 'PP COPO', 'Sin registro', null, '—']);
+    await libro.xlsx.writeFile(process.env.PLANSA_HOMOLOGADOS);
+  }
+  const ho = await api('GET', '/api/materia-prima/homologados', undefined, tokenAdmin);
+  const hoPor = c => ho.datos.filas.find(f => f.codigo === c) || {};
+  ok(ho.status === 200 && ho.datos.disponible && ho.datos.filas.filter(f => f.origen === 'excel').length === 4, 'lee las 4 filas del Excel (sin la columna basura "Cambiar")');
+  ok(hoPor('10003018').categoria === 'HDPE INYECCIÓN' && hoPor('10003018').conNota && hoPor('10003018').preferencia === 'Principal'
+    && hoPor('10003018').fecha === '2026-05-07' && hoPor('10003018').indiceFluidez === 8 && hoPor('10003018').coherencia === 'ok',
+    'limpia código, preferencia y fecha, y detecta HDPE inyección con M.I. 8');
+  ok(hoPor('10002998').categoria === 'PP COPOLÍMERO IMPACTO' && hoPor('10002998').coherencia === 'generico', '"PP COPO" del Excel se precisa por la descripción');
+  ok(hoPor('10021647').coherencia === 'revisar', 'un PP en un grupo HDPE queda para revisar');
+  ok(hoPor('10017603').categoria === 'PP RANDÓMICO / CLARIFICADO INYECCIÓN', 'sin palabras, el grado Propilco (12R88) dice que es randómico');
+  {
+    const { clasificar, detectarCategoria, categoriaDeGrupo } = await import('#shared/homologados.js');
+    // R301E M.I. 1.8 es de soplado aunque la descripción no lo diga: manda la línea del ERP.
+    const c = clasificar({ detectada: detectarCategoria('POLIPROPILENO RANDON COPOLIMERO TOPILENE R301E MI 1.8'),
+      deGrupo: categoriaDeGrupo('PP COPO'), deErp: categoriaDeGrupo('PP SOPLADO RANDOMICO') });
+    ok(c.categoria === 'PP RANDÓMICO SOPLADO' && c.fuente === 'erp' && c.coherencia === 'revisar' && c.motivo.includes('descripción'),
+       'la línea del ERP del código manda, y si la descripción la contradice queda el motivo');
+  }
+
+  // Catálogo del ERP (como lo deja la sincronización con Mongo) → código de muestras → Homologados.
+  {
+    const productosRepo = await import('../backend/db/repos/productos.js');
+    const muestrasRepo = await import('../backend/db/repos/muestrasMp.js');
+    const mp = (codigo, descripcion, linea, extra = {}) => ({ codigo, descripcion, linea, familia: 'MATERIA PRIMA', unidadMedida: 'KG', ...extra });
+    await productosRepo.cargarInicial([
+      mp('10027640', 'PP COPO SINOPEC K8009 M.I 9 (MUESTRA)', 'PP COPO IMPACTO INYECCION'),
+      mp('10002693', 'HDPE SOPLADO SNETOR  HD-5502 MI 0.35', 'HDPE SOPLADO'),
+      mp('10024254', 'HDPE SOPLADO BAYSTAR HD-5502 (MUESTRA-SNETOR)', 'HDPE SOPLADO'),
+      mp('10021647', 'PPNI COPO IMPACTO BOROUGE BE961MO M.I. 12', 'PP COPO IMPACTO INYECCION')
+    ]);
+    ok(await productosRepo.registrarAltas() === 0, 'la primera vez el catálogo entra como base, no como "nuevo"');
+
+    const conCodigo = await api('POST', '/api/materia-prima/muestras', {
+      fechaLlegada: hoyPrueba, descripcion: 'PP COPO SINOPEC K8009 M.I 9 (MUESTRA)', cantidadKg: 25
+    }, tokenAdmin);
+    ok(conCodigo.status === 201 && conCodigo.datos.codigoProducto === '10027640' && conCodigo.datos.codigoAuto,
+       'una muestra sin código lo recibe sola por su descripción');
+    const dudosa = await api('POST', '/api/materia-prima/muestras', {
+      fechaLlegada: hoyPrueba, descripcion: 'HDPE SOPLADO SNETOR HD-5502', cantidadKg: 25
+    }, tokenAdmin);
+    ok(dudosa.datos.codigoProducto === '', 'si hay dos códigos casi iguales, no adivina');
+    const sug = await api('GET', '/api/materia-prima/muestras/codigos?descripcion=' + encodeURIComponent('HDPE SOPLADO SNETOR HD-5502'), undefined, tokenAdmin);
+    ok(sug.datos.candidatos[0].codigo === '10002693' && sug.datos.candidatos.some(c => c.codigo === '10024254') && !sug.datos.seguro,
+       'y ofrece los candidatos, el más parecido primero');
+    const elegida = await api('PATCH', '/api/materia-prima/muestras/' + dudosa.datos.id, { codigoProducto: '10024254' }, tokenAdmin);
+    ok(elegida.datos.codigoProducto === '10024254' && !elegida.datos.codigoAuto, 'el código elegido a mano queda como manual');
+
+    const rechazada = await api('POST', '/api/materia-prima/muestras', {
+      fechaLlegada: hoyPrueba, descripcion: 'PPNI COPO IMPACTO BOROUGE BE961MO M.I. 12', cantidadKg: 10, estado: 'Rechazada'
+    }, tokenAdmin);
+    ok(rechazada.datos.codigoProducto === '10021647', 'detecta el código también al registrarla ya evaluada');
+    const restringida = await api('PATCH', '/api/materia-prima/muestras/' + conCodigo.datos.id, { estado: 'Aprobada c/restricción' }, tokenAdmin);
+    ok(restringida.status === 200 && restringida.datos.estado === 'Aprobada c/restricción', 'acepta el estado "Aprobada c/restricción"');
+
+    const ho2 = (await api('GET', '/api/materia-prima/homologados', undefined, tokenAdmin)).datos;
+    const de = c => ho2.filas.find(x => x.codigo === c) || {};
+    ok(de('10021647').estado === 'Rechazado' && de('10021647').fuenteEstado === 'muestra' && de('10021647').estadoExcel === 'Sin registro',
+       'la muestra rechazada pasa a Homologados sobre lo que decía el Excel');
+    ok(de('10027640').origen === 'erp' && de('10027640').estado === 'Aprobado c/restricción' && de('10027640').categoria === 'PP COPOLÍMERO IMPACTO',
+       'una resina del ERP que no está en el Excel también aparece, con el estado de su muestra');
+    ok(de('10002693').origen === 'erp' && de('10002693').estado === 'Sin registro', 'y las demás resinas nuevas del ERP, sin registro');
+    ok(de('10024254').estado === 'En evaluación', 'una muestra todavía sin evaluar la deja "En evaluación"');
+
+    // Un código que llega después: queda como nuevo en Materia Prima y en Homologados.
+    await productosRepo.cargarInicial([mp('10028001', 'HDPE SOPLADO NUEVO PROVEEDOR XY5502 M.I. 0.35', 'HDPE SOPLADO')]);
+    ok(await productosRepo.registrarAltas() === 1, 'un código que llega después queda registrado con su fecha de alta');
+    const nuevos = (await api('GET', '/api/materia-prima/codigos-nuevos?dias=30', undefined, tokenAdmin)).datos;
+    ok(nuevos.length === 1 && nuevos[0].codigo === '10028001' && nuevos[0].stock === 0, 'Materia Prima lo lista entre los códigos nuevos, aunque no tenga stock');
+    const busqueda = (await api('GET', '/api/materia-prima/buscar?q=XY5502', undefined, tokenAdmin)).datos;
+    ok(busqueda.length === 1 && busqueda[0].categoria === 'SIN STOCK', 'y la búsqueda de Materia Prima también lo encuentra');
+    const ho3 = (await api('GET', '/api/materia-prima/homologados', undefined, tokenAdmin)).datos;
+    const nuevoHo = ho3.filas.find(x => x.codigo === '10028001') || {};
+    ok(nuevoHo.nuevo && nuevoHo.origen === 'erp' && nuevoHo.categoria === 'HDPE SOPLADO', 'y Homologados lo muestra como nuevo, ya categorizado');
+    ok(await muestrasRepo.completarCodigos() === 0, 'las muestras sin código se reintentan tras cada sincronización');
+  }
+
+  // ------------------------------------------------ radar de importaciones
+  console.log('\n-- radar de importaciones --');
+  {
+    const { ejecutar } = await import('../backend/db/conexion.js');
+    const { sembrarRadar } = await import('./radarSemilla.mjs');
+    await sembrarRadar(ejecutar);
+    const r = (ruta, token = tokenAdmin) => api('GET', '/api/radar' + ruta, undefined, token);
+    ok((await r('/panel', null)).status === 401 && (await r('/panel', tokenSeg)).status === 403, 'Radar es solo de admin');
+
+    const panel = (await r('/panel')).datos;
+    ok(panel.summary.series === 5 && panel.summary.fob_usd === 70690 && panel.summary.importers === 2 && panel.summary.pending_review === 1,
+       'panel general: 5 series, US$ 70 690 FOB, 2 importadores, 1 por revisar (de la misma base PostgreSQL)');
+    ok(Math.abs(panel.summary.usd_kg - 70690 / 60750) < 1e-9 && panel.costs.cif_usd === 70690 + 5 * 110, 'FOB/kg ponderado y CIF = FOB + flete + seguro');
+    ok(panel.materials[0].name === 'HDPE' && panel.trend.length === 2, 'desglose por material y tendencia semanal');
+
+    ok((await r('/operaciones?q=' + encodeURIComponent('HDPE soplado MI 0.35'))).datos.total === 2, 'Explorar: "HDPE soplado MI 0.35" exige todos los conceptos');
+    ok((await r('/operaciones?q=' + encodeURIComponent('HDPE soplado MI 0.3'))).datos.total === 0, 'y "0.3" no calza dentro de "0.35"');
+    ok((await r('/operaciones?q=polipropileno')).datos.total === 1 && (await r('/operaciones?q=PP')).datos.total === 1, 'PP y POLIPROPILENO son sinónimos');
+    ok((await r('/operaciones?start=2026-09-20&end=2026-09-01')).status === 422, 'un rango de fechas invertido se rechaza');
+    ok((await r('/operaciones?scope=all&material=Masterbatch&review=true')).datos.total === 1, 'filtros por material y "por revisar"');
+    ok((await r('/operaciones?hs=3902')).datos.total === 1, 'filtro por subpartida (prefijo)');
+
+    const h = (await r('/historico')).datos;
+    ok(h.meta.windows.length === 1 && h.meta.windows[0].start === '2026-09-14', 'histórico: solo cuenta la semana con base MA y MB confirmada');
+    ok(h.timeline.length === 2 && h.timeline[0].status === 'partial' && h.timeline[1].status === 'backed',
+       'la semana sin base completa sale "parcial", no como si estuviera completa');
+    ok(h.comparison.eligible === false && h.comparison.reasons.some(x => /Faltan bases/.test(x)) && h.comparison.deltas.fob_usd === null,
+       'sin bases completas en ambos períodos no se calculan porcentajes');
+    ok(h.metrics.importers === 2 && h.movers.length === 2, 'métricas del período e importadores que lo movieron');
+
+    const p = (await r('/productos?p=' + encodeURIComponent('hdpe soplado mi 0.35'))).datos;
+    ok(p.interpretation.family === 'HDPE' && p.interpretation.application === 'Soplado' && p.interpretation.mi_min === 0.298 && p.interpretation.mi_max === 0.402,
+       'Productos interpreta familia, aplicación y MI ±15 %');
+    ok(p.grades.total === 1 && p.grades.items[0].grade_key === 'HB5502B' && p.grades.items[0].buyers.length === 2 && p.grades.items[0].family === 'HDPE',
+       'y devuelve el grado con su ficha y TODAS las empresas que lo importan');
+
+    const emp = (await r('/empresas')).datos;
+    const e1 = (await r('/empresas/20100367395')).datos;
+    ok(emp.length === 2 && e1.summary.series === 2 && e1.mean_days_between_active_dates === 1, 'Empresas: lista por RUC y ficha con frecuencia de compra');
+    ok((await r('/empresas/123')).status === 400, 'un RUC mal escrito se rechaza');
+
+    const csv = await fetch(BASE + '/api/radar/operaciones/exportar?q=HDPE', { headers: { Authorization: 'Bearer ' + tokenAdmin } });
+    const csvBytes = Buffer.from(await csv.arrayBuffer()); // .text() quitaría el BOM
+    const csvTexto = csvBytes.toString('utf8');
+    ok(csv.status === 200 && csvBytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) && csvTexto.includes('numbered_on,')
+       && csvTexto.split('\n').length === 3, 'exporta a CSV (con BOM, para Excel) toda la selección');
+
+    const id = (await r('/operaciones?q=MASTERBATCH')).datos.items[0].id;
+    ok((await api('POST', '/api/radar/operaciones/' + id + '/revision', { material: 'Inventado', note: 'Motivo válido' }, tokenAdmin)).status === 422,
+       'la corrección solo admite materiales conocidos');
+    await api('POST', '/api/radar/operaciones/' + id + '/revision', { material: 'Aditivos', note: 'Ficha técnica: es aditivo' }, tokenAdmin);
+    const det = (await r('/operaciones/' + id)).datos;
+    ok(det.material === 'Aditivos' && det.classification_locked && det.reviews.length === 1 && !det.needs_review,
+       'corregir la clasificación la bloquea para el ETL y queda registrada');
+
+    ok((await api('POST', '/api/radar/ejecuciones', { kind: 'bulk', weeks: 0 }, tokenAdmin)).status === 422, 'una carga de 0 semanas se rechaza');
+    ok((await api('POST', '/api/radar/ejecuciones', { kind: 'query', query_kind: 'importer', value: '123', start: '2026-09-01', end: '2026-09-02' }, tokenAdmin)).status === 422,
+       'y una consulta con RUC inválido también');
+    const cola = await api('POST', '/api/radar/ejecuciones', { kind: 'bulk', weeks: 2 }, tokenAdmin);
+    const est = (await r('/estado')).datos;
+    ok(cola.status === 202 && est.en_cola === 1 && est.series === 5 && est.worker.activo === false && /RADAR_WORKER/.test(est.worker.motivo),
+       'encolar una carga la deja en la misma cola radar.runs que procesa el worker');
+    const { encolarSiToca } = await import('../backend/radar/worker.js');
+    ok(await encolarSiToca() === null, 'la actualización automática no encola otra si ya hay una pendiente');
+  }
 
   // -------------------------------------------------------------- salida
   ok((await api('POST', '/api/auth/area/salir', undefined, tokenAdmin)).status === 401,

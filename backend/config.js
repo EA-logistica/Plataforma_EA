@@ -53,6 +53,55 @@ export const CONFIG = {
   /** Carpeta donde multer deja las guías de entrega. */
   subidas: ruta('PLANSA_UPLOADS', 'uploads'),
 
+  /**
+   * Excel de materias primas homologadas (pestaña Materia Prima →
+   * Homologados). Se lee tal cual: para actualizarlo basta reemplazar el
+   * archivo, sin reiniciar.
+   */
+  homologados: ruta('PLANSA_HOMOLOGADOS', 'Data_export/HOMOLOGADOS_MATERIA PRIMA.xlsx'),
+
+  /**
+   * Radar de Importaciones (SUNAT). Sus datos viven en el esquema "radar" de
+   * la misma PostgreSQL; el ETL es Python (backend/radar/etl) y lo lanza y
+   * vigila el propio servidor (backend/radar/worker.js).
+   *   - etl: carpeta del proyecto Python.
+   *   - python: intérprete con sus dependencias (el .venv de etl por defecto).
+   *   - raw: originales descargados de SUNAT (ZIP/DBF), auditables por hash.
+   *   - worker: RADAR_WORKER=0 lo apaga (pruebas, o una PC que solo consulta).
+   *   - cadaHoras / semanas: cada cuánto se encola una actualización y cuántas
+   *     semanas publicadas se revisan en cada una.
+   */
+  radar: {
+    etl: path.join(RAIZ, 'backend', 'radar', 'etl'),
+    python: process.env.RADAR_PYTHON
+      || path.join(RAIZ, 'backend', 'radar', 'etl', '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python'),
+    raw: ruta('RADAR_RAW_DIR', 'radar-datos/raw'),
+    worker: process.env.RADAR_WORKER !== '0',
+    cadaHoras: Number(process.env.RADAR_CADA_HORAS) || 24,
+    semanas: Number(process.env.RADAR_SEMANAS) || 2
+  },
+
+  /**
+   * Reporte semanal (backend/reportes/semanal.js). Siempre se puede abrir y
+   * guardar como PDF desde el Dashboard; el envío por correo se activa solo
+   * si hay servidor SMTP y destinatarios en .env:
+   *   SMTP_HOST, SMTP_PORT (587), SMTP_USUARIO, SMTP_CLAVE, SMTP_DE,
+   *   REPORTE_PARA=a@empresa.com,b@empresa.com
+   *   REPORTE_DIA=1 (0 domingo … 6 sábado; 1 = lunes) y REPORTE_HORA=8 (hora de Lima)
+   */
+  reporte: {
+    smtp: {
+      host: process.env.SMTP_HOST || '',
+      port: Number(process.env.SMTP_PORT) || 587,
+      usuario: process.env.SMTP_USUARIO || '',
+      clave: process.env.SMTP_CLAVE || '',
+      de: process.env.SMTP_DE || process.env.SMTP_USUARIO || ''
+    },
+    para: (process.env.REPORTE_PARA || '').split(/[,;]/).map(s => s.trim()).filter(Boolean),
+    dia: process.env.REPORTE_DIA === undefined ? 1 : Number(process.env.REPORTE_DIA),
+    hora: process.env.REPORTE_HORA === undefined ? 8 : Number(process.env.REPORTE_HORA)
+  },
+
   /** Lo que se sirve al navegador. */
   estaticos: {
     frontend: path.join(RAIZ, 'frontend'),

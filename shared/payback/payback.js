@@ -1,4 +1,4 @@
-import { JORNADA } from '#data/payback/parametros.js';
+import { JORNADA, COSTOS_PLANILLA } from '#data/payback/parametros.js';
 import { calendario } from './devengos.js';
 
 /**
@@ -44,6 +44,8 @@ export function comparar(escenarios, demanda, opciones = {}) {
         gastoMoto: 0,
         coberturaVacaciones: 0,
         courierResidual: 0,
+        margen: 0,
+        costosOcultos: null,
         costoMensual,
         ahorroMensual,
         ahorroAnual: ahorroMensual * 12,
@@ -64,12 +66,15 @@ export function comparar(escenarios, demanda, opciones = {}) {
     const excedenteDiario = demanda.viajesPorDia.excedenteSobre(e.capacidad.techoDiario);
     const courierResidual = excedenteDiario * DIAS_LABORABLES_AL_MES * costoPorViaje;
 
-    const costoMensual = e.planilla + coberturaVacaciones + courierResidual;
+    const margen = e.cfg.margenGastoMensual || 0;
+    const costosOcultos = ocultos(e, viajesPorDia, costoPorViaje);
+
+    const costoMensual = e.planilla + coberturaVacaciones + courierResidual + margen + costosOcultos.total;
     const ahorroMensual = gastoActual - costoMensual;
 
     // Con fecha de ingreso, el flujo real: las gratificaciones y la CTS caen en
     // meses concretos y el primer año casi nunca se pagan completas.
-    const otrosMensuales = coberturaVacaciones + courierResidual;
+    const otrosMensuales = coberturaVacaciones + courierResidual + margen + costosOcultos.total;
     const cal = opciones.inicio
       ? calendario(opciones.inicio, {
           base: e.persona.base,
@@ -88,6 +93,8 @@ export function comparar(escenarios, demanda, opciones = {}) {
       gastoMoto: 0,
       coberturaVacaciones,
       courierResidual,
+      margen,
+      costosOcultos,
       costoMensual,
       ahorroMensual,
       ahorroAnual: ahorroMensual * 12,
@@ -105,6 +112,22 @@ export function comparar(escenarios, demanda, opciones = {}) {
     condiciones: condiciones(filas, demanda),
     recomendacion: recomendar(filas)
   };
+}
+
+/**
+ * Lo que cuesta ser el empleador y no sale en la boleta: faltas y descansos
+ * médicos (se paga el sueldo y además courier para cubrir), reemplazos, y la
+ * gestión y seguridad en el trabajo de cada persona. Estimaciones editables
+ * en COSTOS_PLANILLA.
+ */
+function ocultos(e, viajesPorDia, costoPorViaje) {
+  const c = COSTOS_PLANILLA;
+  const personas = e.cfg.personas;
+  const fraccion = e.cfg.fraccionJornada || 1;
+  const faltas = c.diasFaltaPorPersonaAlAnio * personas * fraccion * viajesPorDia * costoPorViaje / 12;
+  const rotacion = c.reemplazosAlAnio * c.costoPorReemplazo / 12;
+  const gestion = c.gestionMensual + c.sstPorPersonaMensual * personas;
+  return { faltas, rotacion, gestion, total: faltas + rotacion + gestion };
 }
 
 /**
@@ -213,6 +236,17 @@ function condiciones(filas, demanda) {
         + ' rinden el doble si se turnan para cubrir el mismo horario; rendirían el doble si salieran a la vez,'
         + ' y entonces cada una cubriría media jornada, no la jornada entera. El proveedor a cuota fija no tiene'
         + ' este límite: la capacidad la pone él, no la empresa.'
+    });
+  } else {
+    // Un solo escenario de personal propio (dos part time): se compara contra
+    // la moto única del proveedor, que es lo que de verdad está en la calle.
+    lista.push({
+      nivel: 'aviso',
+      titulo: 'Dos part time rinden lo mismo que una sola moto',
+      texto: 'Dos personas a media jornada que se turnan suman las mismas horas de reparto que un motorizado a'
+        + ' tiempo completo: ' + uno.escenario.capacidad.techoDiario.toFixed(1) + ' encargos al día. Es la misma'
+        + ' capacidad que da el proveedor con un motorizado y las rutas fijas del plan semanal; si el día se carga,'
+        + ' el proveedor pone el refuerzo, no la empresa.'
     });
   }
 

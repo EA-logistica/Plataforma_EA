@@ -21,6 +21,25 @@ const temporal = fs.mkdtempSync(path.join(os.tmpdir(), 'plansa-front-'));
 const { crearBaseTemporal } = await import('./pgTemporal.mjs');
 const borrarBase = await crearBaseTemporal();
 process.env.PLANSA_UPLOADS = path.join(temporal, 'uploads');
+// Sin Mongo: el servidor de pruebas no debe leer el Mongo de producción del .env
+// (la sincronización corría en segundo plano y llenaba la base de prueba a destiempo).
+process.env.MONGO_URI = '';
+process.env.MONGO_URI_ALTERNATIVA = '';
+// Sin worker de Radar: las pruebas siembran sus propias series.
+process.env.RADAR_WORKER = '0';
+// Un Excel de homologados mínimo, con el formato del que exporta calidad.
+process.env.PLANSA_HOMOLOGADOS = path.join(temporal, 'homologados.xlsx');
+{
+  const ExcelJS = (await import('exceljs')).default;
+  const libro = new ExcelJS.Workbook();
+  const hoja = libro.addWorksheet('Hoja1');
+  hoja.addRow([]);
+  hoja.addRow(['Código', 'Nombre', 'Familia', 'Grupo Equiv.', 'Estado', 'Preferencia', 'Fecha']);
+  hoja.addRow(['10002725📝', 'HDPE SOPLADO FORMOLENE 5502B M.I. 0.35', 'MATERIA PRIMA', 'hdpe_soplado', 'Aprobado', '🥇Principal', '"2026-05-07T00:00:00.000Z"']);
+  hoja.addRow([10003016, 'PPNI HOMOPOLIMERO PROPILCO 16H95NA - 12H', 'MATERIA PRIMA', 'PP HOMO', 'Sin registro', null, '—']);
+  hoja.addRow([10021647, 'PPNI COPO IMPACTO BOROUGE BE961MO M.I. 12', 'MATERIA PRIMA', 'hdpe-iny-g-02', 'Sin registro', null, '—']);
+  await libro.xlsx.writeFile(process.env.PLANSA_HOMOLOGADOS);
+}
 
 let fallos = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLA') + ' ' + msg); if (!cond) fallos++; };
@@ -345,7 +364,25 @@ try {
   const hoyLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   ok($('modalBody').innerHTML.includes('id="muFecha" type="date" value="' + hoyLocal + '"'), 'una muestra nueva trae la fecha de hoy, editable');
   ok($('modalBody').innerHTML.includes('oninput="buscarProveedorMuestra()"'), 'y el RUC busca la razón social al escribirlo');
+  ok($('modalBody').innerHTML.includes('id="muCodigo"') && $('modalBody').innerHTML.includes('oninput="detectarCodigoMuestra()"'),
+     'el formulario trae el código interno, que se detecta al escribir la descripción');
+  ok($('modalBody').innerHTML.includes('<option>Aprobada c/restricción</option>'), 'y el estado "Aprobada c/restricción"');
   globalThis.cerrarModal();
+
+  // Materia Prima → Homologados: tabla categorizada y filtro por descripción.
+  await globalThis.subtabMateriaPrima('homologados');
+  ok($('mpPanelHomologados').style.display === '' && $('mpPanelMuestras').style.display === 'none', 'la pestaña Homologados se abre dentro de Materia Prima');
+  ok($('hoTabla').innerHTML.includes('HDPE SOPLADO') && $('hoTabla').innerHTML.includes('PP HOMOPOLÍMERO') && $('hoMetrics').innerHTML.includes('Códigos nuevos'),
+     'y pinta la tabla con la categoría detectada y sus indicadores');
+  ok($('hoCategorias').innerHTML.includes('filtrarCategoriaHomologados'), 'el resumen por categoría filtra la tabla al hacer clic');
+  $('hoQ').value = 'formolene 0.35';
+  globalThis.filtrarHomologados();
+  ok($('hoTabla').innerHTML.includes('10002725') && !$('hoTabla').innerHTML.includes('10003016'), 'el filtro por descripción encuentra por palabras sueltas');
+  globalThis.limpiarFiltrosHomologados();
+  $('hoRevisar').checked = true;
+  globalThis.filtrarHomologados();
+  ok($('hoTabla').innerHTML.includes('10021647') && !$('hoTabla').innerHTML.includes('10002725'), '"Solo por revisar" deja el PP mal agrupado como HDPE');
+  globalThis.limpiarFiltrosHomologados();
   await globalThis.subtabMateriaPrima('stock');
 
   $('qPadron').value = 'avalos';
@@ -428,8 +465,8 @@ try {
   globalThis.tabAdmin('payback');
   const pb = $('pbCuerpo').innerHTML;
   ok(pb.length > 2000, 'el módulo payback se pinta');
-  ok(/Escenario recomendado/.test(pb) && /Simulador de una salida/.test(pb),
-     'con el escenario recomendado y el simulador');
+  ok(/Escenario recomendado/.test(pb) && /Plan de rutas semanal/.test(pb),
+     'con el escenario recomendado y el plan de rutas');
   ok(!/undefined|NaN|\[object/.test(pb), 'sin valores rotos');
 
   // Regresión: setAsignacionPayback existía pero nunca se expuso en window ni
@@ -463,17 +500,6 @@ try {
      'y pinta el envío recién creado, con país destino y OC');
   ok(/Envíos registrados/.test($('expMetrics').innerHTML), 'con sus indicadores arriba');
 
-  await fetch('/api/requerimientos-compra', { method: 'POST', headers: auth, body: JSON.stringify({
-    fechaSolicitud: '2026-09-20', areaSolicitante: 'Producción', descripcion: 'Resina PE para soplado',
-    categoria: 'Materia prima importada', cantidad: 20000, unidadMedida: 'kg'
-  }) });
-  globalThis.tabAdmin('requerimientos');
-  ok($('aRequerimientos').classList.contains('on'), 'la pestaña de requerimientos de compra abre');
-  await globalThis.renderRequerimientos();
-  ok($('tRequerimientos').innerHTML.includes('Resina PE para soplado'),
-     'y pinta el requerimiento recién creado');
-  ok(/Requerimientos totales/.test($('reqMetrics').innerHTML), 'con sus indicadores arriba');
-
   await fetch('/api/servicios-logistica', { method: 'POST', headers: auth, body: JSON.stringify({
     fechaSolicitud: '2026-09-20', tipoServicio: 'Agenciamiento de aduana', proveedor: 'Agencia XYZ',
     descripcion: 'Desaduanaje de contenedor de resina PP', costo: 1200, moneda: 'USD'
@@ -483,60 +509,30 @@ try {
   await globalThis.renderServiciosLogistica();
   ok($('tServiciosLogistica').innerHTML.includes('Agencia XYZ'), 'y pinta el servicio recién creado');
 
-  console.log('\n-- Proveedores --');
-  globalThis.tabAdmin('proveedores');
-  ok($('aProveedores').classList.contains('on'), 'la pestaña de proveedores abre');
-  await globalThis.renderProveedores();
-  const panoramaProv = $('provCuerpo').innerHTML;
-  ok(((panoramaProv.match(/prov-rank-row/g) || []).length) >= 2 && panoramaProv.includes('Top proveedores'),
-     'sin elegir proveedor, muestra el top por SUNAT y por historial de OC');
-  ok(/Concentración top 5/.test(panoramaProv) && /del total/.test(panoramaProv),
-     'el panorama explica la concentración y la participación de cada uno');
-  ok(!/undefined|NaN|\[object/.test(panoramaProv), 'sin valores rotos en el panorama');
-
-  // El buscador reemplaza al <select> gigante: sugiere en el navegador, con RUC y monto.
-  const desEsc = s => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-  const sugeridos = await globalThis.buscarProveedorSeccion('');
-  const enCaja = [...$('provSugerencias').innerHTML.matchAll(/data-prov="([^"]+)"/g)].map(m => desEsc(m[1]));
-  ok(sugeridos.length > 0 && enCaja.length === sugeridos.length && $('provSugerencias').classList.contains('on'),
-     'el buscador trae proveedores de verdad, no vacío (' + sugeridos.length + ' sugeridos)');
-  const elegido = sugeridos[0];
-  const fragmento = elegido.split(/\s+/)[0].toLowerCase();
-  const porNombre = await globalThis.buscarProveedorSeccion(fragmento);
-  ok(porNombre.includes(elegido), 'buscar por parte del nombre (sin importar mayúsculas) lo encuentra: "' + fragmento + '"');
-  ok((await globalThis.buscarProveedorSeccion('zzqq-no-existe')).length === 0 && $('provSugerencias').innerHTML.includes('Ningún proveedor coincide'),
-     'una búsqueda sin coincidencias lo dice, no deja la lista vacía');
-
-  await globalThis.elegirProveedorSeccion(elegido);
-  const cuerpoProv = $('provCuerpo').innerHTML;
-  ok(cuerpoProv.includes(esc(elegido).slice(0, 20)), 'elegir uno pinta su propio detalle');
-  ok(/Primera compra/.test(cuerpoProv) && /Ticket promedio/.test(cuerpoProv) && /Facturado por mes/.test(cuerpoProv),
-     'la ficha trae primera/última compra, ticket promedio y la evolución mensual');
-  ok(/irARegistroDeProveedor|irAOCDeProveedor/.test(cuerpoProv), 'y los atajos a Registro de compras / Historial de OC');
-  ok(!/undefined|NaN|\[object/.test(cuerpoProv), 'sin valores rotos en el detalle del proveedor');
-  await globalThis.elegirProveedorSeccion('');
-  ok($('provCuerpo').innerHTML.includes('Top proveedores'), 'volver al top no se queda pegado en el detalle');
-
-  // Regresión: esc(nombre).replace(/'/g, '&#39;') dentro de onclick="…('…')"
-  // se decodifica de vuelta a ' antes de llegar a JS, y un proveedor como
-  // "'NEGOCIACION KIO' SAC" rompía el clic. Todo onclick generado debe compilar.
-  const onclicks = html => [...html.matchAll(/onclick="([^"]*)"/g)].map(m => desEsc(m[1]));
-  const compila = code => { try { new Function(code); return true; } catch (e) { return false; } };
-  const conComilla = sugeridos.length && (await globalThis.buscarProveedorSeccion("'"))[0];
-  if (conComilla) {
-    await globalThis.elegirProveedorSeccion(conComilla);
-    ok(onclicks($('provCuerpo').innerHTML).every(compila), 'con un proveedor con comillas en el nombre, sus botones siguen funcionando');
-    await globalThis.elegirProveedorSeccion('');
+  console.log('\n-- secciones inhabilitadas --');
+  for (const [k, vista] of [['requerimientos', 'aRequerimientos'], ['ordenesCompra', 'aOrdenesCompra'], ['proveedores', 'aProveedores']]) {
+    const html = fs.readFileSync(path.join(RAIZ, 'frontend/index.html'), 'utf8');
+    ok(new RegExp('data-atab="' + k + '" style="display:none" hidden').test(html), 'el menú ya no ofrece la sección ' + k);
+    globalThis.tabAdmin(k);
+    ok(!$(vista).classList.contains('on') && $('aDashboard').classList.contains('on'), 'y si algo la invoca, se cae al Dashboard (' + k + ')');
   }
-  globalThis.tabAdmin('ordenesCompra');
-  await globalThis.elegirProveedorOrdenesCompra(conComilla || elegido);
-  await globalThis.elegirProveedorOC(conComilla || elegido);
-  ok($('ocProveedor').value === (conComilla || elegido) && $('ocdProveedor').value === (conComilla || elegido),
-     'el atajo desde Proveedores deja el filtro puesto en ambas tablas, aunque la pestaña recién abra');
-  ok([$('ocProveedores').innerHTML, $('ocdProveedores').innerHTML, $('tOC').innerHTML].every(h => onclicks(h).every(compila)),
-     'los onclick de Registro de compras / Historial de OC compilan (nombres con comillas incluidos)');
 
   console.log('\n-- Materia Prima --');
+  // Stock propio de la prueba (sin Mongo no llega ninguna foto del ERP): dos tipos, varias categorías y dos almacenes.
+  {
+    const stockMp = await mod('backend/db/repos/materiaPrimaStock.js');
+    const fila = (codigo, descripcion, tipo, categoria, familia, almacen, stock, costo) => ({
+      almacenCodigo: almacen.slice(0, 3), almacen, categoriaNivel3: tipo, familia, categoria, codigo, descripcion,
+      unidadMedida: 'KG', stock, costoPromedioUsd: costo, valorizadoUsd: stock * costo
+    });
+    await stockMp.cargarInicial([
+      fila('10002725', 'HDPE SOPLADO FORMOLENE 5502B M.I. 0.35', 'MATERIA PRIMA', 'RESINAS', 'HDPE SOPLADO', 'ALMACEN DE MEZCLA MP', 25000, 1.2),
+      fila('10002725', 'HDPE SOPLADO FORMOLENE 5502B M.I. 0.35', 'MATERIA PRIMA', 'RESINAS', 'HDPE SOPLADO', 'ALMACEN LOS OLIVOS', 5000, 1.2),
+      fila('10003074', 'PPNI HOMOPOLIMERO RELIANCE H200MA M.I.23', 'MATERIA PRIMA', 'RESINAS', 'PP HOMO INYECCION', 'ALMACEN DE MEZCLA MP', 8000, 1.1),
+      fila('10014000', 'MASTERBATCH BLANCO', 'MATERIA PRIMA', 'MASTERBATCH', 'MASTERBATCH', 'ALMACEN DE MEZCLA MP', 900, 3.5),
+      fila('10020000', 'TINTA AZUL', 'MATERIA PRIMA - TINTAS', 'OTROS', 'TINTAS OPTIMAS', 'ALMACEN DE MEZCLA MP', 120, 9)
+    ]);
+  }
   globalThis.tabAdmin('materiaPrima');
   await globalThis.renderMateriaPrima();
   ok(/Valorizado total/.test($('mpMetrics').innerHTML) && /Concentración/.test($('mpMetrics').innerHTML),
@@ -565,6 +561,143 @@ try {
     const lineas = await (await fetch('/api/materia-prima/categorias/' + encodeURIComponent(c.categoria) + '/lineas?tipo=' + encodeURIComponent(t), { headers: auth })).json();
     const suma = lineas.reduce((a, l) => a + l.valorizadoUsd, 0);
     ok(Math.abs(suma - c.valorizadoUsd) < 0.01, 'las líneas de una categoría suman lo mismo que la categoría dentro de su tipo (no mezclan tipos)');
+  }
+
+  console.log('\n-- Radar de Importaciones --');
+  {
+    const { ejecutar } = await mod('backend/db/conexion.js');
+    const { sembrarRadar } = await import('./radarSemilla.mjs');
+    await sembrarRadar(ejecutar);
+    // Elementos que las pestañas crean al vuelo (el DOM simulado solo conoce los del HTML).
+    for (const id of ['riQ', 'riRuc', 'riHs', 'riMarca', 'riAplicacion', 'riRevisar', 'riExplorarTabla', 'riP', 'riOrdenP', 'riProductos',
+      'riEmpresaQ', 'riEmpresaFicha', 'riEmpresas', 'riTipoCarga', 'riSemanas', 'riForzar', 'eRadarCarga']) registro.set(id, nuevoElemento(id));
+    const rotos = h => /undefined|NaN|\[object/.test(h);
+    const compilan = h => [...h.matchAll(/onclick="([^"]*)"/g)].map(m => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'))
+      .every(code => { try { new Function(code); return true; } catch (_) { return false; } });
+
+    globalThis.tabAdmin('radar');
+    ok($('aRadar').classList.contains('on'), 'el apartado Radar abre como una sección más de la plataforma (sin iframe ni otra ventana)');
+    await globalThis.renderRadar();
+    const panelHtml = $('riCuerpo').innerHTML;
+    ok(panelHtml.includes('FOB declarado') && panelHtml.includes('FOB por semana') && panelHtml.includes('Por material'), 'Panel general: indicadores, tendencia y rankings');
+    ok(!rotos(panelHtml) && compilan(panelHtml), 'sin valores rotos y con atajos que funcionan');
+    ok(/series de 2 importadores/.test($('riEstado').innerHTML), 'el encabezado dice cuánto hay y de cuándo es la última carga');
+
+    await globalThis.subtabRadar('historico');
+    const hist = $('riCuerpo').innerHTML;
+    ok(hist.includes('Parcial') && hist.includes('Completo') && hist.includes('Sin porcentajes'), 'Histórico: distingue semanas completas de parciales y no compara sin base');
+    ok(!rotos(hist) && compilan(hist), 'sin valores rotos en el histórico');
+
+    await globalThis.subtabRadar('explorar');
+    ok($('riExplorarTabla').innerHTML.includes('EMPRESA PLASTICA SAC') && $('riExplorarTabla').innerHTML.includes('5 series'), 'Explorar: las series una por una');
+    $('riQ').value = 'polipropileno';
+    await globalThis.irPaginaExplorarRadar(1);
+    ok($('riExplorarTabla').innerHTML.includes('1 series') && $('riExplorarTabla').innerHTML.includes('H200MA'), 'y la búsqueda por concepto (con sinónimos) filtra');
+    $('riQ').value = '';
+
+    await globalThis.subtabRadar('productos');
+    $('riP').value = 'hdpe soplado mi 0.35';
+    await globalThis.irPaginaProductosRadar(1);
+    const prod = $('riProductos').innerHTML;
+    ok(prod.includes('HB5502B') && prod.includes('Familia HDPE') && prod.includes('Aplicación Soplado'), 'Productos: interpreta la búsqueda y muestra el grado');
+    ok(!rotos(prod) && compilan(prod), 'sin valores rotos en Productos');
+
+    await globalThis.verEmpresaRadar('20100367395');
+    ok($('riEmpresas').innerHTML.includes('OTRA INDUSTRIA SAC') && $('riEmpresaFicha').innerHTML.includes('Frecuencia'), 'Empresas: lista y ficha de la empresa elegida');
+
+    globalThis.subtabRadar('panel');
+    $('riMaterial').value = 'PP';
+    await globalThis.filtrarRadar();
+    ok($('riCuerpo').innerHTML.includes('US$ 22.000') || $('riCuerpo').innerHTML.includes('US$ 22,000'), 'los filtros de la barra superior valen para todas las pestañas');
+    await globalThis.limpiarFiltrosRadar();
+
+    await globalThis.abrirActualizarRadar();
+    ok($('modalBody').innerHTML.includes('Encolar carga') && $('modalBody').innerHTML.includes('Completada'), '"Actualizar datos" muestra la cola y las ejecuciones');
+    globalThis.cerrarModal();
+
+    console.log('\n-- Importaciones (bot de logística) --');
+    {
+      // Lo que traería la sincronización de Mongo: dos importaciones y la planeación de tres materias primas.
+      const { normalizar } = await import('../shared/importaciones.js');
+      const repoImp = await mod('backend/db/repos/importaciones.js');
+      const repoPlan = await mod('backend/db/repos/mpPlaneacion.js');
+      const hace = d => new Date(Date.now() - d * 86400000);
+      await repoImp.cargarInicial({
+        importaciones: [
+          { _id: 'imp1', oc_numero: '4512784', descripcion: 'MAQUINA DE CORTE DE CUELLO', proveedor: 'ZHANGJIAGANG LONGSN', familia_nombre: 'ACTIVOS FIJOS',
+            moneda: 'USD', valor_compra: 7800, impuesto: 1404, estado_comercial: 'ORDEN_CONFIRMADA', estado_pago: 'PENDIENTE', prioridad: 'ALTA',
+            fecha_emision: hace(90), eta: hace(40), fecha_llegada_planta: hace(35), oc_estado: 'APROBADA' },
+          { _id: 'imp2', oc_numero: '4499613', descripcion: 'HDPE SOPLADO INNEOS B53', proveedor: 'ITOCHU CHEMICALS', familia_nombre: 'MATERIA PRIMA',
+            moneda: 'USD', valor_compra: 285120, serv_logistico: 17131, cantidad_kg: 297000, um: 'KG', impuesto: 51393, envio_por: 'MAR', naviera: 'CMA',
+            bl_booking: 'NAM9320803', estado_comercial: 'EN_TRANSITO', estado_pago: 'PAGADO', fecha_emision: hace(30), etd: hace(10), eta: hace(-12),
+            fecha_llegada_planta: hace(-15), oc_estado: 'APROBADA', pais_origen: 'USA', incoterm: 'CFR', almacen_destino: 'HUACHIPA',
+            erp: { items: [{ codigo: '10002842', descripcion: 'HDPE SOPLADO INNEOS B53', cantidad: 297000, um: 'KG', costo_unit: 0.96, valor_compra: 285120 }] } }
+        ].map(normalizar),
+        eventos: [{ importacionId: 'imp2', oc: '4499613', fecha: hace(10).toISOString(), hito: 'ZARPE', descripcion: 'Zarpó de Houston', transportista: 'CMA', referencia: 'NAM9320803', ubicacion: 'USHOU' }]
+      });
+      await repoPlan.cargarInicial([
+        { codigo: '10002725', descripcion: 'HDPE SOPLADO FORMOLENE 5502B', tipo: 'MATERIA PRIMA', linea: 'HDPE SOPLADO', unidadMedida: 'KG', stock: 1000, consumoMes: 40000, costoUsd: 1.2, leadTimeMeses: 1, seguridadPct: 0.15, enCamino: 0, compraSugerida: 60000, compraSugeridaUsd: 72000 },
+        { codigo: '10021647', descripcion: 'PPNI COPO IMPACTO BOROUGE', tipo: 'MATERIA PRIMA', linea: 'PP COPO', unidadMedida: 'KG', stock: 90000, consumoMes: 8000, costoUsd: 1.1, leadTimeMeses: 1, seguridadPct: 0.15 },
+        { codigo: '10099999', descripcion: 'TINTA SIN USO', tipo: 'MATERIA PRIMA - TINTAS', linea: 'TINTAS', unidadMedida: 'KG', stock: 50, consumoMes: 0, costoUsd: 8 }
+      ].map(f => ({ enCamino: 0, compraSugerida: 0, compraSugeridaUsd: 0, consumoP95: 0, estadoDemanda: '', proveedorUltima: '', fechaUltimaCompra: '', ultimoCostoUsd: 0, ...f })));
+
+      // Lo que la vista crea al vuelo dentro de #impCuerpo.
+      for (const id of ['impTabla', 'impResumenTabla', 'impPagos', 'impPaginacion']) registro.set(id, nuevoElemento(id));
+      globalThis.tabAdmin('importaciones');
+      ok($('aImportaciones').classList.contains('on'), 'la sección Importaciones abre desde el menú');
+      await globalThis.renderImportaciones();
+      const hero = $('impHero').innerHTML, cuerpo = $('impCuerpo').innerHTML, tabla = $('impTabla').innerHTML;
+      ok(/Atrasadas/.test(hero) && /Llegan en 30 días/.test(hero) && /Ciclo OC/.test(hero), 'indicadores: atrasadas, llegadas, pagos y ciclo');
+      ok(tabla.includes('4512784') && tabla.includes('4499613') && /\+\d+d/.test(tabla), 'la tabla de seguimiento muestra las OC y el atraso en días');
+      ok(cuerpo.includes('Calendario de pagos') && cuerpo.includes('Llegadas a planta por mes') && cuerpo.includes('data-tip'), 'pagos y gráficos con tooltip');
+      ok(!rotos(hero + cuerpo + tabla) && compilan(cuerpo + tabla), 'sin valores rotos y con atajos que funcionan');
+      globalThis.impFiltrarEstado('EN_TRANSITO');
+      ok($('impTabla').innerHTML.includes('4499613') && !$('impTabla').innerHTML.includes('4512784'), 'clic en una etapa filtra la tabla');
+      const exp = globalThis.exportarImportaciones();
+      ok(exp.filas.length === 1 && exp.columnas.some(c => c.t === 'Costo en planta US$'), 'Exportar trae todo lo filtrado, con el costo en planta');
+      await globalThis.impDetalle('imp2');
+      ok($('modalBody').innerHTML.includes('Zarpó de Houston') && $('modalBody').innerHTML.includes('Costo puesto en planta'), 'el detalle trae costo, embarque y rastreo');
+      globalThis.cerrarModal();
+      globalThis.impLimpiar();
+
+      console.log('\n-- Materia prima: ABC y reorden --');
+      globalThis.tabAdmin('materiaPrima');
+      await globalThis.subtabMateriaPrima('abc');
+      const abcHtml = $('abcMetrics').innerHTML + $('abcCuerpo').innerHTML + $('abcTabla').innerHTML;
+      ok(/Clase A por pedir/.test(abcHtml) && abcHtml.includes('10002725') && abcHtml.includes('Pedir ya'), 'ABC: la resina de más consumo es A y está por pedir');
+      ok(abcHtml.includes('Curva de Pareto') && abcHtml.includes('Sin consumo'), 'curva de Pareto y stock sin consumo');
+      ok(!rotos(abcHtml) && compilan(abcHtml), 'sin valores rotos en ABC');
+      await globalThis.subtabMateriaPrima('stock');
+    }
+
+    console.log('\n-- Dashboard --');
+    await globalThis.renderDashboard();
+    const dash = $('dashboardBody').innerHTML;
+    ok(dash.includes('Radar de Importaciones') && dash.includes('Materia prima') && dash.includes('Homologados aprobados'), 'el Dashboard trae Materia prima y Radar');
+    ok(!dash.includes('Requerimientos de compra') && !/tabAdmin\('ordenesCompra'\)/.test(dash), 'y ya no enlaza a las secciones inhabilitadas');
+    ok($('dashboardHero').innerHTML.includes('Importaciones de plásticos'), 'la carátula muestra las importaciones del mercado');
+    ok(!rotos(dash + $('dashboardHero').innerHTML), 'sin valores rotos en el Dashboard');
+    ok(dash.includes('Acciones pendientes') && dash.includes('Importaciones atrasadas') && dash.includes('Materia prima clase A por pedir'), 'Acciones pendientes: atrasos y compras urgentes');
+    ok(/Meta:/.test($('dashboardHero').innerHTML), 'las tarjetas muestran su meta');
+    ok(compilan(dash + $('dashboardHero').innerHTML), 'los atajos del Dashboard funcionan');
+    for (const p of ['logistica', 'gerencia']) {
+      await globalThis.setPerfilDashboard(p);
+      const h = $('dashboardBody').innerHTML + $('dashboardHero').innerHTML;
+      ok(h.includes('Acciones pendientes') && !rotos(h) && compilan(h), 'perfil ' + p + ': se pinta sin valores rotos');
+    }
+    ok($('dashboardHero').innerHTML.includes('Inventario valorizado') || $('dashboardHero').innerHTML.includes('Capital inmovilizado'), 'Gerencia ve inventario y capital inmovilizado');
+    await globalThis.setPerfilDashboard('compras');
+
+    console.log('\n-- buscador global y período --');
+    const busqueda = await (await fetch('/api/buscar?q=4499', { headers: auth })).json();
+    ok(busqueda.grupos.some(g => g.tipo === 'importacion' && g.items.some(i => i.oc === '4499613')), 'el buscador encuentra la importación por número de OC');
+    globalThis.setPeriodo('anio');
+    ok($('periodoTexto').textContent === 'Este año', 'el período global cambia y se muestra arriba');
+    globalThis.setPeriodo('mes');
+    const reporte = await (await fetch('/api/reportes/semanal', { headers: auth })).json();
+    ok(reporte.html.includes('Reporte semanal') && reporte.html.includes('Importaciones') && !/NaN|undefined/.test(reporte.html), 'el reporte semanal se genera sin valores rotos');
+    const xlsx = await fetch('/api/exportar/xlsx', { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: 'Prueba', columnas: [{ t: 'Código' }, { t: 'Monto', num: true }], filas: [['A', 1.5]] }) });
+    ok(xlsx.status === 200 && /spreadsheetml/.test(xlsx.headers.get('content-type')), 'exportar a Excel devuelve un .xlsx');
   }
 
   console.log('\n-- Control de Almacenes (mapa/radar/plano, pestañas nativas) --');

@@ -21,7 +21,7 @@ let elegido = null;
 let temporizador = null;
 let pedidoActual = 0;
 
-function cargarLeaflet() {
+export function cargarLeaflet() {
   if (window.L) return Promise.resolve(window.L);
   return new Promise((resolve, reject) => {
     const css = document.createElement('link');

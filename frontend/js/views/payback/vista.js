@@ -1,13 +1,15 @@
-import { MARGEN_HORAS } from '../../config.js';
 import { $, esc } from '../../utils/dom.js';
 import { soles, solesK } from '../../utils/format.js';
 import { DB } from '../../api/estado.js';
-import { OPERACION, JORNADA } from '#data/payback/parametros.js';
+import { OPERACION, JORNADA, ESCENARIOS, SUSTENTO_BASICO, COSTOS_PLANILLA } from '#data/payback/parametros.js';
 import { analizarDemanda } from '#shared/payback/demanda.js';
 import { horasSemanales } from '#shared/payback/planilla.js';
 import { construir } from '#shared/payback/escenarios.js';
 import { comparar } from '#shared/payback/payback.js';
-import { simuladorHTML, alCambiar } from './simulador.js';
+import { alCambiar } from './simulador.js';
+import { analizarPlan } from '#shared/payback/plan.js';
+import { PUNTOS } from '#data/payback/rutas.js';
+import { planHTML, montarPlan } from './rutas.js';
 import { calendarioHTML } from './calendario.js';
 
 // El simulador se repinta a través de la pantalla completa: así el resto del
@@ -41,7 +43,11 @@ const estado = {
   // apagar si no aplica (Nuevo RUS, o débito fiscal insuficiente ese mes).
   creditoFiscalIgv: true,
   /** A cuántos días se paga la factura del proveedor: no cambia la cuota, cambia cuándo sale de caja. */
-  plazoPagoDias: 30
+  plazoPagoDias: 30,
+  /** Básico por persona del escenario de dos part time. */
+  basicoPartTime: ESCENARIOS.dosMotorizados.sueldoBase,
+  /** Cuota mensual sin IGV del proveedor: S/ 3 500 es el presupuesto ideal. */
+  cuotaTercero: ESCENARIOS.tercero.cuotaMensualSinIgv
 };
 
 export function setBonoPayback(v) { estado.bonoRemunerativo = v === 'si'; renderPayback(); }
@@ -49,6 +55,8 @@ export function setAsignacionPayback(v) { estado.asignacionFamiliar = Number(v) 
 export function setInicioPayback(v) { if (v) estado.inicio = v; renderPayback(); }
 export function setCreditoFiscalPayback(v) { estado.creditoFiscalIgv = v === 'si'; renderPayback(); }
 export function setPlazoPagoPayback(v) { estado.plazoPagoDias = Number(v) || 30; renderPayback(); }
+export function setCuotaPayback(v) { estado.cuotaTercero = Number(v) || estado.cuotaTercero; renderPayback(); }
+export function setBasicoPayback(v) { estado.basicoPartTime = Number(v) || estado.basicoPartTime; renderPayback(); }
 
 // Los controles del simulador de ruta se reexportan desde aquí para que main.js
 // tenga un solo punto de entrada al módulo.
@@ -56,6 +64,9 @@ export {
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
   pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
 } from './simulador.js';
+export {
+  pbPlanDia, pbPlanSalida, pbPlanChilca, pbPlanParada, pbPlanQuitarExtra, pbPlanBuscar, pbPlanAgregar, pbPlanBuscarMapa, pbPlanAgregarHist
+} from './rutas.js';
 
 const pct = n => (n * 100).toFixed(0) + '%';
 const nivelChip = n => n === 'alto' ? 'st-espera' : n === 'ok' ? 'st-concluido' : 'st-transito';
@@ -71,18 +82,22 @@ export function renderPayback() {
   const escenarios = construir(demanda, estado);
   const cmp = comparar(escenarios, demanda, { inicio: estado.inicio });
   const mejor = cmp.recomendacion.mejor;
+  const tercero = cmp.filas.find(f => f.escenario.cfg.modelo === 'tercero');
 
+  // El plan de rutas va justo después de los escenarios: es lo que se le
+  // pide al proveedor, y lo que hace que un solo motorizado alcance.
   $('pbCuerpo').innerHTML =
     controles()
     + veredicto(cmp, demanda, mejor)
     + situacionActual(demanda)
     + tarjetasEscenarios(cmp, mejor)
+    + planHTML(analizarPlan(DB.solicitudes), { cuota: tercero ? tercero.escenario.tercero.cuotaMensualSinIgv : 0, solicitudes: DB.solicitudes })
+    + sustentoBasicoHTML(demanda, cmp)
     + condicionesHTML(cmp)
     + calendarioHTML(cmp, estado.inicio)
     + capacidadHTML(cmp, demanda)
-    + simuladorHTML()
-    + politicaUrgencias(cmp, demanda)
     + advertencia();
+  montarPlan();
 }
 
 // --------------------------------------------------------------- controles
@@ -109,6 +124,18 @@ function controles() {
     + opcion('30', '30 días', estado.plazoPagoDias === 30)
     + opcion('45', '45 días', estado.plazoPagoDias === 45)
     + '</select></div>'
+    + '<div class="field" style="margin:0"><label for="pbCuota">Cuota mensual del proveedor (sin IGV)</label>'
+    + '<select class="select" id="pbCuota" onchange="setCuotaPayback(this.value)">'
+    + ESCENARIOS.tercero.opcionesCuota.map(c =>
+        opcion(String(c), soles(c) + (c === ESCENARIOS.tercero.cuotaMensualSinIgv ? ' (presupuesto ideal)' : ''),
+          estado.cuotaTercero === c)).join('')
+    + '</select></div>'
+    + '<div class="field" style="margin:0"><label for="pbBasico">Básico por persona (dos part time)</label>'
+    + '<select class="select" id="pbBasico" onchange="setBasicoPayback(this.value)">'
+    + ESCENARIOS.dosMotorizados.opcionesBasico.map(b =>
+        opcion(String(b), soles(b) + (b === ESCENARIOS.dosMotorizados.sueldoBase ? ' (recomendado)' : ''),
+          estado.basicoPartTime === b)).join('')
+    + '</select></div>'
     + '</div>'
     + '<div class="hint">El tratamiento del bono lo define RR.HH.: si es condición de trabajo no entra a la'
     + ' base de beneficios y el costo baja. El del IGV lo define contabilidad: si la empresa puede usarlo como'
@@ -125,12 +152,27 @@ function veredicto(cmp, demanda, mejor) {
       + soles(cmp.gastoActual) + ' al mes, tercerizar sigue siendo más barato que tener motorizado propio.</div></div>';
   }
   const f = mejor;
+  const esTercero = f.escenario.cfg.modelo === 'tercero';
+  // La alternativa más barata que no ganó: se muestra al lado para que la
+  // decisión se vea como lo que es, costo contra responsabilidad.
+  const alterna = cmp.filas.filter(x => x !== f).sort((a, b) => a.costoMensual - b.costoMensual)[0];
+  const comparativo = esTercero && alterna && alterna.escenario.persona
+    ? '<p>Frente a "' + esc(alterna.escenario.nombre) + '" (' + esc(soles(alterna.costoMensual))
+      + ' al mes con lo que no sale en la boleta), la diferencia es de '
+      + esc(soles(Math.abs(f.costoMensual - alterna.costoMensual))) + ' al mes '
+      + (f.costoMensual > alterna.costoMensual ? 'a favor de la planilla' : 'a favor del proveedor')
+      + '. Se recomienda tercerizar para que PLANSA no se responsabilice: el proveedor es el empleador y'
+      + ' responde por los accidentes, el contrato, las faltas, las vacaciones y los reemplazos. En planilla'
+      + ' todo eso sería de PLANSA.</p>'
+    : '';
   return '<div class="pb-veredicto">'
     + '<div class="pb-veredicto-tag">Escenario recomendado</div>'
     + '<h3>' + esc(f.escenario.nombre) + '</h3>'
     + '<p>' + esc(f.escenario.detalle) + '</p>'
+    + comparativo
     + '<div class="kpis">'
-    + kpi('ok', soles(f.costoMensual), 'Costo mensual', 'Todo incluido: planilla, ley y respaldo')
+    + kpi('ok', soles(f.costoMensual), 'Costo mensual',
+        esTercero ? 'Cuota fija, sin planilla ni respaldo' : 'Todo incluido: planilla, ley y respaldo')
     + kpi('primary', soles(f.ahorroMensual), 'Ahorro frente al courier', 'Hoy se gastan ' + soles(cmp.gastoActual) + ' al mes')
     + kpi('', solesK(f.ahorroAnual), 'Ahorro al año', 'Manteniendo el volumen actual')
     + kpi('info', f.inversion ? soles(f.inversion) : 'Sin inversión',
@@ -171,8 +213,8 @@ const fact = (k, v, d) => '<div class="fact">' + esc(k) + ' <b>' + esc(v) + '</b
 
 // ------------------------------------------------------------- escenarios
 function tarjetasEscenarios(cmp, mejor) {
-  return '<div class="section-head" style="margin-top:26px"><div><h2>Los tres escenarios</h2>'
-    + '<p>Dos formas de tener motorizado propio y una de tercerizarlo a cuota fija.</p>'
+  return '<div class="section-head" style="margin-top:26px"><div><h2>Los dos escenarios</h2>'
+    + '<p>Tercerizar con un proveedor a cuota fija, o dos motorizados part time en planilla.</p>'
     + '</div></div>'
     + '<div class="pb-escenarios">' + cmp.filas.map(f => tarjeta(f, mejor && f === mejor)).join('') + '</div>';
 }
@@ -224,6 +266,13 @@ function desglosePersonal(e, f) {
     desglose += lineaDesglose('Courier para los días cargados', f.courierResidual,
       f.excedenteDiario.toFixed(1) + ' encargos al día por encima del techo');
   }
+  if (f.margen > 0) desglose += lineaDesglose('Margen de gasto', f.margen, 'Agregado por logística');
+
+  const o = f.costosOcultos;
+  desglose += '<tr class="pb-sep"><td colspan="2">Lo que no sale en la boleta</td></tr>';
+  desglose += lineaDesglose('Faltas y descansos médicos', o.faltas, 'Se paga el sueldo y además courier para cubrir');
+  desglose += lineaDesglose('Rotación y reemplazos', o.rotacion, 'Reclutamiento, examen médico, inducción');
+  desglose += lineaDesglose('Gestión y seguridad en el trabajo', o.gestion, 'Planilla, supervisión, equipos de protección');
 
   return { desglose, avisos: p.avisos.concat(e.riesgos) };
 }
@@ -248,6 +297,69 @@ function desgloseTercero(e) {
   return { desglose, avisos: e.riesgos };
 }
 
+// ------------------------------------------------- sustento del básico
+/**
+ * Por qué el básico del part time sube. Lo que retiene al motorizado no es el
+ * bruto: es lo que le queda por hora después de su pensión y de pagar su
+ * propia moto. Se pone al lado lo que cuesta cada opción para PLANSA, para
+ * que la subida se vea contra la cuota del proveedor.
+ */
+function sustentoBasicoHTML(demanda, cmp) {
+  const dos = ESCENARIOS.dosMotorizados;
+  const s = SUSTENTO_BASICO;
+  const horasMes = horasSemanales().total / dos.personas * 52 / 12;
+  const gastoMoto = s.gastoMotoPorDia * s.diasAlMes;
+  const tercero = cmp.filas.find(f => f.escenario.cfg.modelo === 'tercero');
+  // Lo que cobraría el courier por la media jornada que cubre cada persona.
+  const valorCourier = cmp.viajesPorDia / dos.personas * cmp.costoPorViaje * JORNADA.diasSemanaAlMes;
+
+  const filas = dos.opcionesBasico.map(b => {
+    const f = comparar(construir(demanda, { ...estado, basicoPartTime: b }), demanda)
+      .filas.find(x => x.escenario.id === dos.id);
+    const queda = b * (1 - s.aportePension) - gastoMoto;
+    return { b, queda, porHora: queda / horasMes, costo: f.costoMensual };
+  });
+  const base = filas[0];
+  const rec = filas.find(r => r.b === dos.sueldoBase) || filas[filas.length - 1];
+  const dif = tercero ? tercero.costoMensual - rec.costo : 0;
+
+  const tabla = filas.map(r => '<tr' + (r.b === estado.basicoPartTime ? ' class="pb-fila-on"' : '') + '>'
+    + '<td>' + esc(soles(r.b)) + (r.b === dos.sueldoBase ? '<span class="pb-nota">Recomendado</span>' : '') + '</td>'
+    + '<td class="mono">' + esc(soles(r.queda)) + '</td>'
+    + '<td class="mono">' + esc(soles(r.porHora)) + '</td>'
+    + '<td class="mono">' + (r === base ? '—' : '+' + ((r.porHora / base.porHora - 1) * 100).toFixed(0) + '%') + '</td>'
+    + '<td class="mono">' + esc(soles(r.costo)) + '</td>'
+    + '<td class="mono">' + (tercero ? esc((r.costo >= tercero.costoMensual ? '+' : '−')
+        + soles(Math.abs(r.costo - tercero.costoMensual))) : '') + '</td>'
+    + '</tr>').join('');
+
+  return '<div class="panel" style="margin-top:22px">'
+    + '<h3>Por qué el básico del part time sube a ' + esc(soles(dos.sueldoBase)) + '</h3>'
+    + '<p class="sub">Con ' + esc(soles(base.b)) + ' de básico, al motorizado le quedan ' + esc(soles(base.queda))
+    + ' al mes después de su pensión y de pagar su moto: ' + esc(soles(base.porHora)) + ' por hora. Cualquier otro'
+    + ' servicio de reparto le paga más por la misma hora, así que falta o se va. Con ' + esc(soles(rec.b))
+    + ' le quedan ' + esc(soles(rec.porHora)) + ' por hora, un ' + ((rec.porHora / base.porHora - 1) * 100).toFixed(0)
+    + '% más.</p>'
+    + '<div class="table-wrap"><table style="min-width:640px"><thead><tr>'
+    + '<th>Básico por persona</th><th>Le queda al mes</th><th>Por hora</th><th>Frente a ' + esc(soles(base.b))
+    + '</th><th>Costo del escenario para PLANSA</th><th>Frente al proveedor (+ = más cara)</th>'
+    + '</tr></thead><tbody>' + tabla + '</tbody></table></div>'
+    + '<div class="banner"><div>Subir de ' + esc(soles(base.b)) + ' a ' + esc(soles(rec.b)) + ' le cuesta a PLANSA '
+    + esc(soles(rec.costo - base.costo)) + ' más al mes. Lo que compra es menos ausencias y menos rotación: cada'
+    + ' media jornada sin motorizado se cubre con courier (' + esc(soles(cmp.viajesPorDia / dos.personas * cmp.costoPorViaje))
+    + ' al día) y cada reemplazo cuesta unos ' + esc(soles(COSTOS_PLANILLA.costoPorReemplazo)) + '. Además, lo que'
+    + ' hace cada persona en su media jornada costaría ' + esc(soles(valorCourier)) + ' al mes en courier.'
+    + (tercero ? ' <b>Aun así, con el básico competitivo la planilla cuesta ' + esc(soles(rec.costo)) + ' al mes, '
+      + (dif >= 0 ? esc(soles(dif)) + ' menos' : esc(soles(-dif)) + ' más') + ' que el proveedor a cuota fija, y PLANSA'
+      + ' sigue siendo el empleador: responde por accidentes, contrato, faltas, vacaciones y reemplazos. Por eso la'
+      + ' recomendación es tercerizar.</b>' : '')
+    + '</div></div>'
+    + '<div class="hint">Le queda al mes: básico menos ' + (s.aportePension * 100).toFixed(0) + '% de pensión y '
+    + esc(soles(gastoMoto)) + ' de combustible y desgaste de su moto (' + esc(soles(s.gastoMotoPorDia)) + ' por día, '
+    + s.diasAlMes + ' días). Por hora: sobre ' + horasMes.toFixed(0) + ' h al mes. Son estimaciones de logística.</div>'
+    + '</div>';
+}
+
 // ------------------------------------------------------------ condiciones
 function condicionesHTML(cmp) {
   return '<div class="panel" style="margin-top:22px">'
@@ -262,7 +374,9 @@ function condicionesHTML(cmp) {
 
 // -------------------------------------------------------------- capacidad
 /** El escenario de UN motorizado: es del único del que tiene sentido preguntar "¿alcanza una sola moto?". */
-const unMotorizado = cmp => cmp.filas.find(f => f.escenario.cfg.personas === 1);
+// Con un motorizado del proveedor o con dos part time que se turnan, la moto en la calle es una sola:
+// la capacidad es la que calcula el escenario de personal propio.
+const unMotorizado = cmp => cmp.filas.find(f => f.escenario.capacidad && f.escenario.capacidad.conPrograma);
 
 function capacidadHTML(cmp, demanda) {
   const cap = unMotorizado(cmp).escenario.capacidad;
@@ -298,54 +412,16 @@ function capacidadHTML(cmp, demanda) {
     + '</div>';
 }
 
-// ------------------------------------------------- política de urgencias
-function politicaUrgencias(cmp, demanda) {
-  const cap = unMotorizado(cmp).escenario.capacidad;
-  const medidas = [
-    ['Hora de corte diaria',
-      'Lo que entra hasta las 16:00 se programa en la ruta del día siguiente. Después de esa hora, salvo'
-      + ' excepción aprobada, va a la ruta siguiente. La plataforma ya obliga a un margen de ' + MARGEN_HORAS + ' horas: la hora'
-      + ' de corte es la misma idea, pero fijada a una hora concreta y conocida por todos.'],
-    ['Días fijos por zona',
-      'Las zonas lejanas no se visitan todos los días. Publicar el calendario convierte "necesito ir a Chilca'
-      + ' hoy" en "Chilca sale los martes", que es una conversación distinta. Las zonas cercanas y las de más'
-      + ' volumen sí tienen salida diaria.'],
-    ['Cupo reservado para urgencias reales',
-      'El ' + pct(OPERACION.holgura) + ' de la jornada queda libre a propósito: son unos '
-      + (cap.disponible.holgura / 60).toFixed(1) + ' h a la semana para lo que de verdad no puede esperar.'
-      + ' Tener el cupo explícito evita que cada urgencia rompa la ruta completa.'],
-    ['La urgencia se carga al área que la pide',
-      'Mientras el sobrecosto de un envío urgente lo absorba logística, no hay motivo para programar. Si el'
-      + ' costo aparece en el centro de costo de quien lo pidió, la urgencia se vuelve cara para quien la'
-      + ' genera y se vuelve rara. La columna de costo por servicio ya está en el histórico.'],
-    ['Medir quién genera urgencias',
-      'El módulo de indicadores ya muestra quién solicita más servicios. Añadir el conteo de pedidos fuera'
-      + ' de la hora de corte, publicado por área cada mes, suele bastar: casi nadie quiere aparecer primero'
-      + ' en esa lista.'],
-    ['Encargos recurrentes en calendario',
-      'Buena parte de los viajes se repiten: ' + esc(unMotorizado(cmp).escenario.capacidad.conPrograma.porZona
-        .slice().sort((a, b) => b.viajesSemana - a.viajesSemana)[0].zona.nombre)
-      + ' concentra el grueso. Lo que se repite todas las semanas no debería pedirse cada vez: se programa'
-      + ' una vez y se repite solo.']
-  ];
-
-  return '<div class="panel" style="margin-top:22px">'
-    + '<h3>Cómo se dejan de tener urgencias</h3>'
-    + '<p class="sub">Con un solo motorizado la programación deja de ser una buena práctica y pasa a ser la'
-    + ' condición para que el servicio exista. Estas son las seis medidas, de la más simple a la más de fondo.</p>'
-    + '<div class="pb-medidas">' + medidas.map(([t, d], i) =>
-      '<div class="pb-medida"><div class="pb-medida-n">' + (i + 1) + '</div>'
-      + '<div><b>' + esc(t) + '</b><p>' + esc(d) + '</p></div></div>').join('')
-    + '</div></div>';
-}
-
 // ------------------------------------------------------------ advertencia
 function advertencia() {
   return '<div class="banner" style="margin-top:22px"><div><b>Antes de decidir.</b> Las tasas de ley están'
     + ' puestas como referencia del régimen laboral común y las primas de Vida Ley y SCTR varían por'
-    + ' aseguradora: que RR.HH. y contabilidad las validen. La cuota del proveedor (S/ 3 500 + IGV) es la'
-    + ' que se planteó para este análisis, no una cotización cerrada: conviene pedir al menos dos'
-    + ' propuestas antes de firmar. Los minutos de viaje por zona son estimaciones y se ajustan en el'
-    + ' simulador.'
-    + ' Todo eso se edita en <span class="mono">payback/data/parametros.js</span> sin tocar el cálculo.</div></div>';
+    + ' aseguradora: que RR.HH. y contabilidad las validen. La cuota del proveedor (S/ 3 500 + IGV como'
+    + ' presupuesto ideal, S/ 3 800 como tope) no es una cotización cerrada: conviene pedir al menos dos'
+    + ' propuestas con el plan de rutas en la mano. Los costos que no salen en la boleta (faltas, reemplazos,'
+    + ' gestión) son estimaciones de logística. Las rutas usan el tráfico típico de Lima por franja horaria,'
+    + ' no tráfico en vivo, y ' + PUNTOS.filter(p => p.precision === 'distrito').length + ' de los puntos tienen ubicación aproximada (solo el distrito): conviene'
+    + ' corregirlos con la dirección exacta. Los supuestos se editan en'
+    + ' <span class="mono">data/payback/parametros.js</span> y el plan y sus coordenadas en'
+    + ' <span class="mono">data/payback/rutas.js</span>, sin tocar el cálculo.</div></div>';
 }

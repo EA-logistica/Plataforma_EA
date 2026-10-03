@@ -96,30 +96,71 @@ export const ESCENARIOS = {
   tercero: {
     id: 'tercero',
     nombre: 'Tercerizar con un proveedor a cuota fija',
-    detalle: 'Un proveedor externo se hace cargo de toda la mensajería por una cuota mensual fija de S/ 3 500 + IGV, sin importar cuántos encargos salgan. No es personal de la empresa: no hay planilla, moto que comprar ni vacaciones que cubrir. A cambio, la empresa depende de que el proveedor cumpla los viajes asignados del día.',
+    // Se arma con la cuota elegida en pantalla (opcionesCuota).
+    detalle: cfg => 'Un proveedor externo se hace cargo de toda la mensajería con un motorizado y rutas fijas por una cuota mensual de S/ '
+      + cfg.cuotaMensualSinIgv.toLocaleString('es-PE') + ' + IGV, sin importar cuántos encargos salgan. No es personal de la empresa: el proveedor es el empleador y responde por los accidentes, los contratos, las faltas, las vacaciones y los reemplazos. PLANSA solo controla que se cumplan los viajes asignados del día.',
     modelo: 'tercero',
-    cuotaMensualSinIgv: 3500
+    // S/ 3 500 es el presupuesto ideal; S/ 3 800, el tope que se llegó a plantear.
+    cuotaMensualSinIgv: 3500,
+    opcionesCuota: [3500, 3800]
   },
   dosMotorizados: {
     id: 'dosMotorizados',
     nombre: 'Dos motorizados part time en planilla',
-    detalle: 'Dos personas en planilla que se reparten la jornada, cada una por debajo de 4 horas diarias, con S/ 900 de básico cada una. La moto, el combustible y el mantenimiento corren por cuenta de cada una.',
+    // Se arma con el básico elegido en pantalla (opcionesBasico).
+    detalle: cfg => 'Dos personas en planilla que se reparten la jornada, cada una por debajo de 4 horas diarias, con S/ '
+      + cfg.sueldoBase.toLocaleString('es-PE') + ' de básico cada una. La moto, el combustible y el mantenimiento corren por cuenta de cada una. PLANSA es el empleador: responde por el contrato, las faltas, las vacaciones y los accidentes.',
     personas: 2,
-    sueldoBase: 900,
+    // Sube de S/ 900 a S/ 1 100 para que el puesto compita con lo que un
+    // motorizado gana por su cuenta y no falte ni se vaya: ver SUSTENTO_BASICO.
+    sueldoBase: 1100,
+    opcionesBasico: [900, 1000, 1100],
     bono: 0,
     bonoRemunerativo: true,
-    jornadaCompleta: false
-  },
-  propia: {
-    id: 'propia',
-    nombre: 'Un motorizado con moto propia',
-    detalle: 'Contrato a tiempo completo. La moto, el combustible y el mantenimiento corren por su cuenta, cubiertos por el bono.',
-    personas: 1,
-    sueldoBase: 1800,
-    bono: 300,
-    bonoRemunerativo: true,
-    jornadaCompleta: true
+    jornadaCompleta: false,
+    // Margen de gasto que agrega logística sobre el cálculo de ley.
+    margenGastoMensual: 160
   }
+};
+
+/**
+ * Con qué se sustenta el básico del part time. Lo que decide si el motorizado
+ * se queda no es el básico bruto: es lo que le queda después de su aporte de
+ * pensión y de pagar su propia moto, por cada hora que trabaja. Si eso es poco,
+ * cualquier otro servicio de reparto le paga más, y falta o se va.
+ * Estimaciones de logística, no datos.
+ */
+export const SUSTENTO_BASICO = {
+  /** Aporte de pensión que se descuenta al trabajador (ONP 13%; en AFP es parecido). */
+  aportePension: 0.13,
+  /** Combustible y desgaste de su moto por día de reparto, a media jornada en Lima. */
+  gastoMotoPorDia: 10,
+  /** Días de reparto al mes por persona: lunes a sábado. */
+  diasAlMes: 26
+};
+
+/**
+ * Lo que cuesta tener personal propio y no aparece en la boleta. Son
+ * estimaciones de logística, no datos: que RR.HH. las valide. El proveedor a
+ * cuota fija no las paga, porque el empleador es él.
+ */
+export const COSTOS_PLANILLA = {
+  /**
+   * Días de falta o descanso médico al año por persona. Los primeros 20 días
+   * de descanso los paga el empleador, y además hay que cubrir el servicio con
+   * courier: se valoriza como courier por la parte de jornada que queda sin cubrir.
+   */
+  diasFaltaPorPersonaAlAnio: 5,
+
+  /** Reemplazos al año (renuncia o despido) y lo que cuesta cada uno: reclutamiento, examen médico ocupacional, inducción y días sin cobertura. */
+  reemplazosAlAnio: 1,
+  costoPorReemplazo: 1000,
+
+  /** Gestión interna al mes: boletas, PLAME, control de asistencia y supervisión. */
+  gestionMensual: 75,
+
+  /** Seguridad y salud en el trabajo por persona al mes: equipos de protección (casco, chaleco, impermeable) y capacitaciones. */
+  sstPorPersonaMensual: 25
 };
 
 /**

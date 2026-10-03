@@ -1,5 +1,5 @@
 import { ESCENARIOS, JORNADA, OPERACION, IGV } from '#data/payback/parametros.js';
-import { costoPersona } from './planilla.js';
+import { costoPersona, horasSemanales } from './planilla.js';
 import { evaluar } from './capacidad.js';
 
 /**
@@ -37,6 +37,9 @@ export function construir(demanda, opciones = {}) {
       bonoRemunerativo: opciones.bonoRemunerativo !== undefined
         ? opciones.bonoRemunerativo : base.bonoRemunerativo,
       asignacionFamiliar: opciones.asignacionFamiliar || 0,
+      // El básico del part time se elige en pantalla, solo entre las opciones planteadas.
+      sueldoBase: (base.opcionesBasico || []).includes(opciones.basicoPartTime)
+        ? opciones.basicoPartTime : base.sueldoBase,
       // Dos personas part time se reparten la jornada: media cada una.
       fraccionJornada: base.jornadaCompleta ? 1 : 1 / base.personas
     };
@@ -60,7 +63,7 @@ export function construir(demanda, opciones = {}) {
     return {
       id: cfg.id,
       nombre: cfg.nombre,
-      detalle: cfg.detalle,
+      detalle: typeof cfg.detalle === 'function' ? cfg.detalle(cfg) : cfg.detalle,
       cfg,
       persona,
       planilla,
@@ -84,8 +87,11 @@ export function construir(demanda, opciones = {}) {
  * @param {number} [opciones.plazoPagoDias]  30 o 45: a cuántos días se paga la factura del proveedor
  */
 function construirTercero(base, opciones = {}) {
-  const igv = base.cuotaMensualSinIgv * IGV.tasa;
-  const total = base.cuotaMensualSinIgv + igv;
+  // La cuota se elige en pantalla, solo entre las planteadas.
+  const cuota = (base.opcionesCuota || []).includes(opciones.cuotaTercero) ? opciones.cuotaTercero : base.cuotaMensualSinIgv;
+  const cfg = { ...base, cuotaMensualSinIgv: cuota };
+  const igv = cuota * IGV.tasa;
+  const total = cuota + igv;
   // El plazo de pago no cambia cuánto se debe -la cuota es la misma-, cambia
   // CUÁNDO sale de caja: a más días, más tiempo circula ese dinero en la
   // empresa antes de pagarlo. Es una condición de negociación con el
@@ -104,16 +110,16 @@ function construirTercero(base, opciones = {}) {
   return {
     id: base.id,
     nombre: base.nombre,
-    detalle: base.detalle,
-    cfg: base,
+    detalle: typeof cfg.detalle === 'function' ? cfg.detalle(cfg) : cfg.detalle,
+    cfg,
     persona: null,
     tercero: {
-      cuotaMensualSinIgv: base.cuotaMensualSinIgv,
+      cuotaMensualSinIgv: cuota,
       igv,
       total,
       creditoFiscalIgv,
       /** El costo que de verdad se compara contra el courier: neto de IGV si se puede usar el crédito, bruto si no. */
-      costoReal: creditoFiscalIgv ? base.cuotaMensualSinIgv : total,
+      costoReal: creditoFiscalIgv ? cuota : total,
       plazoPagoDias
     },
     // No es nuestro que cubrir: el proveedor responde por su propia gente y
@@ -155,7 +161,15 @@ function riesgosTercero(creditoFiscalIgv) {
  * cálculo porque son juicios operativos, no aritmética.
  */
 function riesgos(cfg) {
-  const lista = [];
+  // Va primero porque es el que decide: un motorizado pasa el día en el tráfico
+  // de Lima, y en planilla cada accidente es de la empresa.
+  const lista = [{
+    nivel: 'alto',
+    texto: 'PLANSA es el empleador: un accidente del motorizado es un accidente de trabajo de la empresa'
+      + ' (investigación, registro, fiscalización de SUNAFIL y posible indemnización si faltó una medida de'
+      + ' prevención). El SCTR cubre salud y pensión, no esa responsabilidad. Si daña a un tercero, la empresa'
+      + ' también puede responder por él. Contrato, faltas, vacaciones y reemplazos también son de la empresa.'
+  }];
 
   if (cfg.personas === 1) {
     lista.push({
@@ -178,10 +192,12 @@ function riesgos(cfg) {
   });
 
   if (!cfg.jornadaCompleta) {
+    const horasDia = horasSemanales().total * cfg.fraccionJornada / 6;
     lista.push({
       nivel: 'aviso',
-      texto: 'Part time significa por debajo de 4 horas diarias. Si en la práctica se les pide quedarse más,'
-        + ' el contrato se convierte en jornada completa con todos sus beneficios y el ahorro desaparece.'
+      texto: 'Part time significa por debajo de 4 horas diarias, y cada persona queda en '
+        + horasDia.toFixed(2) + ' h: el margen es de unos ' + Math.round((4 - horasDia) * 60) + ' minutos al día. Si se les pide quedarse para un pico o una urgencia, el contrato pasa a jornada'
+        + ' completa: CTS, 30 días de vacaciones y reintegros de meses anteriores (unos S/ 175 a 250 más al mes).'
     });
     lista.push({
       nivel: 'aviso',

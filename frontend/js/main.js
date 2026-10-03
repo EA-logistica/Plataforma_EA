@@ -83,23 +83,47 @@ import { renderDashboard } from './views/dashboard.js';
 import {
   renderMateriaPrima, irACategoriasMateriaPrima, abrirCategoriaMateriaPrima, abrirLineaMateriaPrima,
   verAlmacenesProductoMateriaPrima, buscarProductosMateriaPrima, cambiarTipoMateriaPrima, verProductosDeAlmacenMateriaPrima,
-  ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima
+  ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima, pintarCodigosNuevosMateriaPrima
 } from './views/materiaPrima.js';
 import {
   subtabMateriaPrima, renderMuestras, irAMesMuestras, filtrarMuestras, abrirNuevaMuestra, editarMuestra, subtotalMuestra,
-  buscarProveedorMuestra, guardarMuestra, cambiarEstadoMuestra, borrarMuestraVista, abrirPegarMuestras, previsualizarPegado, importarPegado
+  buscarProveedorMuestra, guardarMuestra, cambiarEstadoMuestra, borrarMuestraVista, abrirPegarMuestras, previsualizarPegado, importarPegado, detectarCodigoMuestra, elegirCodigoMuestra
 } from './views/muestras.js';
+import {
+  filtrarHomologados, filtrarCategoriaHomologados, limpiarFiltrosHomologados, ordenarHomologados, paginaHomologados
+} from './views/homologados.js';
+// Radar de Importaciones (SUNAT): apartado propio con 5 pestañas, ver views/radar/.
+import {
+  renderRadar, subtabRadar, filtrarRadar, limpiarFiltrosRadar, granoHistoricoRadar, buscarExplorarRadar, irPaginaExplorarRadar,
+  exportarExplorarRadar, verSerieRadar, guardarRevisionRadar, buscarProductosRadar, ordenarProductosRadar, irPaginaProductosRadar,
+  filtrarEmpresasRadar, verEmpresaRadar, verEmpresaRadarPorNombre, cerrarEmpresaRadar, abrirActualizarRadar, tipoCargaRadar,
+  confirmarActualizarRadar, reanudarEjecucionRadar
+} from './views/radar/index.js';
 import {
   renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
   guardarServicioLogistica, borrarServicioLogisticaVista
 } from './views/serviciosLogistica.js';
+// Importaciones (bot de logística) y ABC de materia prima.
+import {
+  renderImportaciones, filtrarImportaciones, impPagina, impOrdenar, impFiltrarEstado, impFiltrarFamilia, impFiltrarMes,
+  impBuscar, impFiltroRapido, impLimpiar, impVerPorConfirmar, exportarImportaciones, impDetalle
+} from './views/importaciones.js';
+import { renderAbc, filtrarAbc, abcFiltrarMatriz, limpiarAbc, abcOrdenar, abcPagina, exportarAbc } from './views/abc.js';
+import { setPerfilDashboard, dashIr, dashImpEtapa, dashImpMes, verReporteSemanal } from './views/dashboard.js';
+// Herramientas transversales: buscador (Ctrl+K), período global, tablas, gráficos y frescura de datos.
+import { abrirBuscador, cerrarBuscador, escribirBuscador, marcarBuscador, elegirBuscador, iniciarBuscador } from './ui/buscador.js';
+import { alternarPeriodo, cerrarPeriodo, setPeriodo, setRangoPeriodo, setCompararPeriodo } from './state/periodo.js';
+import { menuColumnas, exportarExcel, exportarPdf, iniciarTablas } from './ui/tablas.js';
+import { iniciarTooltips } from './ui/graficos.js';
+import { iniciarFrescura } from './ui/frescura.js';
 
 // Módulo payback: análisis de contratar motorizado propio frente al courier.
 // Vive fuera de js/ a propósito, con su propia data, backend y frontend.
 import {
-  renderPayback, setBonoPayback, setAsignacionPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setAsignacionPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setBasicoPayback, setCuotaPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
-  pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
+  pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador,
+  pbPlanDia, pbPlanSalida, pbPlanChilca, pbPlanParada, pbPlanQuitarExtra, pbPlanBuscar, pbPlanAgregar, pbPlanBuscarMapa, pbPlanAgregarHist
 } from './views/payback/vista.js';
 
 // ---- Puente hacia los atributos inline del HTML (estático y generado) ----
@@ -125,9 +149,10 @@ Object.assign(window, {
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista,
   crearCredencialAreaVista, restablecerClaveAreaVista, cambiarEstadoAreaVista,
   subirGuia, abrirAdjunto, eliminarAdjunto,
-  renderPayback, setBonoPayback, setAsignacionPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setInicioPayback,
+  renderPayback, setBonoPayback, setAsignacionPayback, setCreditoFiscalPayback, setPlazoPagoPayback, setBasicoPayback, setCuotaPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
   pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador,
+  pbPlanDia, pbPlanSalida, pbPlanChilca, pbPlanParada, pbPlanQuitarExtra, pbPlanBuscar, pbPlanAgregar, pbPlanBuscarMapa, pbPlanAgregarHist,
   verModuloAlmacen,
   renderExportaciones, abrirNuevaExportacion, editarExportacion, guardarExportacion, borrarExportacionVista,
   renderRequerimientos, abrirNuevoRequerimiento, editarRequerimiento, guardarRequerimiento, borrarRequerimientoVista,
@@ -142,19 +167,33 @@ Object.assign(window, {
   setClaseRotacionProductos, filtrarFamiliaClaseC, renderDashboard,
   renderMateriaPrima, irACategoriasMateriaPrima, abrirCategoriaMateriaPrima, abrirLineaMateriaPrima,
   verAlmacenesProductoMateriaPrima, buscarProductosMateriaPrima, cambiarTipoMateriaPrima, verProductosDeAlmacenMateriaPrima,
-  ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima,
+  ordenarMateriaPrima, paginaMateriaPrima, filaMateriaPrima, volverACategoriaMateriaPrima, limpiarBusquedaMateriaPrima, pintarCodigosNuevosMateriaPrima,
   renderServiciosLogistica, abrirNuevoServicioLogistica, editarServicioLogistica,
   guardarServicioLogistica, borrarServicioLogisticaVista,
   subtabMateriaPrima, renderMuestras, irAMesMuestras, filtrarMuestras, abrirNuevaMuestra, editarMuestra, subtotalMuestra,
-  buscarProveedorMuestra, guardarMuestra, cambiarEstadoMuestra, borrarMuestraVista, abrirPegarMuestras, previsualizarPegado, importarPegado
+  buscarProveedorMuestra, guardarMuestra, cambiarEstadoMuestra, borrarMuestraVista, abrirPegarMuestras, previsualizarPegado, importarPegado, detectarCodigoMuestra, elegirCodigoMuestra,
+  filtrarHomologados, filtrarCategoriaHomologados, limpiarFiltrosHomologados, ordenarHomologados, paginaHomologados,
+  renderRadar, subtabRadar, filtrarRadar, limpiarFiltrosRadar, granoHistoricoRadar, buscarExplorarRadar, irPaginaExplorarRadar,
+  exportarExplorarRadar, verSerieRadar, guardarRevisionRadar, buscarProductosRadar, ordenarProductosRadar, irPaginaProductosRadar,
+  filtrarEmpresasRadar, verEmpresaRadar, verEmpresaRadarPorNombre, cerrarEmpresaRadar, abrirActualizarRadar, tipoCargaRadar,
+  confirmarActualizarRadar, reanudarEjecucionRadar,
+  renderImportaciones, filtrarImportaciones, impPagina, impOrdenar, impFiltrarEstado, impFiltrarFamilia, impFiltrarMes,
+  impBuscar, impFiltroRapido, impLimpiar, impVerPorConfirmar, exportarImportaciones, impDetalle,
+  renderAbc, filtrarAbc, abcFiltrarMatriz, limpiarAbc, abcOrdenar, abcPagina, exportarAbc,
+  setPerfilDashboard, dashIr, dashImpEtapa, dashImpMes, verReporteSemanal,
+  abrirBuscador, cerrarBuscador, escribirBuscador, marcarBuscador, elegirBuscador,
+  alternarPeriodo, setPeriodo, setRangoPeriodo, setCompararPeriodo,
+  menuColumnasTabla: menuColumnas, exportarExcelTabla: exportarExcel, exportarPdfTabla: exportarPdf
 });
 
 // ---- Listeners que no van como atributos inline ----
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarSelectorMapa(); cerrarModal(); cerrarAccesoLogistica(); cerrarMenuCuenta(); cerrarMenu(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarSelectorMapa(); cerrarModal(); cerrarAccesoLogistica(); cerrarMenuCuenta(); cerrarMenu(); cerrarPeriodo(); } });
 // Clic fuera del icono o del panel: se cierra solo, como cualquier menú.
 document.addEventListener('click', e => {
   if (!$('logisticaAnchor').contains(e.target)) cerrarAccesoLogistica();
   if (!$('cuentaAnchor').contains(e.target)) cerrarMenuCuenta();
+  // isConnected: elegir una opción repinta el menú y el botón clicado ya no está en la página.
+  if (e.target.isConnected && !$('periodoAnchor').contains(e.target)) cerrarPeriodo();
 });
 $('dniInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSolicitante(); });
 $('dniInput').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
@@ -194,5 +233,9 @@ refrescarHoras();
 
 iniciarSincronizacion(2500);
 iniciarEstadoMongo();
+iniciarTooltips();
+iniciarTablas();
+iniciarFrescura();
+iniciarBuscador();
 iniciarAvisoActualizacion();
 setInterval(() => { if (sesion && sesion.tipo === 'user' && $('uNueva').classList.contains('on')) refrescarHoras(); }, 60000);
